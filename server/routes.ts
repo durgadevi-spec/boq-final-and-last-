@@ -1531,38 +1531,6 @@ export async function registerRoutes(
     },
   );
 
-  // GET pending approvals for materials and shops
-  app.get("/api/materials-pending-approval", async (_req, res) => {
-    try {
-      // materials pending approval are those where approved is NULL
-      // Using material_submissions instead of materials for pending items
-      const result = await query(`
-        SELECT ms.*, mt.name as material_name, mt.code as material_code, s.name as shop_name, u.username as submitted_by_username
-        FROM material_submissions ms
-        LEFT JOIN material_templates mt ON ms.template_id = mt.id
-        LEFT JOIN shops s ON ms.shop_id = s.id
-        LEFT JOIN users u ON ms.submitted_by = u.id
-        WHERE ms.approved IS NULL
-        ORDER BY ms.submitted_at DESC
-      `);
-      const requests = result.rows.map((r: any) => ({
-        id: r.id,
-        status: "pending",
-        material: {
-          ...r,
-          name: r.material_name || r.name,
-          code: r.material_code || r.code
-        },
-        submittedBy: r.submitted_by_username || "Unknown",
-        submittedAt: r.submitted_at || r.created_at
-      }));
-      res.json({ materials: requests });
-    } catch (err) {
-      // eslint-disable-next-line no-console
-      console.error("/api/materials-pending-approval error", err);
-      res.status(500).json({ message: "failed to list pending materials" });
-    }
-  });
 
   app.get("/api/shops-pending-approval", async (_req, res) => {
     try {

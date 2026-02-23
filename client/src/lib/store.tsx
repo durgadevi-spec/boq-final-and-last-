@@ -54,7 +54,6 @@ interface DataContextType {
   rejectMaterial?: (id: string, reason?: string | null, source?: string) => Promise<any>;
   addSupportMessage?: (senderName: string, message: string, info?: string) => Promise<void>;
   deleteMessage?: (id: string) => Promise<void>;
-  supplierSubmissions?: any[];
   refreshMaterials: () => Promise<void>;
   refreshPendingApprovals: () => Promise<void>;
 }
@@ -78,7 +77,6 @@ export function DataProvider({ children }: { children: ReactNode }) {
     try { return JSON.parse(localStorage.getItem('pendingMaterialRequests') || '[]'); } catch { return []; }
   });
   const [materialApprovalRequests, setMaterialApprovalRequests] = useState<any[]>([]);
-  const [supplierSubmissions, setSupplierSubmissions] = useState<any[]>([]);
   const [flushAttemptCount, setFlushAttemptCount] = useState(0);
   const [lastFlushTime, setLastFlushTime] = useState(0);
 
@@ -126,16 +124,31 @@ export function DataProvider({ children }: { children: ReactNode }) {
 
   const refreshPendingApprovals = async () => {
     try {
-      const pm = await getJSON('/materials-pending-approval');
-      if (pm?.materials) {
-        const transformed = pm.materials.map((r: any) => ({
-          id: r.id,
-          material: r.material || r,
-          status: r.status || 'pending',
-          submittedBy: r.submittedBy || 'Unknown',
-          submittedAt: r.submittedAt || new Date().toISOString(),
+      const res = await apiFetch("/api/material-submissions-pending-approval");
+      if (res.ok) {
+        const data = await res.json();
+        const submissions = (data.submissions || []).map((s: any) => ({
+          id: s.submission.id,
+          status: "pending",
+          source: 'submission',
+          material: {
+            id: s.submission.id,
+            name: s.submission.template_name || "Supplier Material",
+            code: s.submission.template_code || "",
+            rate: s.submission.rate,
+            unit: s.submission.unit,
+            category: s.submission.category || s.submission.template_category || s.submission.template_category_name || "",
+            subCategory: s.submission.subcategory || s.submission.sub_category || "",
+            brandName: s.submission.brandname || s.submission.brandName || s.submission.brand || s.submission.make || "",
+            modelNumber: s.submission.modelnumber || s.submission.modelNumber || "",
+            technicalSpecification: s.submission.technicalspecification || s.submission.technicalSpecification || "",
+          },
+          submittedBy: s.submission.shop_name || "Supplier",
+          submittedAt: s.submission.submitted_at || s.submission.created_at,
+          templateId: s.submission.template_id,
+          shopId: s.submission.shop_id,
         }));
-        setMaterialApprovalRequests(transformed);
+        setMaterialApprovalRequests(submissions);
       }
     } catch (e) {
       console.warn('refreshPendingApprovals failed', e);
@@ -169,47 +182,8 @@ export function DataProvider({ children }: { children: ReactNode }) {
         const ps = await getJSON('/shops-pending-approval');
         if (mounted && ps?.shops) setApprovalRequests(ps.shops);
       } catch (e) { console.warn('load pending shops failed', e); }
-      try {
-        const pm = await getJSON('/materials-pending-approval');
-        if (mounted && pm?.materials) {
-          const transformed = pm.materials.map((r: any) => ({
-            id: r.id,
-            material: r.material || r,
-            status: r.status || 'pending',
-            submittedBy: r.submittedBy || 'Unknown',
-            submittedAt: r.submittedAt || new Date().toISOString(),
-          }));
-          setMaterialApprovalRequests(transformed);
-        }
-      } catch (e) { console.warn('load pending materials failed', e); }
-      try {
-        const res = await apiFetch("/material-submissions-pending-approval");
-        if (mounted && res.ok) {
-          const data = await res.json();
-          const submissions = (data.submissions || []).map((s: any) => ({
-            id: s.submission.id,
-            status: "pending",
-            source: 'submission',
-            material: {
-              id: s.submission.id,
-              name: s.submission.template_name || "Supplier Material",
-              code: s.submission.template_code || "",
-              rate: s.submission.rate,
-              unit: s.submission.unit,
-              category: s.submission.category || s.submission.template_category || s.submission.template_category_name || "",
-              subCategory: s.submission.subcategory || s.submission.sub_category || "",
-              brandName: s.submission.brandname || s.submission.brandName || s.submission.brand || s.submission.make || "",
-              modelNumber: s.submission.modelnumber || s.submission.modelNumber || "",
-              technicalSpecification: s.submission.technicalspecification || s.submission.technicalSpecification || "",
-            },
-            submittedBy: s.submission.shop_name || "Supplier",
-            submittedAt: s.submission.created_at,
-            templateId: s.submission.template_id,
-            shopId: s.submission.shop_id,
-          }));
-          setSupplierSubmissions(submissions);
-        }
-      } catch (e) { console.warn("load supplier material submissions failed", e); }
+      // load server-side pending approval list (unified)
+      await refreshPendingApprovals();
       // load support messages
       try {
         const sm = await getJSON('/messages');
@@ -403,12 +377,11 @@ export function DataProvider({ children }: { children: ReactNode }) {
     }
 
     if (res.ok) {
-      if (source === 'submission') {
-        setSupplierSubmissions(prev => prev.filter(s => s.id !== id));
-      } else {
-        setMaterialApprovalRequests(prev => prev.filter(r => r.id !== id));
-      }
+      setMaterialApprovalRequests(prev => prev.filter(r => r.id !== id));
+
+      // Refresh EVERYTHING to ensure sync
       try {
+        await refreshPendingApprovals(); // Clear from "pending" list
         const dd = await getJSON('/materials');
         if (dd?.materials) setMaterials(dd.materials.map(normalizeMaterial));
       } catch (e) { console.warn('approveMaterial refresh failed', e); }
@@ -432,12 +405,11 @@ export function DataProvider({ children }: { children: ReactNode }) {
     }
 
     if (res.ok) {
-      if (source === 'submission') {
-        setSupplierSubmissions(prev => prev.filter(s => s.id !== id));
-      } else {
-        setMaterialApprovalRequests(prev => prev.filter(r => r.id !== id));
-      }
+      setMaterialApprovalRequests(prev => prev.filter(r => r.id !== id));
+
+      // Refresh pending list to ensure it disappears locally
       try {
+        await refreshPendingApprovals();
         const dd = await getJSON('/materials');
         if (dd?.materials) setMaterials(dd.materials.map(normalizeMaterial));
       } catch (e) { console.warn('rejectMaterial refresh failed', e); }
@@ -487,10 +459,9 @@ export function DataProvider({ children }: { children: ReactNode }) {
     supportMessages,
     pendingShops,
     pendingMaterials,
-    materialApprovalRequests: [...(materialApprovalRequests || []), ...(supplierSubmissions || [])],
+    materialApprovalRequests,
     setApprovalRequests,
     setMaterialApprovalRequests,
-    supplierSubmissions,
     addShop,
     addMaterial,
     deleteShop,
