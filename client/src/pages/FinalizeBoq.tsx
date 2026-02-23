@@ -1778,7 +1778,7 @@ export default function FinalizeBoq() {
                         <th className="border-r py-1 text-center font-extrabold">C</th>
                         <th className="border-r py-1 text-center">D</th>
                         <th className="border-r py-1 text-center font-bold">E</th>
-                        <th className="border-r py-1 text-center font-bold">F</th>
+                        <th className="border-r py-1 text-center font-bold w-52 min-w-[130px]">F</th>
                         <th className="border-r py-1 text-center text-green-700">G</th>
                         {allCols.map((_, idx) => (
                           <th key={idx} className="border-r py-1 text-center text-purple-700">
@@ -1794,7 +1794,7 @@ export default function FinalizeBoq() {
                         <th className="border-r px-4 py-4 text-left min-w-[200px]">Product / Material</th>
                         <th className="border-r px-4 py-4 text-left min-w-[250px]">Description / Location</th>
                         <th className="border-r px-5 py-4 text-right w-36">Rate / Unit</th>
-                        <th className="border-r px-5 py-4 text-right w-32">Qty</th>
+                        <th className="border-r px-5 py-4 text-center w-52 min-w-[130px]">Qty</th>
                         <th className="border-r px-5 py-4 text-right w-40 text-green-900 bg-green-50/50">Total Value (₹)</th>
                         <Reorder.Group
                           axis="x"
@@ -2066,14 +2066,14 @@ export default function FinalizeBoq() {
                             <td className="border-r px-4 py-3 text-right font-black text-gray-500 align-middle">
                               ₹{rateSqft.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                             </td>
-                            <td className="border-r px-4 py-3 text-right font-black text-gray-800 align-middle">
+                            <td className="border-r px-4 py-3 text-center font-black text-gray-800 align-middle min-w-[130px]">
                               <input
                                 type="number"
                                 value={productQuantities[boqItem.id] ?? (tableData.materialLines && tableData.targetRequiredQty !== undefined ? tableData.targetRequiredQty : (step11Items[0]?.qty || 0))}
                                 disabled={isVersionSubmitted}
                                 onChange={e => setProductQuantities(prev => ({ ...prev, [boqItem.id]: e.target.value }))}
                                 onBlur={() => saveItemLayout(boqItem.id, undefined, undefined, undefined, productQuantities[boqItem.id])}
-                                className="w-full border-none rounded p-1.5 text-xs focus:ring-1 ring-blue-300 outline-none bg-transparent text-right font-black"
+                                className="w-full border-none rounded p-2 text-sm focus:ring-1 ring-blue-300 outline-none bg-blue-100/50 text-center font-black"
                                 placeholder="Qty"
                               />
                             </td>
