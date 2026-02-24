@@ -127,8 +127,11 @@ export default function CreateBom() {
       qty?: number;
       supply_rate?: number;
       install_rate?: number;
+      rate?: number;
+      roundOff?: number;
     };
   }>({});
+  const [isSubmitting, setIsSubmitting] = useState(false);
   // Keep a ref in sync to avoid state-update races when user types and clicks Save quickly.
   const editedFieldsRef = useRef(editedFields);
   useEffect(() => {
@@ -368,6 +371,50 @@ export default function CreateBom() {
     setShowProductPicker(true);
   };
 
+  const handleAddProductManual = async () => {
+    if (!selectedProjectId || !selectedVersionId) {
+      toast({ title: "Error", description: "Please select a project and version", variant: "destructive" });
+      return;
+    }
+
+    try {
+      const requestBody = {
+        project_id: selectedProjectId,
+        version_id: selectedVersionId,
+        estimator: "Manual",
+        table_data: {
+          product_name: "Manual Product",
+          step11_items: [],
+          created_at: new Date().toISOString(),
+        },
+      };
+
+      const resp = await apiFetch("/api/boq-items", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(requestBody),
+      });
+
+      if (!resp.ok) {
+        const txt = await resp.text().catch(() => "");
+        throw new Error(txt || "Failed to create manual product");
+      }
+
+      const newItem = await resp.json();
+      setBoqItems((prev) => [...prev, newItem]);
+      // Set target product id so MaterialPicker will add selected materials into this product
+      setTargetBoqItemId(newItem.id);
+      // Open material picker so the user can select materials to add to the manual product
+      setShowMaterialPicker(true);
+      toast({ title: "Success", description: "Manual product created — select materials to add" });
+      // reload in background to keep state in sync
+      loadBoqItemsAndEdits();
+    } catch (err) {
+      console.error("Failed to add manual product", err);
+      toast({ title: "Error", description: "Failed to add manual product", variant: "destructive" });
+    }
+  };
+
   const handleAddItem = (boqItemId?: string) => {
     if (!selectedProjectId) return;
     if (boqItemId) {
@@ -385,16 +432,22 @@ export default function CreateBom() {
     setShowStep11Preview(true);
   };
 
-  const handleSelectMaterialTemplate = (template: any) => {
-    setSelectedMaterialTemplate(template);
-    setShowMaterialPicker(false);
-    // Directly add the material template to BOQ
-    if (targetBoqItemId) {
-      handleAddItemToProduct(targetBoqItemId, template);
-    } else {
-      handleAddMaterialToBoq(template);
+  const handleSelectMaterialTemplate = async (template: any) => {
+    if (isSubmitting) return;
+    try {
+      setIsSubmitting(true);
+      setSelectedMaterialTemplate(template);
+      setShowMaterialPicker(false);
+      // Directly add the material template to BOQ
+      if (targetBoqItemId) {
+        await handleAddItemToProduct(targetBoqItemId, template);
+      } else {
+        await handleAddMaterialToBoq(template);
+      }
+      setTargetBoqItemId(null);
+    } finally {
+      setIsSubmitting(false);
     }
-    setTargetBoqItemId(null);
   };
 
   const handleAddMaterialToBoq = async (template: any) => {
@@ -408,9 +461,10 @@ export default function CreateBom() {
     }
 
     try {
-      // Determine unit and rate from template or existing material record
+      // Determine unit, rate and shop from template or existing material record
       let unit = template.unit || template.uom || "pcs";
       let rate = Number(template.rate ?? template.supply_rate ?? template.default_rate ?? 0) || 0;
+      let shopName = template.shop_name || template.shopName || "";
 
       // Try to fetch authoritative material by id (if available) to get latest rate/unit
       if (template.id) {
@@ -422,6 +476,7 @@ export default function CreateBom() {
             if (mat) {
               unit = mat.unit || unit;
               rate = Number(mat.rate ?? rate) || rate;
+              shopName = mat.shop_name || mat.shopName || shopName;
             }
           }
         } catch (e) {
@@ -439,6 +494,7 @@ export default function CreateBom() {
         install_rate: 0,
         location: "Main Area",
         s_no: 1,
+        shop_name: shopName,
       };
 
       const response = await apiFetch("/api/boq-items", {
@@ -463,7 +519,8 @@ export default function CreateBom() {
 
       const newItem = await response.json();
       console.log("Material added successfully:", newItem);
-      setBoqItems((prev) => [...prev, newItem]);
+      // Removed optimistic setBoqItems update to prevent duplication bugs
+      // The reload below will sync the state correctly.
 
       toast({
         title: "Success",
@@ -520,9 +577,10 @@ export default function CreateBom() {
 
       const currentStep11Items = Array.isArray(tableData.step11_items) ? tableData.step11_items : [];
 
-      // Determine unit and rate from template or authoritative material record
+      // Determine unit, rate and shop from template or authoritative material record
       let unit = template.unit || template.uom || "pcs";
       let rate = Number(template.rate ?? template.supply_rate ?? template.default_rate ?? 0) || 0;
+      let shopName = template.shop_name || template.shopName || "";
 
       if (template.id) {
         try {
@@ -532,6 +590,7 @@ export default function CreateBom() {
             const mat = matData.material || matData;
             unit = mat.unit || unit;
             rate = Number(mat.rate ?? mat.supply_rate ?? rate) || rate;
+            shopName = mat.shop_name || mat.shopName || shopName;
           }
         } catch (err) {
           console.warn('Failed to fetch material for authoritative rate', err);
@@ -548,50 +607,24 @@ export default function CreateBom() {
         install_rate: 0,
         location: template.location || template.technicalspecification || "Main Area",
         s_no: currentStep11Items.length + 1,
+        shop_name: shopName,
       };
 
-      // If this product is engine-based (has materialLines + targetRequiredQty), add to materialLines
+      // If this product is engine-based (has materialLines + targetRequiredQty), we still
+      // add user-created items as manual `step11_items` so they appear editable in the UI
+      // (computed lines remain driven by materialLines). This keeps totals reactive and
+      // avoids duplicating computed rows.
       let updatedTableData: any;
       if (tableData.materialLines && tableData.targetRequiredQty !== undefined) {
-        // Ensure materialLines is an array
-        const materialLines = Array.isArray(tableData.materialLines) ? [...tableData.materialLines] : [];
+        const updatedStep11Items = Array.isArray(tableData.step11_items) ? [...tableData.step11_items] : [];
 
-        // Map template to materialLine shape expected by computeBoq
-        const newMaterialLine = {
-          id: template.id || `temp-${Date.now()}`,
-          name: template.name,
-          unit: template.unit || template.uom || newItem.unit,
-          baseQty: Number(template.baseQty ?? template.qty ?? 1),
-          wastagePct: template.wastagePct !== undefined ? Number(template.wastagePct) : undefined,
-          supplyRate: Number(template.rate ?? template.supply_rate ?? template.default_rate ?? 0) || 0,
-          installRate: Number(template.install_rate ?? 0) || 0,
-          applyWastage: template.apply_wastage !== undefined ? Boolean(template.apply_wastage) : true,
-          location: template.location || template.technicalspecification || "Main Area",
-        };
+        // Mark as manual so UI treats it as editable and appends after computed lines
+        const manualEntry = { ...newItem, manual: true };
+        updatedStep11Items.push(manualEntry);
 
-        materialLines.push(newMaterialLine);
+        updatedTableData = { ...tableData, step11_items: updatedStep11Items };
 
-        // Also add a compatible `step11_items` entry so non-engine UI paths reflect the new item immediately
-        const step11Items = Array.isArray(tableData.step11_items) ? [...tableData.step11_items] : [];
-        const mappedStep11 = {
-          title: newMaterialLine.name,
-          description: newMaterialLine.name,
-          unit: newMaterialLine.unit,
-          qty: newMaterialLine.baseQty,
-          // qtyPerSqf represents per-unit quantity (Qty/Sqf) for engine table
-          qtyPerSqf: newMaterialLine.baseQty,
-          supply_rate: newMaterialLine.supplyRate,
-          install_rate: newMaterialLine.installRate,
-          location: newMaterialLine.location,
-          s_no: step11Items.length + 1,
-          // mark as manually added so UI can render it editable even in engine-based products
-          manual: true,
-        };
-        step11Items.push(mappedStep11);
-
-        updatedTableData = { ...tableData, materialLines, step11_items: step11Items };
-
-        // Optimistic update
+        // Optimistic update: show manual item immediately under computed lines
         setBoqItems(prev => prev.map(item =>
           item.id === boqItemId
             ? { ...item, table_data: updatedTableData }
@@ -601,7 +634,7 @@ export default function CreateBom() {
         const updatedStep11Items = [...currentStep11Items, newItem];
         updatedTableData = { ...tableData, step11_items: updatedStep11Items };
 
-        // Optimistic update
+        // Optimistic update for non-engine products
         setBoqItems(prev => prev.map(item =>
           item.id === boqItemId
             ? { ...item, table_data: updatedTableData }
@@ -820,7 +853,8 @@ export default function CreateBom() {
             baseQty: Number(item.base_qty ?? item.qty ?? 0),
             wastagePct: item.wastage_pct !== null ? Number(item.wastage_pct) : undefined,
             supplyRate: Number(item.supply_rate),
-            installRate: Number(item.install_rate)
+            installRate: Number(item.install_rate),
+            shop_name: item.shop_name
           }));
         }
       }
@@ -1187,7 +1221,7 @@ export default function CreateBom() {
       });
 
       // Compose headers to match UI — only include columns present in the data/UI
-      const headers = ["S.No", "Item", "Description"];
+      const headers = ["S.No", "Item", "Shop", "Description"];
       if (hasUnit) headers.push("Unit");
       if (hasQty) headers.push("Qty");
       if (hasSupplyRate) headers.push("Supply Rate");
@@ -1213,6 +1247,7 @@ export default function CreateBom() {
         const row: string[] = [];
         row.push(displayRowNum.toString());
         row.push(item.title || productName || "");
+        row.push(item.shop_name || "");
         row.push(description);
         if (hasUnit) row.push(unit);
         if (hasQty) row.push(String(qty));
@@ -1227,8 +1262,8 @@ export default function CreateBom() {
 
       // Add total row matching header layout
       const totalRow: string[] = [];
-      // S.No, Item, Description
-      totalRow.push(""); totalRow.push(""); totalRow.push("");
+      // S.No, Item, Shop, Description
+      totalRow.push(""); totalRow.push(""); totalRow.push(""); totalRow.push("");
       if (hasUnit) totalRow.push("");
       if (hasQty) totalRow.push("");
       if (hasSupplyRate) totalRow.push("");
@@ -1295,6 +1330,7 @@ export default function CreateBom() {
       const headers = [
         "S.No",
         "Product",
+        "Shop",
         "Component",
         "Description",
         "Unit",
@@ -1326,7 +1362,8 @@ export default function CreateBom() {
             unit: l.unit,
             qty: l.scaledQty,
             supply_rate: l.supplyRate,
-            install_rate: l.installRate
+            install_rate: l.installRate,
+            shop_name: l.shop_name
           }));
         } else {
           displayLines = step11Items.map((it: any, idx: number) => {
@@ -1351,6 +1388,7 @@ export default function CreateBom() {
           body.push([
             (globalIdx++).toString(),
             productName,
+            line.shop_name || "—",
             line.title || "—",
             line.description || "—",
             line.unit || "—",
@@ -1627,7 +1665,15 @@ export default function CreateBom() {
                     >
                       Add Product +
                     </Button>
-                    {/* removed 'Add Product (Manual)' button per request */}
+                    <Button
+                      onClick={handleAddProductManual}
+                      variant="outline"
+                      className="flex-1"
+                      disabled={isVersionSubmitted}
+                      size="sm"
+                    >
+                      Add Item
+                    </Button>
                   </div>
 
                   <ProductPicker
@@ -1714,13 +1760,15 @@ export default function CreateBom() {
                         }));
 
                         // Include any manually added step11_items (marked manual=true) so they appear immediately and are editable
-                        const manualStep11 = step11Items.filter((it: any) => it && it.manual).map((it: any) => {
+                        const manualStep11 = step11Items.filter((it: any) => it && it.manual).map((it: any, mIdx: number) => {
                           const qty = Number(it.qty ?? it.requiredQty ?? it.qtyPerSqf ?? 0) || 0;
                           const sRate = Number(it.supply_rate ?? it.supplyRate ?? 0) || 0;
                           const iRate = Number(it.install_rate ?? it.installRate ?? 0) || 0;
+                          const itemKey = `${boqItem.id}-manual-${mIdx}`;
                           return {
                             ...it,
                             manual: true,
+                            itemKey,
                             qtyPerSqf: it.qtyPerSqf ?? it.qtyPerSqf ?? 0,
                             supply_rate: sRate,
                             install_rate: iRate,
@@ -1914,7 +1962,7 @@ export default function CreateBom() {
                                       </tr>
                                     ) : (
                                       displayLines.map((step11Item: any, itemIdx: number) => {
-                                        const itemKey = `${boqItem.id}-${itemIdx}`;
+                                        const itemKey = step11Item.itemKey || `${boqItem.id}-${itemIdx}`;
 
                                         // Per-item engine flag: treat manually added step11 items as editable even inside engine-based products
                                         const perItemIsEngine = isEngineBased && !step11Item.manual;
@@ -1922,18 +1970,24 @@ export default function CreateBom() {
                                         // For engine rows (perItemIsEngine=true) use computed/original values; for non-engine or manual rows allow edits
                                         const qtyPerSqf = perItemIsEngine
                                           ? (step11Item.qtyPerSqf ?? step11Item.qtyPerSqf ?? 0)
-                                          : getEditedValue(itemKey, "qtyPerSqf", step11Item.qtyPerSqf || 0);
+                                          : 0;
 
                                         // `qty` represents the required quantity (used for amount calculations)
                                         const qty = perItemIsEngine ? (step11Item.qty || 0) : getEditedValue(itemKey, "qty", step11Item.qty || 0);
 
-                                        const supplyRate = perItemIsEngine ? (step11Item.supply_rate ?? step11Item.supplyRate ?? 0) : getEditedValue(itemKey, "supply_rate", step11Item.supply_rate || 0);
-                                        const installRate = perItemIsEngine ? (step11Item.install_rate ?? step11Item.installRate ?? 0) : getEditedValue(itemKey, "install_rate", step11Item.install_rate || 0);
+                                        const supplyRate = perItemIsEngine ? (step11Item.supply_rate ?? step11Item.supplyRate ?? 0) : (getEditedValue(itemKey, "supply_rate", step11Item.supply_rate || 0));
+                                        const installRate = perItemIsEngine ? (step11Item.install_rate ?? step11Item.installRate ?? 0) : (getEditedValue(itemKey, "install_rate", step11Item.install_rate || 0));
                                         const description = perItemIsEngine ? (step11Item.description || "") : getEditedValue(itemKey, "description", step11Item.description || "");
                                         const unit = perItemIsEngine ? (step11Item.unit || "pcs") : getEditedValue(itemKey, "unit", step11Item.unit || "pcs");
 
-                                        const supplyAmount = qty * supplyRate;
-                                        const installAmount = qty * installRate;
+                                        // Unified rate: prefer explicit `rate` edited field, otherwise fall back to supply+install
+                                        const editedRate = getEditedValue(itemKey, "rate", undefined as any);
+                                        const rateVal = perItemIsEngine
+                                          ? (step11Item.rateSqft ?? ((step11Item.supply_rate || 0) + (step11Item.install_rate || 0)))
+                                          : (editedRate !== undefined ? editedRate : ((supplyRate || 0) + (installRate || 0)));
+
+                                        const supplyAmount = qty * (perItemIsEngine ? (step11Item.supply_rate ?? step11Item.supplyRate ?? 0) : (rateVal || 0));
+                                        const installAmount = perItemIsEngine ? (qty * (step11Item.install_rate ?? step11Item.installRate ?? 0)) : 0;
 
                                         if (perItemIsEngine) {
                                           return (
@@ -1942,17 +1996,17 @@ export default function CreateBom() {
                                               <td className="border px-2 py-1 font-medium">{step11Item.title}</td>
                                               <td className="border px-2 py-1 text-gray-600">{step11Item.shop_name || "-"}</td>
                                               <td className="border px-2 py-1 text-gray-600 truncate max-w-[200px]" title={description}>{description}</td>
-                                                    <td className="border px-2 py-1 text-center">{unit}</td>
-                                                    <td className="border px-2 py-1 text-center">{(step11Item.qtyPerSqf ?? 0).toFixed(3)}</td>
-                                                    <td className="border px-2 py-1 text-center text-blue-600">{(step11Item.requiredQty ?? step11Item.qty ?? 0).toFixed(2)}</td>
-                                                    <td className="border px-2 py-1 text-center font-bold">{step11Item.roundOff}</td>
-                                              <td className="border px-2 py-1 text-right">₹{step11Item.rateSqft.toLocaleString()}</td>
-                                              <td className="border px-2 py-1 text-right font-bold bg-green-50/30">₹{step11Item.amount.toLocaleString()}</td>
+                                              <td className="border px-2 py-1 text-center">{unit}</td>
+                                              <td className="border px-2 py-1 text-center">{(step11Item.qtyPerSqf ?? 0).toFixed(3)}</td>
+                                              <td className="border px-2 py-1 text-center text-blue-600">{(step11Item.requiredQty ?? step11Item.qty ?? 0).toFixed(2)}</td>
+                                              <td className="border px-2 py-1 text-center font-bold">{step11Item.roundOff}</td>
+                                              <td className="border px-2 py-1 text-right">₹{(step11Item.rateSqft || 0).toLocaleString()}</td>
+                                              <td className="border px-2 py-1 text-right font-bold bg-green-50/30">₹{(step11Item.amount || 0).toLocaleString()}</td>
                                               <td className="border px-2 py-1 text-center">
-                                                <Button variant="ghost" size="sm" className="h-6 w-6 p-0 text-red-500 hover:text-red-700" onClick={() => {
+                                                <Button title="Delete this item" variant="ghost" size="sm" className="h-7 w-7 p-0 text-red-600 hover:text-red-800 hover:bg-red-100 font-bold" onClick={() => {
                                                   if (!confirm("Delete this item?")) return;
                                                   void handleDeleteRow(boqItem.id, tableData, itemIdx);
-                                                }}>×</Button>
+                                                }}>🗑</Button>
                                               </td>
                                             </tr>
                                           );
@@ -1962,7 +2016,7 @@ export default function CreateBom() {
                                           <tr key={itemKey} className="border-b border-gray-100 hover:bg-blue-50/50">
                                             <td className="border px-2 py-1 text-center text-xs">{itemIdx + 1}</td>
                                             <td className="border px-2 py-1 font-medium text-xs">{step11Item.title || "Item"}</td>
-                                            <td className="border px-2 py-1 text-gray-500">-</td>
+                                            <td className="border px-2 py-1 text-gray-600">{step11Item.shop_name || "-"}</td>
                                             <td className="border px-2 py-1">
                                               <textarea
                                                 value={description}
@@ -1984,78 +2038,51 @@ export default function CreateBom() {
                                             <td className="border px-2 py-1 text-center">
                                               <input
                                                 type="number"
-                                                value={qtyPerSqf}
-                                                onChange={(e) => updateEditedField(itemKey, "qtyPerSqf", parseFloat(e.target.value) || 0)}
-                                                disabled={isVersionSubmitted}
-                                                className="w-full border rounded px-1 py-0.5 text-xs text-center font-medium focus:ring-1 ring-blue-500 outline-none"
-                                              />
-                                            </td>
-                                            <td className="border px-2 py-1 text-center">
-                                              <input
-                                                type="number"
                                                 value={qty}
                                                 onChange={(e) => updateEditedField(itemKey, "qty", parseFloat(e.target.value) || 0)}
                                                 disabled={isVersionSubmitted}
                                                 className="w-full border rounded px-1 py-0.5 text-xs text-center font-medium focus:ring-1 ring-blue-500 outline-none"
                                               />
                                             </td>
-                                            <td className="border px-2 py-1 font-bold text-center">
+                                            <td className="border px-2 py-1 text-center text-blue-600">{(getEditedValue(itemKey, "qty", step11Item.qty || 0) || 0).toFixed(2)}</td>
+                                            <td className="border px-2 py-1 font-bold text-center">-</td>
+                                            <td className="border px-1 py-1">
                                               <input
                                                 type="number"
-                                                value={getEditedValue(itemKey, "roundOff", step11Item.roundOff || 0)}
-                                                onChange={(e) => updateEditedField(itemKey, "roundOff", parseFloat(e.target.value) || 0)}
+                                                value={rateVal}
+                                                onChange={(e) => {
+                                                  const v = parseFloat(e.target.value) || 0;
+                                                  // store unified rate and mirror into supply_rate for compatibility
+                                                  updateEditedField(itemKey, "rate", v);
+                                                  updateEditedField(itemKey, "supply_rate", v);
+                                                  updateEditedField(itemKey, "install_rate", 0);
+                                                }}
                                                 disabled={isVersionSubmitted}
-                                                className="w-full border rounded px-1 py-0.5 text-xs text-center font-medium focus:ring-1 ring-blue-500 outline-none"
+                                                className="w-full border rounded px-1 py-0.5 text-xs text-right focus:ring-1 ring-blue-500 outline-none"
+                                                placeholder="Rate"
                                               />
                                             </td>
-                                            <td className="border px-1 py-1">
-                                              <div className="flex flex-col gap-1">
-                                                <input
-                                                  type="number"
-                                                  value={supplyRate}
-                                                  onChange={(e) => updateEditedField(itemKey, "supply_rate", parseFloat(e.target.value) || 0)}
-                                                  disabled={isVersionSubmitted}
-                                                  className="w-full border rounded px-1 py-0.5 text-xs text-right focus:ring-1 ring-blue-500 outline-none"
-                                                  placeholder="S"
-                                                />
-                                                <input
-                                                  type="number"
-                                                  value={installRate}
-                                                  onChange={(e) => updateEditedField(itemKey, "install_rate", parseFloat(e.target.value) || 0)}
-                                                  disabled={isVersionSubmitted}
-                                                  className="w-full border rounded px-1 py-0.5 text-xs text-right focus:ring-1 ring-blue-500 outline-none"
-                                                  placeholder="I"
-                                                />
-                                              </div>
-                                            </td>
                                             <td className="border px-1 py-1 text-right text-xs bg-gray-50/50 font-bold">
-                                              ₹{(supplyAmount + installAmount).toFixed(2)}
+                                              ₹{(qty * (rateVal || 0)).toFixed(2)}
                                             </td>
                                             <td className="border px-2 py-1 text-center">
                                               <Button
+                                                title="Delete this item"
                                                 variant="ghost"
                                                 size="sm"
-                                                className="h-6 w-6 p-0 text-red-500 hover:text-red-700 hover:bg-red-50"
+                                                className="h-7 w-7 p-0 text-red-600 hover:text-red-800 hover:bg-red-100 font-bold"
                                                 disabled={isVersionSubmitted}
                                                 onClick={async () => {
                                                   if (!confirm("Delete this item?")) return;
-                                                  const newItems = [...step11Items];
-                                                  newItems.splice(itemIdx, 1);
-                                                  const newTableData = { ...tableData, step11_items: newItems };
-                                                  setBoqItems(prev => prev.map(i => i.id === boqItem.id ? { ...i, table_data: newTableData } : i));
                                                   try {
-                                                    await apiFetch(`/api/boq-items/${boqItem.id}`, {
-                                                      method: "PUT",
-                                                      headers: { "Content-Type": "application/json" },
-                                                      body: JSON.stringify({ table_data: newTableData })
-                                                    });
-                                                      } catch (e) {
-                                                    console.error("Failed to delete item", e);
-                                                    toast({ title: "Error", description: "Failed to delete item", variant: "destructive" });
+                                                    await handleDeleteRow(boqItem.id, tableData, itemIdx);
+                                                  } catch (e) {
+                                                    console.error('Failed to delete item via handler', e);
+                                                    toast({ title: 'Error', description: 'Failed to delete item', variant: 'destructive' });
                                                   }
                                                 }}
                                               >
-                                                ×
+                                                🗑
                                               </Button>
                                             </td>
                                           </tr>
@@ -2067,7 +2094,12 @@ export default function CreateBom() {
                                     <tr>
                                       <td colSpan={isEngineBased ? 9 : 8} className="border px-2 py-1.5 text-right uppercase tracking-wider text-[10px] text-gray-500">Total</td>
                                       <td className="border px-2 py-1.5 text-right text-green-700 bg-green-50/50">
-                                        ₹{displayLines.reduce((sum: number, item: any) => sum + (item.amount || ((item.qty || 0) * ((item.supply_rate || 0) + (item.install_rate || 0)))), 0).toLocaleString()}
+                                        ₹{displayLines.reduce((sum: number, item: any, idx: number) => {
+                                          const ik = item.itemKey || `${boqItem.id}-${idx}`;
+                                          const q = Number(getEditedValue(ik, "qty", item.requiredQty ?? item.qty ?? 0)) || 0;
+                                          const r = Number(getEditedValue(ik, "rate", item.rate ?? item.rateSqft ?? ((item.supply_rate || 0) + (item.install_rate || 0)))) || 0;
+                                          return sum + (q * r);
+                                        }, 0).toLocaleString()}
                                       </td>
                                       <td className="border px-2 py-1.5"></td>
                                     </tr>
@@ -2079,7 +2111,13 @@ export default function CreateBom() {
                                   <div className="flex items-center gap-4">
                                     <span className="text-xs font-bold text-gray-500 uppercase">Rate per {tableData.configBasis?.requiredUnitType || "Unit"}:</span>
                                     <span className="text-sm font-extrabold text-blue-700 border-b-2 border-blue-600">
-                                      ₹{(displayLines.reduce((sum: number, item: any) => sum + item.amount, 0) / (tableData.targetRequiredQty || 1)).toFixed(2)}
+                                      ₹{(displayLines.reduce((sum: number, item: any, idx: number) => {
+                                        const ik = item.itemKey || `${boqItem.id}-${idx}`;
+                                        const qty = Number(getEditedValue(ik, "qty", item.requiredQty ?? item.qty ?? 0)) || 0;
+                                        const rate = Number(getEditedValue(ik, "rate", item.rate ?? item.rateSqft ?? ((item.supply_rate || 0) + (item.install_rate || 0)))) || 0;
+                                        const amt = Number(item.amount ?? (qty * rate)) || 0;
+                                        return sum + amt;
+                                      }, 0) / (tableData.targetRequiredQty || 1)).toFixed(2)}
                                     </span>
                                   </div>
                                 </div>
@@ -2107,11 +2145,24 @@ export default function CreateBom() {
 
                                 if (td.materialLines && td.targetRequiredQty !== undefined) {
                                   const result = computeBoq(td.configBasis, td.materialLines, td.targetRequiredQty);
-                                  return sum + result.totalSupply;
+                                  const manualItems = (td.step11_items || []).filter((it: any) => it && it.manual);
+                                  const manualSupply = manualItems.reduce((s: number, val: any, idx: number) => {
+                                    const ik = `${boqItem.id}-manual-${idx}`;
+                                    const q = Number(getEditedValue(ik, "qty", val.qty || 0)) || 0;
+                                    const sR = Number(getEditedValue(ik, "supply_rate", val.supply_rate || 0)) || 0;
+                                    return s + (q * sR);
+                                  }, 0);
+                                  return sum + result.totalSupply + manualSupply;
                                 }
 
                                 const items = td.step11_items || [];
-                                return sum + items.reduce((s: number, val: any) => s + ((val.qty || 0) * (val.supply_rate || 0)), 0);
+                                return sum + items.reduce((s: number, val: any, idx: number) => {
+                                  const ik = `${boqItem.id}-${idx}`;
+                                  const q = Number(getEditedValue(ik, "qty", val.qty || 0)) || 0;
+                                  const r = Number(getEditedValue(ik, "rate", (val.rate ?? ((val.supply_rate || 0) + (val.install_rate || 0))))) || 0;
+                                  const sR = Number(getEditedValue(ik, "supply_rate", val.supply_rate || r || 0)) || 0;
+                                  return s + (q * sR);
+                                }, 0);
                               }, 0)
                               .toFixed(2)}
                           </span>
@@ -2127,11 +2178,23 @@ export default function CreateBom() {
 
                                 if (td.materialLines && td.targetRequiredQty !== undefined) {
                                   const result = computeBoq(td.configBasis, td.materialLines, td.targetRequiredQty);
-                                  return sum + result.totalInstall;
+                                  const manualItems = (td.step11_items || []).filter((it: any) => it && it.manual);
+                                  const manualInstall = manualItems.reduce((s: number, val: any, idx: number) => {
+                                    const ik = `${boqItem.id}-manual-${idx}`;
+                                    const q = Number(getEditedValue(ik, "qty", val.qty || 0)) || 0;
+                                    const iR = Number(getEditedValue(ik, "install_rate", val.install_rate || 0)) || 0;
+                                    return s + (q * iR);
+                                  }, 0);
+                                  return sum + result.totalInstall + manualInstall;
                                 }
 
                                 const items = td.step11_items || [];
-                                return sum + items.reduce((s: number, val: any) => s + ((val.qty || 0) * (val.install_rate || 0)), 0);
+                                return sum + items.reduce((s: number, val: any, idx: number) => {
+                                  const ik = `${boqItem.id}-${idx}`;
+                                  const q = Number(getEditedValue(ik, "qty", val.qty || 0)) || 0;
+                                  const iR = Number(getEditedValue(ik, "install_rate", val.install_rate || 0)) || 0;
+                                  return s + (q * iR);
+                                }, 0);
                               }, 0)
                               .toFixed(2)}
                           </span>
@@ -2147,11 +2210,23 @@ export default function CreateBom() {
 
                                 if (td.materialLines && td.targetRequiredQty !== undefined) {
                                   const result = computeBoq(td.configBasis, td.materialLines, td.targetRequiredQty);
-                                  return sum + result.grandTotal;
+                                  const manualItems = (td.step11_items || []).filter((it: any) => it && it.manual);
+                                  const manualAmt = manualItems.reduce((s: number, val: any, idx: number) => {
+                                    const ik = `${boqItem.id}-manual-${idx}`;
+                                    const q = Number(getEditedValue(ik, "qty", val.qty || 0)) || 0;
+                                    const r = Number(getEditedValue(ik, "rate", (val.rate ?? ((val.supply_rate || 0) + (val.install_rate || 0))))) || 0;
+                                    return s + (q * r);
+                                  }, 0);
+                                  return sum + result.grandTotal + manualAmt;
                                 }
 
                                 const items = td.step11_items || [];
-                                return sum + items.reduce((s: number, val: any) => s + ((val.qty || 0) * ((val.supply_rate || 0) + (val.install_rate || 0))), 0);
+                                return sum + items.reduce((s: number, val: any, idx: number) => {
+                                  const ik = `${boqItem.id}-${idx}`;
+                                  const q = Number(getEditedValue(ik, "qty", val.qty || 0)) || 0;
+                                  const r = Number(getEditedValue(ik, "rate", (val.rate ?? ((val.supply_rate || 0) + (val.install_rate || 0))))) || 0;
+                                  return s + (q * r);
+                                }, 0);
                               }, 0)
                               .toFixed(2)}
                           </span>

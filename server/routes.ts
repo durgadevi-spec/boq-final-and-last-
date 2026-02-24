@@ -428,6 +428,7 @@ export async function registerRoutes(
     await query(`ALTER TABLE product_step3_config ADD COLUMN IF NOT EXISTS wastage_pct_default DECIMAL(8,6) DEFAULT 0`);
     await query(`ALTER TABLE product_step3_config_items ADD COLUMN IF NOT EXISTS base_qty DECIMAL(15,2)`);
     await query(`ALTER TABLE product_step3_config_items ADD COLUMN IF NOT EXISTS wastage_pct DECIMAL(8,6)`);
+    await query(`ALTER TABLE product_step3_config_items ADD COLUMN IF NOT EXISTS shop_name VARCHAR(255)`);
     console.log("[db] product_step3_config BOQ columns ensured");
   } catch (err: unknown) {
     console.warn("[db] Could not ensure product_step3_config tables:", (err as any)?.message || err);
@@ -1409,7 +1410,13 @@ export async function registerRoutes(
   app.get("/api/materials/:id", async (req, res) => {
     try {
       const id = req.params.id;
-      const result = await query("SELECT * FROM materials WHERE id = $1", [id]);
+      const result = await query(
+        `SELECT m.*, s.name as shop_name 
+         FROM materials m 
+         LEFT JOIN shops s ON m.shop_id = s.id 
+         WHERE m.id = $1`,
+        [id],
+      );
       if (result.rowCount === 0)
         return res.status(404).json({ message: "not found" });
       res.json({ material: result.rows[0] });
@@ -4461,11 +4468,12 @@ export async function registerRoutes(
               console.log(`[POST /api/step11-products] Inserting item ${i + 1}/${items.length}:`, JSON.stringify(item));
               // ensure column exists
               await query("ALTER TABLE step11_product_items ADD COLUMN IF NOT EXISTS apply_wastage BOOLEAN DEFAULT TRUE");
+              await query("ALTER TABLE step11_product_items ADD COLUMN IF NOT EXISTS shop_name VARCHAR(255)");
 
               await query(
                 `INSERT INTO step11_product_items 
-                 (step11_product_id, material_id, material_name, unit, qty, rate, supply_rate, install_rate, location, amount, apply_wastage)
-                 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)`,
+                 (step11_product_id, material_id, material_name, unit, qty, rate, supply_rate, install_rate, location, amount, apply_wastage, shop_name)
+                 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)`,
                 [
                   step11ProductId,
                   item.materialId,
@@ -4477,7 +4485,8 @@ export async function registerRoutes(
                   item.installRate,
                   item.location,
                   item.amount,
-                  item.applyWastage !== undefined ? item.applyWastage : true
+                  item.applyWastage !== undefined ? item.applyWastage : true,
+                  item.shopName || item.shop_name || null
                 ],
               );
             }
@@ -4570,14 +4579,14 @@ export async function registerRoutes(
             // ensure column exists
             await query("ALTER TABLE product_step3_config_items ADD COLUMN IF NOT EXISTS apply_wastage BOOLEAN DEFAULT TRUE");
 
-            // Add column_config to boq_versions
-            await query("ALTER TABLE boq_versions ADD COLUMN IF NOT EXISTS column_config JSONB DEFAULT NULL");
+            // Add shop_name to config items
+            await query("ALTER TABLE product_step3_config_items ADD COLUMN IF NOT EXISTS shop_name VARCHAR(255)");
 
             for (const item of items) {
               await query(
                 `INSERT INTO product_step3_config_items
-                 (step3_config_id, material_id, material_name, unit, qty, rate, supply_rate, install_rate, location, amount, base_qty, wastage_pct, apply_wastage)
-                 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)`,
+                 (step3_config_id, material_id, material_name, unit, qty, rate, supply_rate, install_rate, location, amount, base_qty, wastage_pct, apply_wastage, shop_name)
+                 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)`,
                 [
                   step3ConfigId,
                   item.materialId,
@@ -4591,7 +4600,8 @@ export async function registerRoutes(
                   item.amount,
                   item.baseQty,
                   item.wastagePct,
-                  item.applyWastage !== undefined ? item.applyWastage : true
+                  item.applyWastage !== undefined ? item.applyWastage : true,
+                  item.shopName || item.shop_name || null
                 ],
               );
             }

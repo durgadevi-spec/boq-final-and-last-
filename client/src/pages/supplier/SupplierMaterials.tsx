@@ -752,7 +752,7 @@ export default function SupplierMaterials() {
                     </div>
                   )}
 
-                  {/* Dimensions, Finish Type, Metal Type */}
+                  {/* Dimensions, Finish Type, Material */}
                   {user?.role !== 'supplier' && (
                     <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                       <div>
@@ -778,7 +778,7 @@ export default function SupplierMaterials() {
                       </div>
 
                       <div>
-                        <Label>Metal Type</Label>
+                        <Label>Material</Label>
                         <Input
                           placeholder="e.g., steel, copper, aluminum"
                           value={formData.metaltype}

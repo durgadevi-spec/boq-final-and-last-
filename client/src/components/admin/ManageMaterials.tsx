@@ -25,7 +25,9 @@ import {
   Plus,
   Loader2,
   AlertTriangle,
+  Copy,
 } from "lucide-react";
+import { postJSON } from "@/lib/api";
 
 interface MaterialTemplate {
   id: string;
@@ -93,7 +95,7 @@ export default function ManageMaterials() {
     technicalspecification: "",
     dimensions: "",
     finishtype: "",
-    metaltype: "",
+    materialtype: "",
   });
 
   useEffect(() => {
@@ -109,6 +111,33 @@ export default function ManageMaterials() {
       loadVendorCategories();
     }
   }, [templates]);
+
+  const handleCloneMasterMaterial = async (template: any) => {
+    const newName = `${template.name} (Copy)`;
+    const newCode = template.name.substring(0, 3).toUpperCase() + "-" + Math.floor(1000 + Math.random() * 9000);
+
+    try {
+      const res = await postJSON(`/api/material-templates/clone/${template.id}`, {
+        name: newName,
+        code: newCode
+      });
+
+      const cloned = res.template || res;
+      setTemplates((prev: any[]) => [cloned, ...prev]);
+
+      toast({
+        title: "Deep Clone Successful",
+        description: `"${template.name}" and all its associated materials/rates have been cloned to "${newName}".`,
+      });
+    } catch (err: any) {
+      console.error('clone master material error', err);
+      toast({
+        title: "Clone Failed",
+        description: err?.message || 'Failed to deep clone material',
+        variant: "destructive",
+      });
+    }
+  };
 
   const loadMaterialTemplates = async () => {
     try {
@@ -204,7 +233,7 @@ export default function ManageMaterials() {
       technicalspecification: "",
       dimensions: "",
       finishtype: "",
-      metaltype: "",
+      materialtype: "",
     });
     // Don't clear selectedShop - keep it selected so prefill can work immediately
 
@@ -258,7 +287,7 @@ export default function ManageMaterials() {
             technicalspecification: data.material.technicalspecification || "",
             dimensions: data.material.dimensions || "",
             finishtype: data.material.finishtype || "",
-            metaltype: data.material.metaltype || "",
+            materialtype: data.material.materialtype || data.material.metaltype || "",
           }));
 
           // Load subcategories if category is present
@@ -284,7 +313,7 @@ export default function ManageMaterials() {
             technicalspecification: "",
             dimensions: "",
             finishtype: "",
-            metaltype: "",
+            materialtype: "",
           }));
 
           setRateMessage({
@@ -376,7 +405,7 @@ export default function ManageMaterials() {
         technicalspecification: "",
         dimensions: "",
         finishtype: "",
-        metaltype: "",
+        materialtype: "",
       });
     } catch {
       toast({
@@ -427,7 +456,7 @@ export default function ManageMaterials() {
       technicalspecification: "",
       dimensions: "",
       finishtype: "",
-      metaltype: "",
+      materialtype: "",
     }));
 
     toast({
@@ -459,7 +488,7 @@ export default function ManageMaterials() {
       technicalspecification: entry.technicalspecification || "",
       dimensions: entry.dimensions || "",
       finishtype: entry.finishtype || "",
-      metaltype: entry.metaltype || "",
+      materialtype: entry.materialtype || entry.metaltype || "",
     });
 
     // Load subcategories if category exists
@@ -512,7 +541,7 @@ export default function ManageMaterials() {
       technicalspecification: "",
       dimensions: "",
       finishtype: "",
-      metaltype: "",
+      materialtype: "",
     });
     setEditingEntryIndex(null);
 
@@ -536,7 +565,7 @@ export default function ManageMaterials() {
       technicalspecification: "",
       dimensions: "",
       finishtype: "",
-      metaltype: "",
+      materialtype: "",
     });
   };
 
@@ -604,7 +633,12 @@ export default function ManageMaterials() {
                         <div className="flex-1 flex items-center gap-3">
                           <div className="font-medium text-sm">{template.name}</div>
                         </div>
-                        <Button size="sm" variant="outline" onClick={() => handleSelectTemplate(template)}>Select</Button>
+                        <div className="flex gap-1">
+                          <Button size="sm" variant="outline" className="h-7 px-2 text-blue-600 border-blue-200 hover:bg-blue-50" title="Clone Template" onClick={(e) => { e.stopPropagation(); handleCloneMasterMaterial(template); }}>
+                            <Copy size={12} />
+                          </Button>
+                          <Button size="sm" variant="outline" className="h-7" onClick={() => handleSelectTemplate(template)}>Select</Button>
+                        </div>
                       </div>
                       <div className="text-xs text-muted-foreground mt-1">{template.code} {template.category && <span className="ml-2">• {template.category}</span>}</div>
                     </div>
@@ -770,8 +804,8 @@ export default function ManageMaterials() {
                       <Input placeholder="Matte/Glossy" value={formData.finishtype} onChange={(e) => setFormData({ ...formData, finishtype: e.target.value })} />
                     </div>
                     <div>
-                      <Label>Metal</Label>
-                      <Input placeholder="Steel/Iron" value={formData.metaltype} onChange={(e) => setFormData({ ...formData, metaltype: e.target.value })} />
+                      <Label>Material</Label>
+                      <Input placeholder="Material Type" value={formData.materialtype} onChange={(e) => setFormData({ ...formData, materialtype: e.target.value })} />
                     </div>
                   </div>
 
@@ -854,7 +888,7 @@ export default function ManageMaterials() {
                         technicalspecification: "",
                         dimensions: "",
                         finishtype: "",
-                        metaltype: "",
+                        materialtype: "",
                       });
                     }}>Cancel</Button>
                   </div>

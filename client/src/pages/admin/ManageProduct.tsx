@@ -54,6 +54,7 @@ type Material = {
     subcategory: string;
     description?: string;
     shop_name?: string;
+    code?: string;
     technicalspecification?: string;
 };
 
@@ -292,7 +293,8 @@ export default function ManageProduct() {
                         amount: m.amount,
                         baseQty: m.baseQty,
                         wastagePct: m.wastagePct ?? null,
-                        applyWastage: m.applyWastage
+                        applyWastage: m.applyWastage,
+                        shop_name: m.shop_name
                     }))
                 }),
             });
@@ -358,7 +360,8 @@ export default function ManageProduct() {
                         amount: m.amount,
                         baseQty: m.baseQty,
                         wastagePct: m.wastagePct ?? null,
-                        applyWastage: m.applyWastage
+                        applyWastage: m.applyWastage,
+                        shop_name: m.shop_name
                     }))
                 }),
             });
@@ -391,7 +394,8 @@ export default function ManageProduct() {
                         amount: m.amount,
                         baseQty: m.baseQty,
                         wastagePct: m.wastagePct ?? null,
-                        applyWastage: m.applyWastage
+                        applyWastage: m.applyWastage,
+                        shop_name: m.shop_name
                     }))
                 }),
             });
@@ -438,6 +442,7 @@ export default function ManageProduct() {
                         location: item.location || "Main Area",
                         amount: Number(item.amount),
                         applyWastage: item.apply_wastage !== undefined ? Boolean(item.apply_wastage) : (item.applyWastage !== undefined ? Boolean(item.applyWastage) : true),
+                        shop_name: item.shop_name,
                         category: "",
                         subcategory: ""
                     }));
@@ -489,6 +494,7 @@ export default function ManageProduct() {
                         location: item.location || "Main Area",
                         amount: Number(item.amount || 0),
                         applyWastage: item.apply_wastage !== undefined ? Boolean(item.apply_wastage) : (item.applyWastage !== undefined ? Boolean(item.applyWastage) : true),
+                        shop_name: item.shop_name,
                         category: "",
                         subcategory: ""
                     }));
@@ -532,6 +538,7 @@ export default function ManageProduct() {
                 location: item.location || "Main Area",
                 amount: Number(item.amount),
                 applyWastage: item.apply_wastage !== undefined ? Boolean(item.apply_wastage) : true,
+                shop_name: item.shop_name,
                 category: "",
                 subcategory: ""
             }));
@@ -841,22 +848,22 @@ export default function ManageProduct() {
                                         <label className="text-sm font-bold uppercase tracking-wider text-muted-foreground">Category</label>
                                         <Select
                                             value={selectedCategory}
-                                                onValueChange={(val) => {
-                                                    setSelectedCategory(val);
-                                                    setSelectedSubcategory(ALL_TOKEN);
-                                                }}
+                                            onValueChange={(val) => {
+                                                setSelectedCategory(val);
+                                                setSelectedSubcategory(ALL_TOKEN);
+                                            }}
                                         >
                                             <SelectTrigger className="h-11">
-                                                    <SelectValue placeholder="All Categories" />
-                                                </SelectTrigger>
-                                                <SelectContent className="max-h-[300px] overflow-y-auto">
-                                                    <SelectItem value={ALL_TOKEN}>All Categories</SelectItem>
-                                                    {categoriesData?.map((cat) => (
-                                                        <SelectItem key={cat} value={cat}>
-                                                            {cat}
-                                                        </SelectItem>
-                                                    ))}
-                                                </SelectContent>
+                                                <SelectValue placeholder="All Categories" />
+                                            </SelectTrigger>
+                                            <SelectContent className="max-h-[300px] overflow-y-auto">
+                                                <SelectItem value={ALL_TOKEN}>All Categories</SelectItem>
+                                                {categoriesData?.map((cat) => (
+                                                    <SelectItem key={cat} value={cat}>
+                                                        {cat}
+                                                    </SelectItem>
+                                                ))}
+                                            </SelectContent>
                                         </Select>
                                     </div>
 
@@ -864,20 +871,20 @@ export default function ManageProduct() {
                                         <label className="text-sm font-bold uppercase tracking-wider text-muted-foreground">Subcategory</label>
                                         <Select
                                             value={selectedSubcategory}
-                                                onValueChange={setSelectedSubcategory}
-                                                disabled={selectedCategory === ALL_TOKEN}
+                                            onValueChange={setSelectedSubcategory}
+                                            disabled={selectedCategory === ALL_TOKEN}
                                         >
                                             <SelectTrigger className="h-11">
-                                                    <SelectValue placeholder="All Subcategories" />
-                                                </SelectTrigger>
-                                                <SelectContent className="max-h-[300px] overflow-y-auto">
-                                                    <SelectItem value={ALL_TOKEN}>All Subcategories</SelectItem>
-                                                    {subcategoriesData?.map((sub) => (
-                                                        <SelectItem key={sub} value={sub}>
-                                                            {sub}
-                                                        </SelectItem>
-                                                    ))}
-                                                </SelectContent>
+                                                <SelectValue placeholder="All Subcategories" />
+                                            </SelectTrigger>
+                                            <SelectContent className="max-h-[300px] overflow-y-auto">
+                                                <SelectItem value={ALL_TOKEN}>All Subcategories</SelectItem>
+                                                {subcategoriesData?.map((sub) => (
+                                                    <SelectItem key={sub} value={sub}>
+                                                        {sub}
+                                                    </SelectItem>
+                                                ))}
+                                            </SelectContent>
                                         </Select>
                                     </div>
                                 </div>
@@ -914,7 +921,7 @@ export default function ManageProduct() {
                                                             <Loader2 className="h-8 w-8 animate-spin mx-auto text-primary" />
                                                         </TableCell>
                                                     </TableRow>
-                                                    ) : filteredMaterials.length === 0 ? (
+                                                ) : filteredMaterials.length === 0 ? (
                                                     <TableRow>
                                                         <TableCell colSpan={5} className="text-center py-20 text-muted-foreground italic">
                                                             No materials found matching the current filters.
