@@ -24,6 +24,7 @@ import SupplierApproval from "@/pages/SupplierApproval";
 import MaterialSubmissionApproval from "@/pages/admin/MaterialSubmissionApproval";
 import ManageProduct from "@/pages/admin/ManageProduct";
 import VendorCategories from "@/pages/admin/VendorCategories";
+import ManageCategories from "@/pages/admin/ManageCategories";
 import BulkMaterialUpload from "@/pages/admin/BulkMaterialUpload";
 
 import CivilWallEstimator from "@/pages/estimators/CivilWallEstimator";
@@ -104,6 +105,7 @@ function Router() {
 
       <Route path="/admin/dashboard" component={AdminDashboard} />
       <Route path="/admin/manage-materials" component={ManageMaterialsPage} />
+      <Route path="/admin/manage-categories" component={ManageCategories} />
       <Route path="/admin/bulk-material-upload" component={BulkMaterialUpload} />
       <Route path="/admin/manage-product" component={ManageProduct} />
       <Route path="/admin/vendor-categories" component={VendorCategories} />

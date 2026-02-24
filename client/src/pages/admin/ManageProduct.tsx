@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
 import {
     Table,
@@ -73,8 +73,9 @@ export default function ManageProduct() {
     const [step, setStep] = useState(1);
     const [selectedProduct, setSelectedProduct] = useState<Product | null>(null);
     const [configName, setConfigName] = useState<string>("");
-    const [selectedCategory, setSelectedCategory] = useState<string>("");
-    const [selectedSubcategory, setSelectedSubcategory] = useState<string>("");
+    const ALL_TOKEN = "__ALL__";
+    const [selectedCategory, setSelectedCategory] = useState<string>(ALL_TOKEN);
+    const [selectedSubcategory, setSelectedSubcategory] = useState<string>(ALL_TOKEN);
     const [selectedMaterials, setSelectedMaterials] = useState<Material[]>([]);
     const [configMaterials, setConfigMaterials] = useState<SelectedMaterial[]>([]);
     const [isSaving, setIsSaving] = useState(false);
@@ -171,7 +172,7 @@ export default function ManageProduct() {
             // Subcategories route returns { subcategories: string[] }
             return ((data.subcategories || []) as string[]).sort((a, b) => a.localeCompare(b));
         },
-        enabled: step === 2 && !!selectedCategory && selectedCategory !== " ",
+        enabled: step === 2 && !!selectedCategory && selectedCategory !== ALL_TOKEN,
     });
 
     // Fetch all materials
@@ -186,9 +187,31 @@ export default function ManageProduct() {
         enabled: step === 2,
     });
 
-    const filteredMaterials = (materialsData || []).filter((m) => {
-        const matchesCategory = !selectedCategory || m.category === selectedCategory;
-        const matchesSubcategory = !selectedSubcategory || m.subcategory === selectedSubcategory;
+    // Deduplicate by id (some installs may have duplicate rows). Then filter by category/subcategory.
+    // Prefer deduplication by `code` (many materials share same code across shops), fallback to id
+    const uniqueMaterials = Array.from(
+        new Map((materialsData || []).map(m => [(m.code || m.id || Math.random()).toString().trim().toLowerCase(), m])).values()
+    );
+
+    const [materialSearch, setMaterialSearch] = useState<string>("");
+
+    const filteredMaterials = uniqueMaterials.filter((m) => {
+        if (materialSearch) {
+            const q = materialSearch.toLowerCase();
+            const matchName = (m.name || "").toLowerCase().includes(q);
+            const matchCode = (m.code || "").toLowerCase().includes(q);
+            if (!matchName && !matchCode) return false;
+        }
+        const includesValue = (field: string | undefined | null, val: string) => {
+            if (!val || val === ALL_TOKEN) return true;
+            if (!field) return false;
+            if (field === val) return true;
+            // support comma-separated stored values (e.g. "CatA,CatB")
+            return field.split(",").map(s => s.trim().toLowerCase()).includes(val.trim().toLowerCase());
+        };
+
+        const matchesCategory = includesValue(m.category, selectedCategory);
+        const matchesSubcategory = includesValue(m.subcategory, selectedSubcategory);
         return matchesCategory && matchesSubcategory;
     });
 
@@ -601,7 +624,7 @@ export default function ManageProduct() {
     };
 
     // Calculate derived results for preview on Step 3
-    const boqResults = computeBoq(
+    const boqResults = useMemo(() => computeBoq(
         {
             requiredUnitType,
             baseRequiredQty,
@@ -609,7 +632,7 @@ export default function ManageProduct() {
         },
         configMaterials,
         baseRequiredQty // For ManageProduct preview, we scale to the basis qty itself
-    );
+    ), [requiredUnitType, baseRequiredQty, wastagePctDefault, configMaterials]);
 
     const totalCost = boqResults.grandTotal;
 
@@ -818,22 +841,22 @@ export default function ManageProduct() {
                                         <label className="text-sm font-bold uppercase tracking-wider text-muted-foreground">Category</label>
                                         <Select
                                             value={selectedCategory}
-                                            onValueChange={(val) => {
-                                                setSelectedCategory(val);
-                                                setSelectedSubcategory("");
-                                            }}
+                                                onValueChange={(val) => {
+                                                    setSelectedCategory(val);
+                                                    setSelectedSubcategory(ALL_TOKEN);
+                                                }}
                                         >
                                             <SelectTrigger className="h-11">
-                                                <SelectValue placeholder="All Categories" />
-                                            </SelectTrigger>
-                                            <SelectContent className="max-h-[300px] overflow-y-auto">
-                                                <SelectItem value=" ">All Categories</SelectItem>
-                                                {categoriesData?.map((cat) => (
-                                                    <SelectItem key={cat} value={cat}>
-                                                        {cat}
-                                                    </SelectItem>
-                                                ))}
-                                            </SelectContent>
+                                                    <SelectValue placeholder="All Categories" />
+                                                </SelectTrigger>
+                                                <SelectContent className="max-h-[300px] overflow-y-auto">
+                                                    <SelectItem value={ALL_TOKEN}>All Categories</SelectItem>
+                                                    {categoriesData?.map((cat) => (
+                                                        <SelectItem key={cat} value={cat}>
+                                                            {cat}
+                                                        </SelectItem>
+                                                    ))}
+                                                </SelectContent>
                                         </Select>
                                     </div>
 
@@ -841,20 +864,20 @@ export default function ManageProduct() {
                                         <label className="text-sm font-bold uppercase tracking-wider text-muted-foreground">Subcategory</label>
                                         <Select
                                             value={selectedSubcategory}
-                                            onValueChange={setSelectedSubcategory}
-                                            disabled={!selectedCategory || selectedCategory === " "}
+                                                onValueChange={setSelectedSubcategory}
+                                                disabled={selectedCategory === ALL_TOKEN}
                                         >
                                             <SelectTrigger className="h-11">
-                                                <SelectValue placeholder="All Subcategories" />
-                                            </SelectTrigger>
-                                            <SelectContent className="max-h-[300px] overflow-y-auto">
-                                                <SelectItem value=" ">All Subcategories</SelectItem>
-                                                {subcategoriesData?.map((sub) => (
-                                                    <SelectItem key={sub} value={sub}>
-                                                        {sub}
-                                                    </SelectItem>
-                                                ))}
-                                            </SelectContent>
+                                                    <SelectValue placeholder="All Subcategories" />
+                                                </SelectTrigger>
+                                                <SelectContent className="max-h-[300px] overflow-y-auto">
+                                                    <SelectItem value={ALL_TOKEN}>All Subcategories</SelectItem>
+                                                    {subcategoriesData?.map((sub) => (
+                                                        <SelectItem key={sub} value={sub}>
+                                                            {sub}
+                                                        </SelectItem>
+                                                    ))}
+                                                </SelectContent>
                                         </Select>
                                     </div>
                                 </div>
@@ -862,9 +885,15 @@ export default function ManageProduct() {
                                 <div className="space-y-4">
                                     <div className="flex items-center justify-between">
                                         <h3 className="text-xl font-bold">2. Select Materials/Items</h3>
-                                        <span className="text-sm font-medium text-primary bg-primary/10 px-3 py-1 rounded-full">
-                                            {filteredMaterials.length} results found
-                                        </span>
+                                        <div className="flex items-center gap-3">
+                                            <div className="relative">
+                                                <Search className="absolute left-3 top-2.5 h-4 w-4 text-muted-foreground" />
+                                                <Input placeholder="Search materials by name or code..." className="pl-10 h-9" value={materialSearch} onChange={(e) => setMaterialSearch(e.target.value)} />
+                                            </div>
+                                            <span className="text-sm font-medium text-primary bg-primary/10 px-3 py-1 rounded-full">
+                                                {filteredMaterials.length} results found
+                                            </span>
+                                        </div>
                                     </div>
 
                                     <div className="rounded-xl border shadow-sm max-h-[450px] overflow-y-auto bg-white">
@@ -874,19 +903,20 @@ export default function ManageProduct() {
                                                     <TableHead className="w-[60px]"></TableHead>
                                                     <TableHead className="font-bold">Material Name</TableHead>
                                                     <TableHead className="font-bold">Unit</TableHead>
+                                                    <TableHead className="font-bold">Shop</TableHead>
                                                     <TableHead className="text-right font-bold pr-6">Default Rate</TableHead>
                                                 </TableRow>
                                             </TableHeader>
                                             <TableBody>
                                                 {loadingMaterials ? (
                                                     <TableRow>
-                                                        <TableCell colSpan={4} className="text-center py-20">
+                                                        <TableCell colSpan={5} className="text-center py-20">
                                                             <Loader2 className="h-8 w-8 animate-spin mx-auto text-primary" />
                                                         </TableCell>
                                                     </TableRow>
-                                                ) : filteredMaterials.length === 0 ? (
+                                                    ) : filteredMaterials.length === 0 ? (
                                                     <TableRow>
-                                                        <TableCell colSpan={4} className="text-center py-20 text-muted-foreground italic">
+                                                        <TableCell colSpan={5} className="text-center py-20 text-muted-foreground italic">
                                                             No materials found matching the current filters.
                                                         </TableCell>
                                                     </TableRow>
@@ -904,8 +934,12 @@ export default function ManageProduct() {
                                                                     onCheckedChange={() => toggleMaterial(material)}
                                                                 />
                                                             </TableCell>
-                                                            <TableCell className="font-medium">{material.name}</TableCell>
+                                                            <TableCell className="font-medium">
+                                                                {material.name}
+                                                                <div className="text-xs text-muted-foreground">Code: {material.code || material.id}</div>
+                                                            </TableCell>
                                                             <TableCell>{material.unit || "-"}</TableCell>
+                                                            <TableCell>{material.shop_name || "-"}</TableCell>
                                                             <TableCell className="text-right pr-6 font-semibold">
                                                                 {material.rate ? `₹${material.rate.toLocaleString()}` : "-"}
                                                             </TableCell>

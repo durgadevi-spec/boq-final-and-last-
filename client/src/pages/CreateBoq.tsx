@@ -408,13 +408,34 @@ export default function CreateBom() {
     }
 
     try {
+      // Determine unit and rate from template or existing material record
+      let unit = template.unit || template.uom || "pcs";
+      let rate = Number(template.rate ?? template.supply_rate ?? template.default_rate ?? 0) || 0;
+
+      // Try to fetch authoritative material by id (if available) to get latest rate/unit
+      if (template.id) {
+        try {
+          const matRes = await apiFetch(`/api/materials/${encodeURIComponent(template.id)}`);
+          if (matRes.ok) {
+            const matData = await matRes.json();
+            const mat = matData.material || matData;
+            if (mat) {
+              unit = mat.unit || unit;
+              rate = Number(mat.rate ?? rate) || rate;
+            }
+          }
+        } catch (e) {
+          // ignore fetch errors and fallback to template values
+        }
+      }
+
       // Create a single item from the material template
       const materialItem = {
         title: template.name,
         description: template.name,
-        unit: "pcs", // Default unit
+        unit: unit,
         qty: 1, // Default quantity
-        supply_rate: 0, // Default rates
+        supply_rate: rate, // Use discovered rate
         install_rate: 0,
         location: "Main Area",
         s_no: 1,
@@ -499,27 +520,94 @@ export default function CreateBom() {
 
       const currentStep11Items = Array.isArray(tableData.step11_items) ? tableData.step11_items : [];
 
-      // Create new item
+      // Determine unit and rate from template or authoritative material record
+      let unit = template.unit || template.uom || "pcs";
+      let rate = Number(template.rate ?? template.supply_rate ?? template.default_rate ?? 0) || 0;
+
+      if (template.id) {
+        try {
+          const matRes = await apiFetch(`/api/materials/${encodeURIComponent(template.id)}`);
+          if (matRes.ok) {
+            const matData = await matRes.json();
+            const mat = matData.material || matData;
+            unit = mat.unit || unit;
+            rate = Number(mat.rate ?? mat.supply_rate ?? rate) || rate;
+          }
+        } catch (err) {
+          console.warn('Failed to fetch material for authoritative rate', err);
+        }
+      }
+
+      // Create new item with proper rate/unit
       const newItem: Step11Item = {
         title: template.name,
         description: template.name,
-        unit: "pcs",
+        unit: unit,
         qty: 1,
-        supply_rate: 0,
+        supply_rate: rate,
         install_rate: 0,
-        location: "Main Area",
+        location: template.location || template.technicalspecification || "Main Area",
         s_no: currentStep11Items.length + 1,
       };
 
-      const updatedStep11Items = [...currentStep11Items, newItem];
-      const updatedTableData = { ...tableData, step11_items: updatedStep11Items };
+      // If this product is engine-based (has materialLines + targetRequiredQty), add to materialLines
+      let updatedTableData: any;
+      if (tableData.materialLines && tableData.targetRequiredQty !== undefined) {
+        // Ensure materialLines is an array
+        const materialLines = Array.isArray(tableData.materialLines) ? [...tableData.materialLines] : [];
 
-      // Optimistic update
-      setBoqItems(prev => prev.map(item =>
-        item.id === boqItemId
-          ? { ...item, table_data: updatedTableData }
-          : item
-      ));
+        // Map template to materialLine shape expected by computeBoq
+        const newMaterialLine = {
+          id: template.id || `temp-${Date.now()}`,
+          name: template.name,
+          unit: template.unit || template.uom || newItem.unit,
+          baseQty: Number(template.baseQty ?? template.qty ?? 1),
+          wastagePct: template.wastagePct !== undefined ? Number(template.wastagePct) : undefined,
+          supplyRate: Number(template.rate ?? template.supply_rate ?? template.default_rate ?? 0) || 0,
+          installRate: Number(template.install_rate ?? 0) || 0,
+          applyWastage: template.apply_wastage !== undefined ? Boolean(template.apply_wastage) : true,
+          location: template.location || template.technicalspecification || "Main Area",
+        };
+
+        materialLines.push(newMaterialLine);
+
+        // Also add a compatible `step11_items` entry so non-engine UI paths reflect the new item immediately
+        const step11Items = Array.isArray(tableData.step11_items) ? [...tableData.step11_items] : [];
+        const mappedStep11 = {
+          title: newMaterialLine.name,
+          description: newMaterialLine.name,
+          unit: newMaterialLine.unit,
+          qty: newMaterialLine.baseQty,
+          // qtyPerSqf represents per-unit quantity (Qty/Sqf) for engine table
+          qtyPerSqf: newMaterialLine.baseQty,
+          supply_rate: newMaterialLine.supplyRate,
+          install_rate: newMaterialLine.installRate,
+          location: newMaterialLine.location,
+          s_no: step11Items.length + 1,
+          // mark as manually added so UI can render it editable even in engine-based products
+          manual: true,
+        };
+        step11Items.push(mappedStep11);
+
+        updatedTableData = { ...tableData, materialLines, step11_items: step11Items };
+
+        // Optimistic update
+        setBoqItems(prev => prev.map(item =>
+          item.id === boqItemId
+            ? { ...item, table_data: updatedTableData }
+            : item
+        ));
+      } else {
+        const updatedStep11Items = [...currentStep11Items, newItem];
+        updatedTableData = { ...tableData, step11_items: updatedStep11Items };
+
+        // Optimistic update
+        setBoqItems(prev => prev.map(item =>
+          item.id === boqItemId
+            ? { ...item, table_data: updatedTableData }
+            : item
+        ));
+      }
 
       // API Call
       const response = await apiFetch(`/api/boq-items/${encodeURIComponent(boqItemId)}`, {
@@ -649,6 +737,44 @@ export default function CreateBom() {
     } catch (error) {
       console.error("Failed to finalize product:", error);
       toast({ title: "Error", description: "Failed to finalize product", variant: "destructive" });
+    }
+  };
+
+  const handleDeleteRow = async (boqItemId: string, tableData: any, itemIdx: number) => {
+    try {
+      let computedLen = 0;
+      if (tableData && tableData.materialLines && tableData.targetRequiredQty !== undefined) {
+        try {
+          const res = computeBoq(tableData.configBasis, tableData.materialLines, tableData.targetRequiredQty);
+          computedLen = Array.isArray(res.computed) ? res.computed.length : (Array.isArray(tableData.materialLines) ? tableData.materialLines.length : 0);
+        } catch (e) {
+          computedLen = Array.isArray(tableData.materialLines) ? tableData.materialLines.length : 0;
+        }
+      }
+
+      let newTableData: any = { ...tableData };
+      if (itemIdx < computedLen) {
+        const materialLines = Array.isArray(tableData.materialLines) ? [...tableData.materialLines] : [];
+        materialLines.splice(itemIdx, 1);
+        newTableData = { ...tableData, materialLines };
+      } else {
+        const manualIdx = itemIdx - computedLen;
+        const step11 = Array.isArray(tableData.step11_items) ? [...tableData.step11_items] : [];
+        step11.splice(manualIdx, 1);
+        newTableData = { ...tableData, step11_items: step11 };
+      }
+
+      setBoqItems(prev => prev.map(i => i.id === boqItemId ? { ...i, table_data: newTableData } : i));
+      toast({ title: "Item Deleted", description: "Item removed from product.", variant: "default" });
+
+      await apiFetch(`/api/boq-items/${boqItemId}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ table_data: newTableData })
+      });
+    } catch (e) {
+      console.error('Delete item failed', e);
+      toast({ title: 'Error', description: 'Failed to delete item', variant: 'destructive' });
     }
   };
 
@@ -858,8 +984,30 @@ export default function CreateBom() {
                 const idxStr = key.substring(key.lastIndexOf("-") + 1);
                 const idx = parseInt(idxStr, 10);
                 const fields = editedFields[key] || {};
-                if (step11_items[idx]) {
-                  step11_items[idx] = { ...step11_items[idx], ...fields };
+
+                // If this product is engine-based, displayLines are computed + manual items appended.
+                // In that case, edited keys for manual entries will have an index offset by computed.length.
+                if (tableData.materialLines && tableData.targetRequiredQty !== undefined) {
+                  try {
+                    const result = computeBoq(tableData.configBasis, tableData.materialLines, tableData.targetRequiredQty);
+                    const computedLen = Array.isArray(result.computed) ? result.computed.length : 0;
+                    if (idx >= computedLen) {
+                      // map to manual step11_items index
+                      const manualIdx = idx - computedLen;
+                      if (step11_items[manualIdx]) {
+                        step11_items[manualIdx] = { ...step11_items[manualIdx], ...fields };
+                      }
+                    } else {
+                      // editing computed rows not supported; skip
+                    }
+                  } catch (e) {
+                    // fallback: attempt direct mapping if computeBoq fails
+                    if (step11_items[idx]) step11_items[idx] = { ...step11_items[idx], ...fields };
+                  }
+                } else {
+                  if (step11_items[idx]) {
+                    step11_items[idx] = { ...step11_items[idx], ...fields };
+                  }
                 }
               }
 
@@ -1479,14 +1627,7 @@ export default function CreateBom() {
                     >
                       Add Product +
                     </Button>
-                    <Button
-                      onClick={() => handleAddItem()}
-                      className="flex-1"
-                      disabled={isVersionSubmitted}
-                      size="sm"
-                    >
-                      Add Product (Manual)
-                    </Button>
+                    {/* removed 'Add Product (Manual)' button per request */}
                   </div>
 
                   <ProductPicker
@@ -1557,7 +1698,7 @@ export default function CreateBom() {
                           tableData.targetRequiredQty
                         );
                         // Map computed lines
-                        displayLines = boqResult.computed.map((line: any, idx: number) => ({
+                        const computedLines = boqResult.computed.map((line: any, idx: number) => ({
                           title: line.name,
                           description: line.name,
                           unit: line.unit,
@@ -1567,8 +1708,27 @@ export default function CreateBom() {
                           roundOff: line.roundOffQty,
                           rateSqft: line.supplyRate + line.installRate,
                           amount: line.lineTotal,
-                          s_no: idx + 1
+                          s_no: idx + 1,
+                          // computed rows are not editable
+                          manual: false,
                         }));
+
+                        // Include any manually added step11_items (marked manual=true) so they appear immediately and are editable
+                        const manualStep11 = step11Items.filter((it: any) => it && it.manual).map((it: any) => {
+                          const qty = Number(it.qty ?? it.requiredQty ?? it.qtyPerSqf ?? 0) || 0;
+                          const sRate = Number(it.supply_rate ?? it.supplyRate ?? 0) || 0;
+                          const iRate = Number(it.install_rate ?? it.installRate ?? 0) || 0;
+                          return {
+                            ...it,
+                            manual: true,
+                            qtyPerSqf: it.qtyPerSqf ?? it.qtyPerSqf ?? 0,
+                            supply_rate: sRate,
+                            install_rate: iRate,
+                            amount: Number((qty * (sRate + iRate)) || 0),
+                          };
+                        });
+
+                        displayLines = [...computedLines, ...manualStep11];
                       }
 
                       return (
@@ -1738,7 +1898,7 @@ export default function CreateBom() {
                                       <th className="border px-2 py-2 text-left font-semibold w-[300px]">Description</th>
                                       <th className="border px-2 py-2 text-center font-semibold w-16">Unit</th>
                                       <th className="border px-2 py-2 text-center font-semibold w-20">Qty/{tableData.configBasis?.requiredUnitType || "Sqf"}</th>
-                                      <th className="border px-2 py-2 text-center font-semibold w-24">Required Q</th>
+                                      <th className="border px-2 py-2 text-center font-semibold w-24">Required Qty</th>
                                       <th className="border px-2 py-2 text-center font-semibold w-24">Round off</th>
                                       <th className="border px-2 py-2 text-center font-semibold w-24">Rate/{tableData.configBasis?.requiredUnitType || "Sqft"}</th>
                                       <th className="border px-2 py-2 text-center font-semibold w-28 text-green-700">Amount</th>
@@ -1756,137 +1916,149 @@ export default function CreateBom() {
                                       displayLines.map((step11Item: any, itemIdx: number) => {
                                         const itemKey = `${boqItem.id}-${itemIdx}`;
 
-                                        // For engine-based items, we don't use edited values for qty/rates (they are fixed by recipe)
-                                        // For non-engine items, we use the helpers.
-                                        const qty = isEngineBased ? step11Item.qty : getEditedValue(itemKey, "qty", step11Item.qty || 0);
-                                        const supplyRate = isEngineBased ? step11Item.supply_rate : getEditedValue(itemKey, "supply_rate", step11Item.supply_rate || 0);
-                                        const installRate = isEngineBased ? step11Item.install_rate : getEditedValue(itemKey, "install_rate", step11Item.install_rate || 0);
-                                        const description = getEditedValue(itemKey, "description", step11Item.description || "");
-                                        const unit = getEditedValue(itemKey, "unit", step11Item.unit || "pcs");
+                                        // Per-item engine flag: treat manually added step11 items as editable even inside engine-based products
+                                        const perItemIsEngine = isEngineBased && !step11Item.manual;
 
-                                        const supplyAmount = isEngineBased ? step11Item.supply_amount : (qty * supplyRate);
-                                        const installAmount = isEngineBased ? step11Item.install_amount : (qty * installRate);
+                                        // For engine rows (perItemIsEngine=true) use computed/original values; for non-engine or manual rows allow edits
+                                        const qtyPerSqf = perItemIsEngine
+                                          ? (step11Item.qtyPerSqf ?? step11Item.qtyPerSqf ?? 0)
+                                          : getEditedValue(itemKey, "qtyPerSqf", step11Item.qtyPerSqf || 0);
 
-                                        return (
-                                          isEngineBased ? (
+                                        // `qty` represents the required quantity (used for amount calculations)
+                                        const qty = perItemIsEngine ? (step11Item.qty || 0) : getEditedValue(itemKey, "qty", step11Item.qty || 0);
+
+                                        const supplyRate = perItemIsEngine ? (step11Item.supply_rate ?? step11Item.supplyRate ?? 0) : getEditedValue(itemKey, "supply_rate", step11Item.supply_rate || 0);
+                                        const installRate = perItemIsEngine ? (step11Item.install_rate ?? step11Item.installRate ?? 0) : getEditedValue(itemKey, "install_rate", step11Item.install_rate || 0);
+                                        const description = perItemIsEngine ? (step11Item.description || "") : getEditedValue(itemKey, "description", step11Item.description || "");
+                                        const unit = perItemIsEngine ? (step11Item.unit || "pcs") : getEditedValue(itemKey, "unit", step11Item.unit || "pcs");
+
+                                        const supplyAmount = qty * supplyRate;
+                                        const installAmount = qty * installRate;
+
+                                        if (perItemIsEngine) {
+                                          return (
                                             <tr key={itemKey} className="border-b border-gray-100 hover:bg-blue-50/50 text-xs">
                                               <td className="border px-2 py-1 text-center">{itemIdx + 1}</td>
                                               <td className="border px-2 py-1 font-medium">{step11Item.title}</td>
                                               <td className="border px-2 py-1 text-gray-600">{step11Item.shop_name || "-"}</td>
                                               <td className="border px-2 py-1 text-gray-600 truncate max-w-[200px]" title={description}>{description}</td>
-                                              <td className="border px-2 py-1 text-center">{unit}</td>
-                                              <td className="border px-2 py-1 text-center">{step11Item.qtyPerSqf.toFixed(3)}</td>
-                                              <td className="border px-2 py-1 text-center text-blue-600">{step11Item.requiredQty.toFixed(2)}</td>
-                                              <td className="border px-2 py-1 text-center font-bold">{step11Item.roundOff}</td>
+                                                    <td className="border px-2 py-1 text-center">{unit}</td>
+                                                    <td className="border px-2 py-1 text-center">{(step11Item.qtyPerSqf ?? 0).toFixed(3)}</td>
+                                                    <td className="border px-2 py-1 text-center text-blue-600">{(step11Item.requiredQty ?? step11Item.qty ?? 0).toFixed(2)}</td>
+                                                    <td className="border px-2 py-1 text-center font-bold">{step11Item.roundOff}</td>
                                               <td className="border px-2 py-1 text-right">₹{step11Item.rateSqft.toLocaleString()}</td>
                                               <td className="border px-2 py-1 text-right font-bold bg-green-50/30">₹{step11Item.amount.toLocaleString()}</td>
                                               <td className="border px-2 py-1 text-center">
                                                 <Button variant="ghost" size="sm" className="h-6 w-6 p-0 text-red-500 hover:text-red-700" onClick={() => {
                                                   if (!confirm("Delete this item?")) return;
-                                                  const newItems = [...displayLines];
+                                                  void handleDeleteRow(boqItem.id, tableData, itemIdx);
+                                                }}>×</Button>
+                                              </td>
+                                            </tr>
+                                          );
+                                        }
+
+                                        return (
+                                          <tr key={itemKey} className="border-b border-gray-100 hover:bg-blue-50/50">
+                                            <td className="border px-2 py-1 text-center text-xs">{itemIdx + 1}</td>
+                                            <td className="border px-2 py-1 font-medium text-xs">{step11Item.title || "Item"}</td>
+                                            <td className="border px-2 py-1 text-gray-500">-</td>
+                                            <td className="border px-2 py-1">
+                                              <textarea
+                                                value={description}
+                                                onChange={(e) => updateEditedField(itemKey, "description", e.target.value)}
+                                                disabled={isVersionSubmitted}
+                                                className="w-full border rounded px-1 py-0.5 text-xs min-h-[60px] resize-y focus:ring-1 ring-blue-500 outline-none"
+                                                placeholder="Description"
+                                              />
+                                            </td>
+                                            <td className="border px-2 py-1">
+                                              <input
+                                                type="text"
+                                                value={unit}
+                                                onChange={(e) => updateEditedField(itemKey, "unit", e.target.value)}
+                                                disabled={isVersionSubmitted}
+                                                className="w-full border rounded px-1 py-0.5 text-xs text-center focus:ring-1 ring-blue-500 outline-none"
+                                              />
+                                            </td>
+                                            <td className="border px-2 py-1 text-center">
+                                              <input
+                                                type="number"
+                                                value={qtyPerSqf}
+                                                onChange={(e) => updateEditedField(itemKey, "qtyPerSqf", parseFloat(e.target.value) || 0)}
+                                                disabled={isVersionSubmitted}
+                                                className="w-full border rounded px-1 py-0.5 text-xs text-center font-medium focus:ring-1 ring-blue-500 outline-none"
+                                              />
+                                            </td>
+                                            <td className="border px-2 py-1 text-center">
+                                              <input
+                                                type="number"
+                                                value={qty}
+                                                onChange={(e) => updateEditedField(itemKey, "qty", parseFloat(e.target.value) || 0)}
+                                                disabled={isVersionSubmitted}
+                                                className="w-full border rounded px-1 py-0.5 text-xs text-center font-medium focus:ring-1 ring-blue-500 outline-none"
+                                              />
+                                            </td>
+                                            <td className="border px-2 py-1 font-bold text-center">
+                                              <input
+                                                type="number"
+                                                value={getEditedValue(itemKey, "roundOff", step11Item.roundOff || 0)}
+                                                onChange={(e) => updateEditedField(itemKey, "roundOff", parseFloat(e.target.value) || 0)}
+                                                disabled={isVersionSubmitted}
+                                                className="w-full border rounded px-1 py-0.5 text-xs text-center font-medium focus:ring-1 ring-blue-500 outline-none"
+                                              />
+                                            </td>
+                                            <td className="border px-1 py-1">
+                                              <div className="flex flex-col gap-1">
+                                                <input
+                                                  type="number"
+                                                  value={supplyRate}
+                                                  onChange={(e) => updateEditedField(itemKey, "supply_rate", parseFloat(e.target.value) || 0)}
+                                                  disabled={isVersionSubmitted}
+                                                  className="w-full border rounded px-1 py-0.5 text-xs text-right focus:ring-1 ring-blue-500 outline-none"
+                                                  placeholder="S"
+                                                />
+                                                <input
+                                                  type="number"
+                                                  value={installRate}
+                                                  onChange={(e) => updateEditedField(itemKey, "install_rate", parseFloat(e.target.value) || 0)}
+                                                  disabled={isVersionSubmitted}
+                                                  className="w-full border rounded px-1 py-0.5 text-xs text-right focus:ring-1 ring-blue-500 outline-none"
+                                                  placeholder="I"
+                                                />
+                                              </div>
+                                            </td>
+                                            <td className="border px-1 py-1 text-right text-xs bg-gray-50/50 font-bold">
+                                              ₹{(supplyAmount + installAmount).toFixed(2)}
+                                            </td>
+                                            <td className="border px-2 py-1 text-center">
+                                              <Button
+                                                variant="ghost"
+                                                size="sm"
+                                                className="h-6 w-6 p-0 text-red-500 hover:text-red-700 hover:bg-red-50"
+                                                disabled={isVersionSubmitted}
+                                                onClick={async () => {
+                                                  if (!confirm("Delete this item?")) return;
+                                                  const newItems = [...step11Items];
                                                   newItems.splice(itemIdx, 1);
-                                                  const newTableData = { ...tableData, materialLines: newItems }; // Assuming materialLines is the source for engine-based
+                                                  const newTableData = { ...tableData, step11_items: newItems };
                                                   setBoqItems(prev => prev.map(i => i.id === boqItem.id ? { ...i, table_data: newTableData } : i));
-                                                  toast({ title: "Item Deleted", description: "Item removed from product.", variant: "default" });
                                                   try {
-                                                    apiFetch(`/api/boq-items/${boqItem.id}`, {
+                                                    await apiFetch(`/api/boq-items/${boqItem.id}`, {
                                                       method: "PUT",
                                                       headers: { "Content-Type": "application/json" },
                                                       body: JSON.stringify({ table_data: newTableData })
                                                     });
-                                                  } catch (e) {
+                                                      } catch (e) {
                                                     console.error("Failed to delete item", e);
                                                     toast({ title: "Error", description: "Failed to delete item", variant: "destructive" });
                                                   }
-                                                }}>×</Button>
-                                              </td>
-                                            </tr>
-                                          ) : (
-                                            <tr key={itemKey} className="border-b border-gray-100 hover:bg-blue-50/50">
-                                              <td className="border px-2 py-1 text-center text-xs">{itemIdx + 1}</td>
-                                              <td className="border px-2 py-1 font-medium text-xs">{step11Item.title || "Item"}</td>
-                                              <td className="border px-2 py-1 text-gray-500">-</td>
-                                              <td className="border px-2 py-1">
-                                                <textarea
-                                                  value={description}
-                                                  onChange={(e) => updateEditedField(itemKey, "description", e.target.value)}
-                                                  disabled={isVersionSubmitted}
-                                                  className="w-full border rounded px-1 py-0.5 text-xs min-h-[60px] resize-y focus:ring-1 ring-blue-500 outline-none"
-                                                  placeholder="Description"
-                                                />
-                                              </td>
-                                              <td className="border px-2 py-1">
-                                                <input
-                                                  type="text"
-                                                  value={unit}
-                                                  onChange={(e) => updateEditedField(itemKey, "unit", e.target.value)}
-                                                  disabled={isVersionSubmitted}
-                                                  className="w-full border rounded px-1 py-0.5 text-xs text-center focus:ring-1 ring-blue-500 outline-none"
-                                                />
-                                              </td>
-                                              <td className="border px-2 py-1 text-center">-</td>
-                                              <td className="border px-2 py-1 text-center">-</td>
-                                              <td className="border px-2 py-1 font-bold text-center">
-                                                <input
-                                                  type="number"
-                                                  value={qty}
-                                                  onChange={(e) => updateEditedField(itemKey, "qty", parseFloat(e.target.value) || 0)}
-                                                  disabled={isVersionSubmitted}
-                                                  className="w-full border rounded px-1 py-0.5 text-xs text-center font-medium focus:ring-1 ring-blue-500 outline-none"
-                                                />
-                                              </td>
-                                              <td className="border px-1 py-1">
-                                                <div className="flex flex-col gap-1">
-                                                  <input
-                                                    type="number"
-                                                    value={supplyRate}
-                                                    onChange={(e) => updateEditedField(itemKey, "supply_rate", parseFloat(e.target.value) || 0)}
-                                                    disabled={isVersionSubmitted}
-                                                    className="w-full border rounded px-1 py-0.5 text-xs text-right focus:ring-1 ring-blue-500 outline-none"
-                                                    placeholder="S"
-                                                  />
-                                                  <input
-                                                    type="number"
-                                                    value={installRate}
-                                                    onChange={(e) => updateEditedField(itemKey, "install_rate", parseFloat(e.target.value) || 0)}
-                                                    disabled={isVersionSubmitted}
-                                                    className="w-full border rounded px-1 py-0.5 text-xs text-right focus:ring-1 ring-blue-500 outline-none"
-                                                    placeholder="I"
-                                                  />
-                                                </div>
-                                              </td>
-                                              <td className="border px-1 py-1 text-right text-xs bg-gray-50/50 font-bold">
-                                                ₹{(supplyAmount + installAmount).toFixed(2)}
-                                              </td>
-                                              <td className="border px-2 py-1 text-center">
-                                                <Button
-                                                  variant="ghost"
-                                                  size="sm"
-                                                  className="h-6 w-6 p-0 text-red-500 hover:text-red-700 hover:bg-red-50"
-                                                  disabled={isVersionSubmitted}
-                                                  onClick={async () => {
-                                                    if (!confirm("Delete this item?")) return;
-                                                    const newItems = [...step11Items];
-                                                    newItems.splice(itemIdx, 1);
-                                                    const newTableData = { ...tableData, step11_items: newItems };
-                                                    setBoqItems(prev => prev.map(i => i.id === boqItem.id ? { ...i, table_data: newTableData } : i));
-                                                    try {
-                                                      await apiFetch(`/api/boq-items/${boqItem.id}`, {
-                                                        method: "PUT",
-                                                        headers: { "Content-Type": "application/json" },
-                                                        body: JSON.stringify({ table_data: newTableData })
-                                                      });
-                                                    } catch (e) {
-                                                      console.error("Failed to delete item", e);
-                                                      toast({ title: "Error", description: "Failed to delete item", variant: "destructive" });
-                                                    }
-                                                  }}
-                                                >
-                                                  ×
-                                                </Button>
-                                              </td>
-                                            </tr>
-                                          )
+                                                }}
+                                              >
+                                                ×
+                                              </Button>
+                                            </td>
+                                          </tr>
                                         );
                                       })
                                     )}

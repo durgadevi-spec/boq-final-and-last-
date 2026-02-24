@@ -81,7 +81,7 @@ export async function apiFetch(path: string, init?: RequestInit) {
     try {
       headers.set("authorization", `Bearer ${token}`);
     } catch {
-      // ignore
+      // ignore   
     }
   }
 

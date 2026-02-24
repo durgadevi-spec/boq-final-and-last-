@@ -71,7 +71,7 @@ export default function ManageMaterials() {
   const [submitting, setSubmitting] = useState(false);
 
   const [entriesList, setEntriesList] = useState<any[]>([]);
-  
+
   // Rate loading state
   const [rateMessage, setRateMessage] = useState<{
     type: "success" | "info" | "none";
@@ -233,7 +233,7 @@ export default function ManageMaterials() {
         const response = await fetch(
           `/api/material-rate?template_id=${encodeURIComponent(selectedTemplate.id)}&shop_id=${encodeURIComponent(selectedShop)}`
         );
-        
+
         if (!response.ok) {
           console.warn('[ManageMaterials] Failed to fetch material rate');
           setRateMessage({ type: "none", text: "" });
@@ -324,10 +324,10 @@ export default function ManageMaterials() {
       if (!confirmSubmit) return;
       toSubmit = entriesList;
     } else {
-      if (!formData.rate || !formData.unit || !formData.category) {
+      if (!formData.rate || !formData.unit) {
         toast({
           title: "Error",
-          description: "Rate, unit, and category are required",
+          description: "Rate and unit are required",
           variant: "destructive",
         });
         return;
@@ -399,10 +399,10 @@ export default function ManageMaterials() {
       return;
     }
 
-    if (!formData.rate || !formData.unit || !formData.category) {
+    if (!formData.rate || !formData.unit) {
       toast({
         title: "Error",
-        description: "Rate, unit, and category are required",
+        description: "Rate and unit are required",
         variant: "destructive",
       });
       return;
@@ -443,10 +443,10 @@ export default function ManageMaterials() {
   const handleEditEntry = (index: number) => {
     const entry = entriesList[index];
     setEditingEntryIndex(index);
-    
+
     // Set the shop for this entry
     setSelectedShop(entry.shop_id || "");
-    
+
     // Populate form with entry data
     setFormData({
       rate: entry.rate || "",
@@ -479,10 +479,10 @@ export default function ManageMaterials() {
   const handleUpdateEntry = () => {
     if (editingEntryIndex === null) return;
 
-    if (!formData.rate || !formData.unit || !formData.category) {
+    if (!formData.rate || !formData.unit) {
       toast({
         title: "Error",
-        description: "Rate, unit, and category are required",
+        description: "Rate and unit are required",
         variant: "destructive",
       });
       return;
@@ -494,8 +494,8 @@ export default function ManageMaterials() {
       ...formData,
     };
 
-    setEntriesList((prev) => 
-      prev.map((entry, index) => 
+    setEntriesList((prev) =>
+      prev.map((entry, index) =>
         index === editingEntryIndex ? updatedEntry : entry
       )
     );
@@ -560,10 +560,10 @@ export default function ManageMaterials() {
               <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                 <div>
                   <Label className="text-sm mb-2 block">Search Templates</Label>
-                  <Input 
-                    value={templatesSearch} 
-                    onChange={(e) => setTemplatesSearch(e.target.value)} 
-                    placeholder="Search by name or code..." 
+                  <Input
+                    value={templatesSearch}
+                    onChange={(e) => setTemplatesSearch(e.target.value)}
+                    placeholder="Search by name or code..."
                   />
                 </div>
                 <div>
@@ -572,7 +572,7 @@ export default function ManageMaterials() {
                     <SelectTrigger>
                       <SelectValue placeholder="All categories" />
                     </SelectTrigger>
-                        <SelectContent className="max-h-72 overflow-y-auto">
+                    <SelectContent className="max-h-72 overflow-y-auto">
                       <SelectItem value="all-categories">All Categories</SelectItem>
                       {vendorCategories.map((vc) => (
                         <SelectItem key={vc} value={vc}>{vc}</SelectItem>
@@ -599,16 +599,16 @@ export default function ManageMaterials() {
                   })
                   .slice(0, 12)
                   .map((template) => (
-                      <div key={template.id} className="p-2 border-b bg-white hover:bg-slate-50 transition-colors">
-                        <div className="flex items-center justify-between gap-3">
-                          <div className="flex-1 flex items-center gap-3">
-                            <div className="font-medium text-sm">{template.name}</div>
-                          </div>
-                          <Button size="sm" variant="outline" onClick={() => handleSelectTemplate(template)}>Select</Button>
+                    <div key={template.id} className="p-2 border-b bg-white hover:bg-slate-50 transition-colors">
+                      <div className="flex items-center justify-between gap-3">
+                        <div className="flex-1 flex items-center gap-3">
+                          <div className="font-medium text-sm">{template.name}</div>
                         </div>
-                        <div className="text-xs text-muted-foreground mt-1">{template.code} {template.category && <span className="ml-2">• {template.category}</span>}</div>
+                        <Button size="sm" variant="outline" onClick={() => handleSelectTemplate(template)}>Select</Button>
                       </div>
-                      ))}
+                      <div className="text-xs text-muted-foreground mt-1">{template.code} {template.category && <span className="ml-2">• {template.category}</span>}</div>
+                    </div>
+                  ))}
               </div>
             )}
           </div>
@@ -620,7 +620,7 @@ export default function ManageMaterials() {
                   {editingEntryIndex !== null ? "Edit Material Details" : "Submit Material Details"}
                 </CardTitle>
                 <CardDescription className="text-xs mt-1">
-                  {editingEntryIndex !== null 
+                  {editingEntryIndex !== null
                     ? `Editing item ${editingEntryIndex + 1} from submission queue`
                     : `Editing: ${selectedTemplate.name} (${selectedTemplate.code})`
                   }
@@ -633,13 +633,13 @@ export default function ManageMaterials() {
                       <Label>Shop <Required /></Label>
                       <Select value={selectedShop} onValueChange={setSelectedShop}>
                         <SelectTrigger>
-                            <SelectValue placeholder="Select a shop" />
-                          </SelectTrigger>
-                          <SelectContent className="max-h-72 overflow-y-auto">
-                            {shops.map((shop) => (
-                              <SelectItem key={shop.id} value={shop.id}>{shop.name}</SelectItem>
-                            ))}
-                          </SelectContent>
+                          <SelectValue placeholder="Select a shop" />
+                        </SelectTrigger>
+                        <SelectContent className="max-h-72 overflow-y-auto">
+                          {shops.map((shop) => (
+                            <SelectItem key={shop.id} value={shop.id}>{shop.name}</SelectItem>
+                          ))}
+                        </SelectContent>
                       </Select>
                     </div>
 
@@ -687,7 +687,7 @@ export default function ManageMaterials() {
                         value={formData.brandname}
                         onChange={(e) => setFormData({ ...formData, brandname: e.target.value })}
                       />
-                    </div> 
+                    </div>
                   </div>
 
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
@@ -701,7 +701,7 @@ export default function ManageMaterials() {
                     </div>
 
                     <div>
-                      <Label>Category <Required /></Label>
+                      <Label>Category</Label>
                       <Select value={formData.category} onValueChange={(v) => {
                         setFormData({ ...formData, category: v, subcategory: "" });
                         loadSubcategories(v);
@@ -798,10 +798,10 @@ export default function ManageMaterials() {
                               )}
                             </div>
                             <div className="flex gap-2">
-                              <Button 
-                                type="button" 
-                                size="sm" 
-                                variant="outline" 
+                              <Button
+                                type="button"
+                                size="sm"
+                                variant="outline"
                                 className="h-8 text-blue-600 hover:bg-blue-50"
                                 onClick={() => handleEditEntry(idx)}
                                 disabled={editingEntryIndex !== null}

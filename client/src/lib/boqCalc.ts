@@ -62,12 +62,16 @@ export function computeBoq(
 ): BoqResult {
     const base = Number(basis.baseRequiredQty) || 1; // avoid div-by-zero
     const target = Number(targetRequiredQty) || 0;
-    const defaultW = Number(basis.wastagePctDefault ?? 0);
+    // Accept either fraction (0.05) or percent (5) from UI/older data.
+    let defaultW = Number(basis.wastagePctDefault ?? 0);
+    if (defaultW > 1) defaultW = defaultW / 100;
 
     const computed: ComputedLine[] = lines.map((l) => {
         const baseQty = Number(l.baseQty) || 0;
         const applyW = l.applyWastage !== false; // Default to true if undefined
-        const w = applyW ? (l.wastagePct !== undefined ? Number(l.wastagePct) : defaultW) : 0;
+        // Per-line wastage may be stored as percent (e.g. 5) or fraction (0.05).
+        let w = applyW ? (l.wastagePct !== undefined ? Number(l.wastagePct) : defaultW) : 0;
+        if (w > 1) w = w / 100;
 
         const wastageQty = baseQty * w;
         const effectiveQty = baseQty + wastageQty;
