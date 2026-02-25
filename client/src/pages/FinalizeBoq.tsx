@@ -254,11 +254,16 @@ export default function FinalizeBoq() {
           // Dynamic calculation for percentage columns based on Total Value
           let val = 0;
           const itemCol = (customColumns[item.id] || []).find(c => c.name === col.name) || col;
-          if (itemCol.isPercentage && itemCol.baseSource === "Total Value (₹)") {
+          const baseSource = itemCol.baseSource;
+          if (itemCol.isPercentage && baseSource === "Total Value (₹)") {
             val = (itemRate * displayQty) * (itemCol.percentageValue / 100);
-          } else if (itemCol.isPercentage && itemCol.baseSource && itemCol.baseSource !== "manual") {
+          } else if (itemCol.isPercentage && baseSource === "Rate / Unit") {
+            val = itemRate * (itemCol.percentageValue / 100);
+          } else if (itemCol.isPercentage && baseSource === "Qty") {
+            val = displayQty * (itemCol.percentageValue / 100);
+          } else if (itemCol.isPercentage && baseSource && baseSource !== "manual") {
             // Chained percentage calculation
-            const baseValStr = customColumnValues[item.id]?.[0]?.[itemCol.baseSource] || "0";
+            const baseValStr = customColumnValues[item.id]?.[0]?.[baseSource] || "0";
             const baseVal = parseFloat(baseValStr) || 0;
             val = baseVal * (itemCol.percentageValue / 100);
           } else {
@@ -771,17 +776,34 @@ export default function FinalizeBoq() {
 
       let rowBase = base;
       if (baseSource !== "manual") {
-        if (baseSource === "Total Value (₹)") {
-          let td = item.table_data || {};
-          if (typeof td === "string") try { td = JSON.parse(td); } catch { td = {}; }
-          const step11Items: Step11Item[] = Array.isArray(td.step11_items) ? td.step11_items : [];
+        let td = item.table_data || {};
+        if (typeof td === "string") try { td = JSON.parse(td); } catch { td = {}; }
+        const step11Items: Step11Item[] = Array.isArray(td.step11_items) ? td.step11_items : [];
 
-          if (td.materialLines && td.targetRequiredQty !== undefined) {
-            rowBase = computeBoq(td.configBasis, td.materialLines, td.targetRequiredQty).grandTotal;
-          } else {
-            rowBase = step11Items.reduce((s: number, it: any) =>
-              s + (it.qty || 0) * ((it.supply_rate || 0) + (it.install_rate || 0)), 0);
-          }
+        let itemTotal = 0;
+        let itemQty = 0;
+        if (td.materialLines && td.targetRequiredQty !== undefined) {
+          const res = computeBoq(td.configBasis, td.materialLines, td.targetRequiredQty);
+          const manualTotal = step11Items.filter((it: any) => it.manual).reduce((s: number, it: any) =>
+            s + (Number(it.qty) || 0) * (Number(it.supply_rate || 0) + Number(it.install_rate || 0)), 0);
+          itemTotal = res.grandTotal + manualTotal;
+          itemQty = td.targetRequiredQty;
+        } else {
+          itemTotal = step11Items.reduce((s: number, it: any) =>
+            s + (it.qty || 0) * ((it.supply_rate || 0) + (it.install_rate || 0)), 0);
+          itemQty = step11Items[0]?.qty || 0;
+        }
+
+        const manualQtyStr = productQuantities[item.id];
+        const displayQty = manualQtyStr !== undefined ? (parseFloat(manualQtyStr) || 0) : itemQty;
+        const itemRate = itemQty > 0 ? itemTotal / itemQty : (itemTotal || 0);
+
+        if (baseSource === "Total Value (₹)") {
+          rowBase = itemRate * displayQty;
+        } else if (baseSource === "Rate / Unit") {
+          rowBase = itemRate;
+        } else if (baseSource === "Qty") {
+          rowBase = displayQty;
         } else {
           const valStr = customColumnValues[item.id]?.[0]?.[baseSource] || "0";
           rowBase = parseFloat(valStr) || 0;
@@ -819,16 +841,34 @@ export default function FinalizeBoq() {
     const baseSource = itemCol.baseSource || "manual";
 
     if (baseSource !== "manual") {
+      let td = item.table_data || {};
+      if (typeof td === "string") try { td = JSON.parse(td); } catch { td = {}; }
+      const step11Items: Step11Item[] = Array.isArray(td.step11_items) ? td.step11_items : [];
+
+      let itemTotal = 0;
+      let itemQty = 0;
+      if (td.materialLines && td.targetRequiredQty !== undefined) {
+        const res = computeBoq(td.configBasis, td.materialLines, td.targetRequiredQty);
+        const manualTotal = step11Items.filter((it: any) => it.manual).reduce((s: number, it: any) =>
+          s + (Number(it.qty) || 0) * (Number(it.supply_rate || 0) + Number(it.install_rate || 0)), 0);
+        itemTotal = res.grandTotal + manualTotal;
+        itemQty = td.targetRequiredQty;
+      } else {
+        itemTotal = step11Items.reduce((s: number, it: any) =>
+          s + (it.qty || 0) * ((it.supply_rate || 0) + (it.install_rate || 0)), 0);
+        itemQty = step11Items[0]?.qty || 0;
+      }
+
+      const manualQtyStr = productQuantities[item.id];
+      const displayQty = manualQtyStr !== undefined ? (parseFloat(manualQtyStr) || 0) : itemQty;
+      const itemRate = itemQty > 0 ? itemTotal / itemQty : (itemTotal || 0);
+
       if (baseSource === "Total Value (₹)") {
-        let td = item.table_data || {};
-        if (typeof td === "string") try { td = JSON.parse(td); } catch { td = {}; }
-        if (td.materialLines && td.targetRequiredQty !== undefined) {
-          rowBase = computeBoq(td.configBasis, td.materialLines, td.targetRequiredQty).grandTotal;
-        } else {
-          const step11Items: Step11Item[] = Array.isArray(td.step11_items) ? td.step11_items : [];
-          rowBase = step11Items.reduce((s: number, it: any) =>
-            s + (it.qty || 0) * ((it.supply_rate || 0) + (it.install_rate || 0)), 0);
-        }
+        rowBase = itemRate * displayQty;
+      } else if (baseSource === "Rate / Unit") {
+        rowBase = itemRate;
+      } else if (baseSource === "Qty") {
+        rowBase = displayQty;
       } else {
         const valStr = customColumnValues[item.id]?.[0]?.[baseSource] || "0";
         rowBase = parseFloat(valStr) || 0;
@@ -1908,10 +1948,17 @@ export default function FinalizeBoq() {
                                         }}
                                       >
                                         <option value="manual">Fixed Value</option>
-                                        <option value="Total Value (₹)">Total Value</option>
-                                        {allCols.filter(c => c.name !== col.name).map(c => (
-                                          <option key={c.name} value={c.name}>{c.name}</option>
-                                        ))}
+                                        <option value="Rate / Unit">E: Rate / Unit</option>
+                                        <option value="Qty">F: Qty</option>
+                                        <option value="Total Value (₹)">G: Total Value (₹)</option>
+                                        {allCols.filter(c => c.name !== col.name).map((c) => {
+                                          const colIdx = allCols.findIndex(cc => cc.name === c.name);
+                                          return (
+                                            <option key={c.name} value={c.name}>
+                                              {getExcelColumnName(colIdx + 7)}: {c.name}
+                                            </option>
+                                          );
+                                        })}
                                       </select>
                                     </div>
 
@@ -2125,6 +2172,10 @@ export default function FinalizeBoq() {
                                   let val = "0";
                                   if (isCalculated && (itemCol as any).baseSource === "Total Value (₹)") {
                                     val = (baseTotalValue * ((itemCol as any).percentageValue / 100)).toFixed(2);
+                                  } else if (isCalculated && (itemCol as any).baseSource === "Rate / Unit") {
+                                    val = (rateSqft * ((itemCol as any).percentageValue / 100)).toFixed(2);
+                                  } else if (isCalculated && (itemCol as any).baseSource === "Qty") {
+                                    val = (displayQty * ((itemCol as any).percentageValue / 100)).toFixed(2);
                                   } else if (isCalculated && (itemCol as any).baseSource) {
                                     const baseValStr = customColumnValues[boqItem.id]?.[0]?.[(itemCol as any).baseSource] || "0";
                                     val = (parseFloat(baseValStr) * ((itemCol as any).percentageValue / 100)).toFixed(2);
@@ -2153,7 +2204,15 @@ export default function FinalizeBoq() {
                                             <span className="text-[10px] font-black text-purple-600 uppercase tracking-widest">%</span>
                                           </div>
                                           <span className="text-[8px] px-1.5 py-0.5 bg-purple-600 text-white rounded font-black uppercase tracking-wider truncate max-w-[80px] shadow-sm">
-                                            {(itemCol as any).baseSource === "Total Value (₹)" ? "TOTAL" : (itemCol as any).baseSource}
+                                            {(() => {
+                                              const src = (itemCol as any).baseSource;
+                                              if (src === "Total Value (₹)") return "G: TOTAL";
+                                              if (src === "Rate / Unit") return "E: RATE";
+                                              if (src === "Qty") return "F: QTY";
+                                              const cIdx = allCols.findIndex(cc => cc.name === src);
+                                              if (cIdx >= 0) return `${getExcelColumnName(cIdx + 7)}: ${src}`;
+                                              return src;
+                                            })()}
                                           </span>
                                         </div>
                                       )}
