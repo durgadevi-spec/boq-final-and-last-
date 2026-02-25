@@ -715,7 +715,7 @@ export default function CreateBom() {
     }
   };
 
-  const handleDeleteRow = async (boqItemId: string, tableData: any, itemIdx: number) => {
+  const handleDeleteRow = async (boqItemId: string, tableData: any, itemIdx: number, displayItem?: any) => {
     try {
       let computedLen = 0;
       if (tableData && tableData.materialLines && tableData.targetRequiredQty !== undefined) {
@@ -733,9 +733,12 @@ export default function CreateBom() {
         materialLines.splice(itemIdx, 1);
         newTableData = { ...tableData, materialLines };
       } else {
-        const manualIdx = itemIdx - computedLen;
+        // Use the stored original step11_items index if available, otherwise fall back
+        const s11Idx = (displayItem && displayItem._s11Idx !== undefined) ? displayItem._s11Idx : (itemIdx - computedLen);
         const step11 = Array.isArray(tableData.step11_items) ? [...tableData.step11_items] : [];
-        step11.splice(manualIdx, 1);
+        if (s11Idx >= 0 && s11Idx < step11.length) {
+          step11.splice(s11Idx, 1);
+        }
         newTableData = { ...tableData, step11_items: step11 };
       }
 
@@ -1720,6 +1723,7 @@ export default function CreateBom() {
                             ...it,
                             manual: true,
                             itemKey,
+                            _s11Idx: s11Idx, // preserve original step11_items index for delete
                             qtyPerSqf: it.qtyPerSqf ?? 0,
                             supply_rate: sRate,
                             install_rate: iRate,
@@ -1739,6 +1743,7 @@ export default function CreateBom() {
                           return {
                             ...it,
                             itemKey,
+                            _s11Idx: s11Idx, // preserve original step11_items index for delete
                             qty, // Reflection of edited qty for the row display
                             amount: Number((qty * rate).toFixed(2)),
                           };
@@ -1901,7 +1906,7 @@ export default function CreateBom() {
                                               <td className="border px-2 py-1 text-center">
                                                 <Button title="Delete this item" variant="ghost" size="sm" className="h-7 w-7 p-0 text-red-600 hover:text-red-800 hover:bg-red-100 font-bold" onClick={() => {
                                                   if (!confirm("Delete this item?")) return;
-                                                  void handleDeleteRow(boqItem.id, tableData, itemIdx);
+                                                  void handleDeleteRow(boqItem.id, tableData, itemIdx, step11Item);
                                                 }}>🗑</Button>
                                               </td>
                                             </tr>
@@ -1978,7 +1983,7 @@ export default function CreateBom() {
                                                 onClick={async () => {
                                                   if (!confirm("Delete this item?")) return;
                                                   try {
-                                                    await handleDeleteRow(boqItem.id, tableData, itemIdx);
+                                                    await handleDeleteRow(boqItem.id, tableData, itemIdx, step11Item);
                                                   } catch (e) {
                                                     console.error('Failed to delete item via handler', e);
                                                     toast({ title: 'Error', description: 'Failed to delete item', variant: 'destructive' });

@@ -1420,7 +1420,7 @@ export default function AdminDashboard() {
                                         <SelectTrigger>
                                           <SelectValue />
                                         </SelectTrigger>
-                                        <SelectContent>
+                                        <SelectContent className="max-h-60 overflow-y-auto">
                                           {categories.map((c: string) => (
                                             <SelectItem key={c} value={c}>{c}</SelectItem>
                                           ))}
@@ -1433,7 +1433,7 @@ export default function AdminDashboard() {
                                         <SelectTrigger>
                                           <SelectValue />
                                         </SelectTrigger>
-                                        <SelectContent>
+                                        <SelectContent className="max-h-60 overflow-y-auto">
                                           {getSubCategoriesForCategory(newMaterial.category || '').map((sc: any) => (
                                             <SelectItem key={sc.id} value={sc.name}>{sc.name}</SelectItem>
                                           ))}
@@ -1446,7 +1446,7 @@ export default function AdminDashboard() {
                                         <SelectTrigger>
                                           <SelectValue />
                                         </SelectTrigger>
-                                        <SelectContent>
+                                        <SelectContent className="max-h-60 overflow-y-auto">
                                           {products.filter((p: any) => p.subcategory === newMaterial.subCategory).map((p: any) => (
                                             <SelectItem key={p.id} value={p.name}>{p.name} {"(Subcategory: "}{p.subcategory_name}{")"}</SelectItem>
                                           ))}
@@ -1467,7 +1467,7 @@ export default function AdminDashboard() {
                                         <SelectTrigger>
                                           <SelectValue placeholder="Select Shop" />
                                         </SelectTrigger>
-                                        <SelectContent>
+                                        <SelectContent className="max-h-60 overflow-y-auto">
                                           {localShops.map((s: any) => (
                                             <SelectItem key={s.id} value={s.id.toString()}>{s.name}</SelectItem>
                                           ))}
