@@ -281,16 +281,16 @@ export default function ManageProduct() {
                     requiredUnitType: requiredUnitType,
                     baseRequiredQty: baseRequiredQty,
                     wastagePctDefault: wastagePctDefault,
-                    items: configMaterials.map(m => ({
+                    items: boqResults.computed.map(m => ({
                         materialId: m.id,
                         materialName: m.name,
                         unit: m.unit,
-                        qty: m.qty,
+                        qty: m.roundOffQty,
                         rate: m.rate,
                         supplyRate: m.supplyRate,
                         installRate: m.installRate,
                         location: m.location,
-                        amount: m.amount,
+                        amount: m.lineTotal,
                         baseQty: m.baseQty,
                         wastagePct: m.wastagePct ?? null,
                         applyWastage: m.applyWastage,
@@ -348,16 +348,16 @@ export default function ManageProduct() {
                     dimA: dimA,
                     dimB: dimB,
                     dimC: dimC,
-                    items: configMaterials.map(m => ({
+                    items: boqResults.computed.map(m => ({
                         materialId: m.id,
                         materialName: m.name,
                         unit: m.unit,
-                        qty: m.qty,
+                        qty: m.roundOffQty, // Use effective qty (incl wastage)
                         rate: m.rate,
                         supplyRate: m.supplyRate,
                         installRate: m.installRate,
                         location: m.location,
-                        amount: m.amount,
+                        amount: m.lineTotal, // Use calculated total
                         baseQty: m.baseQty,
                         wastagePct: m.wastagePct ?? null,
                         applyWastage: m.applyWastage,
@@ -382,16 +382,16 @@ export default function ManageProduct() {
                     requiredUnitType: requiredUnitType,
                     baseRequiredQty: baseRequiredQty,
                     wastagePctDefault: wastagePctDefault,
-                    items: configMaterials.map(m => ({
+                    items: boqResults.computed.map(m => ({
                         materialId: m.id,
                         materialName: m.name,
                         unit: m.unit,
-                        qty: m.qty,
+                        qty: m.roundOffQty, // Use effective qty (incl wastage)
                         rate: m.rate,
                         supplyRate: m.supplyRate,
                         installRate: m.installRate,
                         location: m.location,
-                        amount: m.amount,
+                        amount: m.lineTotal, // Use calculated total
                         baseQty: m.baseQty,
                         wastagePct: m.wastagePct ?? null,
                         applyWastage: m.applyWastage,
@@ -1077,7 +1077,7 @@ export default function ManageProduct() {
                                                     <TableHead className="w-[60px] font-bold">Unit</TableHead>
                                                     <TableHead className="w-[80px] font-bold">Qty</TableHead>
                                                     <TableHead className="w-[100px] font-bold">Rate</TableHead>
-                                                    <TableHead className="w-[110px] font-bold">Amount</TableHead>
+                                                    <TableHead className="w-[110px] font-bold">Base Amount</TableHead>
                                                     <TableHead className="w-[70px] font-bold">
                                                         <div className="flex flex-col items-center gap-1">
                                                             <span className="text-[10px]">Selection</span>
@@ -1092,7 +1092,8 @@ export default function ManageProduct() {
                                                     </TableHead>
                                                     <TableHead className="w-[80px] font-bold">Wastage %</TableHead>
                                                     <TableHead className="w-[80px] font-bold">Wastage Qty</TableHead>
-                                                    <TableHead className="w-[90px] font-bold">Total</TableHead>
+                                                    <TableHead className="w-[90px] font-bold">Total Qty</TableHead>
+                                                    <TableHead className="w-[90px] font-bold">Final Amount</TableHead>
                                                     <TableHead className="w-[90px] font-bold">Per {requiredUnitType} Qty</TableHead>
                                                 </TableRow>
                                             </TableHeader>
@@ -1145,7 +1146,10 @@ export default function ManageProduct() {
                                                                 {m.wastageQty.toFixed(2)}
                                                             </TableCell>
                                                             <TableCell className="text-[10px] font-bold">
-                                                                {m.effectiveQty.toFixed(2)}
+                                                                {m.roundOffQty.toFixed(2)}
+                                                            </TableCell>
+                                                            <TableCell className="text-[10px] font-bold text-blue-600">
+                                                                ₹{m.lineTotal.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                                                             </TableCell>
                                                             <TableCell className="text-[10px] font-bold text-primary">
                                                                 {m.perUnitQty.toFixed(4)}
@@ -1155,9 +1159,9 @@ export default function ManageProduct() {
                                                 })}
                                                 {/* Total row like Excel */}
                                                 <TableRow className="bg-muted/20 font-black">
-                                                    <TableCell colSpan={8} className="text-right py-3 pr-4">Total</TableCell>
-                                                    <TableCell className="text-[11px]">
-                                                        ₹{boqResults.computed.reduce((sum, m) => sum + (m.baseQty * (m.supplyRate + m.installRate)), 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                                                    <TableCell colSpan={8} className="text-right py-3 pr-4">Total (Incl. Wastage)</TableCell>
+                                                    <TableCell className="text-[11px] text-primary">
+                                                        ₹{totalCost.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                                                     </TableCell>
                                                     <TableCell colSpan={5}></TableCell>
                                                 </TableRow>

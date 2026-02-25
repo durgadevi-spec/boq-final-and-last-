@@ -425,11 +425,16 @@ export async function registerRoutes(
     // Add new BOQ architecture columns (safe, idempotent)
     await query(`ALTER TABLE product_step3_config ADD COLUMN IF NOT EXISTS required_unit_type VARCHAR(20) DEFAULT 'Sqft'`);
     await query(`ALTER TABLE product_step3_config ADD COLUMN IF NOT EXISTS base_required_qty DECIMAL(15,2) DEFAULT 1`);
-    await query(`ALTER TABLE product_step3_config ADD COLUMN IF NOT EXISTS wastage_pct_default DECIMAL(8,6) DEFAULT 0`);
+    await query(`ALTER TABLE product_step3_config ADD COLUMN IF NOT EXISTS wastage_pct_default DECIMAL(15,4) DEFAULT 0`);
     await query(`ALTER TABLE product_step3_config_items ADD COLUMN IF NOT EXISTS base_qty DECIMAL(15,2)`);
-    await query(`ALTER TABLE product_step3_config_items ADD COLUMN IF NOT EXISTS wastage_pct DECIMAL(8,6)`);
+    await query(`ALTER TABLE product_step3_config_items ADD COLUMN IF NOT EXISTS wastage_pct DECIMAL(15,4)`);
     await query(`ALTER TABLE product_step3_config_items ADD COLUMN IF NOT EXISTS shop_name VARCHAR(255)`);
-    console.log("[db] product_step3_config BOQ columns ensured");
+
+    // Explicitly upgrade types if they already exist with old restrictive types
+    await query(`ALTER TABLE product_step3_config ALTER COLUMN wastage_pct_default TYPE DECIMAL(15,4)`);
+    await query(`ALTER TABLE product_step3_config_items ALTER COLUMN wastage_pct TYPE DECIMAL(15,4)`);
+
+    console.log("[db] product_step3_config BOQ columns ensured and types upgraded");
   } catch (err: unknown) {
     console.warn("[db] Could not ensure product_step3_config tables:", (err as any)?.message || err);
   }

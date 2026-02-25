@@ -2545,26 +2545,7 @@ export default function AdminDashboard() {
                                         </SelectContent>
                                       </Select>
                                     </div>
-                                    <div>
-                                      <Label>Vendor Category</Label>
-                                      <Select
-                                        value={newMaterial.vendorCategory || ""}
-                                        onValueChange={(value) => setNewMaterial({ ...newMaterial, vendorCategory: value })}
-                                      >
-                                        <SelectTrigger>
-                                          <SelectValue placeholder="Select vendor category" />
-                                        </SelectTrigger>
-                                        <SelectContent className="max-h-[200px] overflow-y-auto">
-                                          {vendorCategories.length === 0 ? (
-                                            <SelectItem value="none" disabled>No categories available</SelectItem>
-                                          ) : (
-                                            vendorCategories.map((cat) => (
-                                              <SelectItem key={cat.id} value={cat.name}>{cat.name}</SelectItem>
-                                            ))
-                                          )}
-                                        </SelectContent>
-                                      </Select>
-                                    </div>
+
                                     <div>
                                       <Label>Tax Code Type</Label>
                                       <div className="flex gap-4 mt-2">
