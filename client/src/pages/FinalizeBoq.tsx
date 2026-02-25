@@ -183,7 +183,7 @@ export default function FinalizeBoq() {
   };
 
   const allCols = React.useMemo(() => {
-    const cols: { name: string, isTotal: boolean, isPercentage?: boolean, percentageValue?: number, baseValue?: number, baseSource?: string, operator?: string, hideTotal?: boolean, hideColumn?: boolean }[] = [];
+    const cols: { name: string, isTotal: boolean, isPercentage?: boolean, percentageValue?: number, baseValue?: number, baseSource?: string, multiplierSource?: string, operator?: string, hideTotal?: boolean, hideColumn?: boolean }[] = [];
     boqItems.forEach(item => {
       (customColumns[item.id] || []).forEach(col => {
         if (!cols.find(c => c.name === col.name)) cols.push(col);
@@ -259,7 +259,8 @@ export default function FinalizeBoq() {
           let val = 0;
           const baseSource = itemCol.baseSource;
           const operator = itemCol.operator || "%";
-          const multiplier = itemCol.percentageValue || 0;
+          const multiplierSource = itemCol.multiplierSource || "manual";
+          const manualMultiplier = itemCol.percentageValue || 0;
 
           let baseVal = 0;
           if (baseSource === "Total Value (₹)") {
@@ -280,14 +281,30 @@ export default function FinalizeBoq() {
             baseVal = itemCol.baseValue || 0;
           }
 
+          let multiplierVal = 0;
+          if (multiplierSource === "manual") {
+            multiplierVal = manualMultiplier;
+          } else if (multiplierSource === "Total Value (₹)") {
+            multiplierVal = baseTotalValue;
+          } else if (multiplierSource === "Rate / Unit") {
+            multiplierVal = itemRate;
+          } else if (multiplierSource === "Qty") {
+            multiplierVal = displayQty;
+          } else if (rowCalculatedValues[multiplierSource] !== undefined) {
+            multiplierVal = rowCalculatedValues[multiplierSource];
+          } else {
+            const mValStr = customColumnValues[item.id]?.[0]?.[multiplierSource] || "0";
+            multiplierVal = parseFloat(mValStr) || 0;
+          }
+
           if (operator === "%") {
-            val = baseVal * (multiplier / 100);
+            val = baseVal * (multiplierVal / 100);
           } else if (operator === "*") {
-            val = baseVal * multiplier;
+            val = baseVal * multiplierVal;
           } else if (operator === "/") {
-            val = multiplier !== 0 ? baseVal / multiplier : 0;
+            val = multiplierVal !== 0 ? baseVal / multiplierVal : 0;
           } else if (operator === "+") {
-            val = baseVal + multiplier;
+            val = baseVal + multiplierVal;
           } else {
             // Fallback to manual value if operator is unknown and source is manual
             val = parseFloat(customColumnValues[item.id]?.[0]?.[col.name] || "0") || 0;
@@ -777,7 +794,7 @@ export default function FinalizeBoq() {
     toast({ title: "Column Cloned", description: `Column "${originalCol.name}" cloned to "${newColName}" and saved.` });
   };
 
-  const handleGlobalCalculation = async (colName: string, base: number, multiplier: number, baseSource: string = "manual", operator: string = "%") => {
+  const handleGlobalCalculation = async (colName: string, base: number, multiplier: number, baseSource: string = "manual", operator: string = "%", multiplierSource: string = "manual") => {
     const oldSettings = globalColSettings[colName] || {};
     const oldMultiplier = oldSettings.percentageValue || 0;
     const deltaMultiplier = multiplier - oldMultiplier;
@@ -785,7 +802,7 @@ export default function FinalizeBoq() {
     // Update the decoupled global state immediately
     setGlobalColSettings(prev => ({
       ...prev,
-      [colName]: { baseValue: base, percentageValue: multiplier, baseSource, operator }
+      [colName]: { baseValue: base, percentageValue: multiplier, baseSource, operator, multiplierSource }
     }));
 
     const nextColsMap: any = {};
@@ -793,107 +810,18 @@ export default function FinalizeBoq() {
 
     boqItems.forEach(item => {
       let itemCols = customColumns[item.id] || [];
-      let itemCol = itemCols.find(c => c.name === colName);
+      const itemCol = itemCols.find(c => c.name === colName);
 
-      // If we are adjusting multiplier, apply delta to whatever the row currently has
       const currentRowMultiplier = itemCol?.percentageValue || oldMultiplier;
       const newRowMultiplier = currentRowMultiplier + deltaMultiplier;
 
-      let rowBase = base;
-      if (baseSource !== "manual") {
-        let td = item.table_data || {};
-        if (typeof td === "string") try { td = JSON.parse(td); } catch { td = {}; }
-        const step11Items: Step11Item[] = Array.isArray(td.step11_items) ? td.step11_items : [];
-
-        let itemTotal = 0;
-        let itemQty = 0;
-        if (td.materialLines && td.targetRequiredQty !== undefined) {
-          const res = computeBoq(td.configBasis, td.materialLines, td.targetRequiredQty);
-          const manualTotal = step11Items.filter((it: any) => it.manual).reduce((s: number, it: any) =>
-            s + (Number(it.qty) || 0) * (Number(it.supply_rate || 0) + Number(it.install_rate || 0)), 0);
-          itemTotal = res.grandTotal + manualTotal;
-          itemQty = td.targetRequiredQty;
-        } else {
-          itemTotal = step11Items.reduce((s: number, it: any) =>
-            s + (it.qty || 0) * ((it.supply_rate || 0) + (it.install_rate || 0)), 0);
-          itemQty = step11Items[0]?.qty || 0;
-        }
-
-        const manualQtyStr = productQuantities[item.id];
-        const displayQty = manualQtyStr !== undefined ? (parseFloat(manualQtyStr) || 0) : itemQty;
-        const itemRate = itemQty > 0 ? itemTotal / itemQty : (itemTotal || 0);
-
-        if (baseSource === "Total Value (₹)") {
-          rowBase = itemRate * displayQty;
-        } else if (baseSource === "Rate / Unit") {
-          rowBase = itemRate;
-        } else if (baseSource === "Qty") {
-          rowBase = displayQty;
-        } else {
-          // Identify if it's another custom column or a total column
-          const baseCol = itemCols.find(c => c.name === baseSource);
-          if (baseCol?.isTotal) {
-            // Calculate running total up to this column
-            let runningTotal = itemRate * displayQty;
-            let accumulator = 0;
-            for (const c of itemCols) {
-              if (c.name === baseSource) {
-                runningTotal += accumulator;
-                break;
-              }
-              const val = parseFloat(customColumnValues[item.id]?.[0]?.[c.name] || "0") || 0;
-              accumulator += val;
-            }
-            rowBase = runningTotal;
-          } else {
-            const valStr = customColumnValues[item.id]?.[0]?.[baseSource] || "0";
-            rowBase = parseFloat(valStr) || 0;
-          }
-        }
-      }
-
-      const updatedCols = itemCols.map(c =>
-        c.name === colName ? { ...c, baseValue: base, percentageValue: newRowMultiplier, baseSource, operator, isPercentage: (baseSource !== "manual") } : c
-      );
-      nextColsMap[item.id] = updatedCols;
-
-      let calculated = 0;
-      if (operator === "%") calculated = rowBase * (newRowMultiplier / 100);
-      else if (operator === "*") calculated = rowBase * newRowMultiplier;
-      else if (operator === "/") calculated = newRowMultiplier !== 0 ? rowBase / newRowMultiplier : 0;
-      else if (operator === "+") calculated = rowBase + newRowMultiplier;
-
-      const itemVals = { ...(customColumnValues[item.id] || {}) };
-      itemVals[0] = { ...(itemVals[0] || {}), [colName]: calculated.toFixed(2) };
-      nextValsMap[item.id] = itemVals;
-    });
-
-    setCustomColumns(prev => ({ ...prev, ...nextColsMap }));
-    setCustomColumnValues(prev => ({ ...prev, ...nextValsMap }));
-
-    await Promise.all(boqItems.map(item =>
-      saveItemLayout(item.id, nextColsMap[item.id], nextValsMap[item.id])
-    ));
-  };
-
-  const handleItemCalculation = async (boqItemId: string, colName: string, multiplier: number, operator: string = "%") => {
-    const item = boqItems.find(i => i.id === boqItemId);
-    if (!item) return;
-
-    let itemCols = customColumns[item.id] || [];
-    let itemCol = itemCols.find(c => c.name === colName);
-    if (!itemCol) return;
-
-    let rowBase = itemCol.baseValue || 0;
-    const baseSource = itemCol.baseSource || "manual";
-
-    if (baseSource !== "manual") {
+      // Ensure we have access to system values for resolution
+      let itemTotal = 0;
+      let itemQty = 0;
       let td = item.table_data || {};
       if (typeof td === "string") try { td = JSON.parse(td); } catch { td = {}; }
       const step11Items: Step11Item[] = Array.isArray(td.step11_items) ? td.step11_items : [];
 
-      let itemTotal = 0;
-      let itemQty = 0;
       if (td.materialLines && td.targetRequiredQty !== undefined) {
         const res = computeBoq(td.configBasis, td.materialLines, td.targetRequiredQty);
         const manualTotal = step11Items.filter((it: any) => it.manual).reduce((s: number, it: any) =>
@@ -910,6 +838,106 @@ export default function FinalizeBoq() {
       const displayQty = manualQtyStr !== undefined ? (parseFloat(manualQtyStr) || 0) : itemQty;
       const itemRate = itemQty > 0 ? itemTotal / itemQty : (itemTotal || 0);
 
+      let rowBase = base;
+      if (baseSource === "Total Value (₹)") {
+        rowBase = itemRate * displayQty;
+      } else if (baseSource === "Rate / Unit") {
+        rowBase = itemRate;
+      } else if (baseSource === "Qty") {
+        rowBase = displayQty;
+      } else if (baseSource !== "manual") {
+        const baseCol = itemCols.find(c => c.name === baseSource);
+        if (baseCol?.isTotal) {
+          let runningTotal = itemRate * displayQty;
+          let accumulator = 0;
+          for (const c of itemCols) {
+            if (c.name === baseSource) {
+              runningTotal += accumulator;
+              break;
+            }
+            const val = parseFloat(customColumnValues[item.id]?.[0]?.[c.name] || "0") || 0;
+            accumulator += val;
+          }
+          rowBase = runningTotal;
+        } else {
+          const valStr = customColumnValues[item.id]?.[0]?.[baseSource] || "0";
+          rowBase = parseFloat(valStr) || 0;
+        }
+      }
+
+      const updatedCols = itemCols.map(c =>
+        c.name === colName ? { ...c, baseValue: base, percentageValue: newRowMultiplier, baseSource, operator, multiplierSource, isPercentage: (baseSource !== "manual") } : c
+      );
+      nextColsMap[item.id] = updatedCols;
+
+      let rowMultiplierVal = 0;
+      if (multiplierSource === "manual") {
+        rowMultiplierVal = newRowMultiplier;
+      } else if (multiplierSource === "Total Value (₹)") {
+        rowMultiplierVal = itemRate * displayQty;
+      } else if (multiplierSource === "Rate / Unit") {
+        rowMultiplierVal = itemRate;
+      } else if (multiplierSource === "Qty") {
+        rowMultiplierVal = displayQty;
+      } else {
+        const mValStr = customColumnValues[item.id]?.[0]?.[multiplierSource] || "0";
+        rowMultiplierVal = parseFloat(mValStr) || 0;
+      }
+
+      let calculated = 0;
+      if (operator === "%") calculated = rowBase * (rowMultiplierVal / 100);
+      else if (operator === "*") calculated = rowBase * rowMultiplierVal;
+      else if (operator === "/") calculated = rowMultiplierVal !== 0 ? rowBase / rowMultiplierVal : 0;
+      else if (operator === "+") calculated = rowBase + rowMultiplierVal;
+
+      const itemVals = { ...(customColumnValues[item.id] || {}) };
+      itemVals[0] = { ...(itemVals[0] || {}), [colName]: calculated.toFixed(2) };
+      nextValsMap[item.id] = itemVals;
+    });
+
+    setCustomColumns(prev => ({ ...prev, ...nextColsMap }));
+    setCustomColumnValues(prev => ({ ...prev, ...nextValsMap }));
+
+    await Promise.all(boqItems.map(item =>
+      saveItemLayout(item.id, nextColsMap[item.id], nextValsMap[item.id])
+    ));
+  };
+
+  const handleItemCalculation = async (boqItemId: string, colName: string, multiplier: number, operator: string = "%", multiplierSource: string = "manual") => {
+    const item = boqItems.find(i => i.id === boqItemId);
+    if (!item) return;
+
+    const itemCols = customColumns[item.id] || [];
+    const itemCol = itemCols.find(c => c.name === colName);
+    if (!itemCol) return;
+
+    let rowBase = itemCol.baseValue || 0;
+    const baseSource = itemCol.baseSource || "manual";
+
+    // Ensure system values available
+    let itemTotal = 0;
+    let itemQty = 0;
+    let td = item.table_data || {};
+    if (typeof td === "string") try { td = JSON.parse(td); } catch { td = {}; }
+    const step11Items: Step11Item[] = Array.isArray(td.step11_items) ? td.step11_items : [];
+
+    if (td.materialLines && td.targetRequiredQty !== undefined) {
+      const res = computeBoq(td.configBasis, td.materialLines, td.targetRequiredQty);
+      const manualTotal = step11Items.filter((it: any) => it.manual).reduce((s: number, it: any) =>
+        s + (Number(it.qty) || 0) * (Number(it.supply_rate || 0) + Number(it.install_rate || 0)), 0);
+      itemTotal = res.grandTotal + manualTotal;
+      itemQty = td.targetRequiredQty;
+    } else {
+      itemTotal = step11Items.reduce((s: number, it: any) =>
+        s + (it.qty || 0) * ((it.supply_rate || 0) + (it.install_rate || 0)), 0);
+      itemQty = step11Items[0]?.qty || 0;
+    }
+
+    const manualQtyStr = productQuantities[item.id];
+    const displayQty = manualQtyStr !== undefined ? (parseFloat(manualQtyStr) || 0) : itemQty;
+    const itemRate = itemQty > 0 ? itemTotal / itemQty : (itemTotal || 0);
+
+    if (baseSource !== "manual") {
       if (baseSource === "Total Value (₹)") {
         rowBase = itemRate * displayQty;
       } else if (baseSource === "Rate / Unit") {
@@ -937,14 +965,28 @@ export default function FinalizeBoq() {
       }
     }
 
+    let rowMultiplierVal = 0;
+    if (multiplierSource === "manual") {
+      rowMultiplierVal = multiplier;
+    } else if (multiplierSource === "Total Value (₹)") {
+      rowMultiplierVal = itemRate * displayQty;
+    } else if (multiplierSource === "Rate / Unit") {
+      rowMultiplierVal = itemRate;
+    } else if (multiplierSource === "Qty") {
+      rowMultiplierVal = displayQty;
+    } else {
+      const mValStr = customColumnValues[item.id]?.[0]?.[multiplierSource] || "0";
+      rowMultiplierVal = parseFloat(mValStr) || 0;
+    }
+
     let calculated = 0;
-    if (operator === "%") calculated = rowBase * (multiplier / 100);
-    else if (operator === "*") calculated = rowBase * multiplier;
-    else if (operator === "/") calculated = multiplier !== 0 ? rowBase / multiplier : 0;
-    else if (operator === "+") calculated = rowBase + multiplier;
+    if (operator === "%") calculated = rowBase * (rowMultiplierVal / 100);
+    else if (operator === "*") calculated = rowBase * rowMultiplierVal;
+    else if (operator === "/") calculated = rowMultiplierVal !== 0 ? rowBase / rowMultiplierVal : 0;
+    else if (operator === "+") calculated = rowBase + rowMultiplierVal;
 
     const nextCols = itemCols.map(c =>
-      c.name === colName ? { ...c, percentageValue: multiplier, operator, isPercentage: (baseSource !== "manual") } : c
+      c.name === colName ? { ...c, percentageValue: multiplier, operator, multiplierSource, isPercentage: (baseSource !== "manual") } : c
     );
 
     const itemVals = { ...(customColumnValues[item.id] || {}) };
@@ -2011,7 +2053,7 @@ export default function FinalizeBoq() {
                                         onClick={(e) => e.stopPropagation()}
                                         onChange={(e) => {
                                           const newSource = e.target.value;
-                                          handleGlobalCalculation(col.name, globalColSettings[col.name]?.baseValue || 0, globalColSettings[col.name]?.percentageValue || 0, newSource, globalColSettings[col.name]?.operator || "%");
+                                          handleGlobalCalculation(col.name, globalColSettings[col.name]?.baseValue || 0, globalColSettings[col.name]?.percentageValue || 0, newSource, globalColSettings[col.name]?.operator || "%", globalColSettings[col.name]?.multiplierSource || "manual");
                                         }}
                                       >
                                         <option value="manual">Fixed Value</option>
@@ -2061,7 +2103,7 @@ export default function FinalizeBoq() {
                                         onClick={(e) => e.stopPropagation()}
                                         onChange={(e) => {
                                           const newOp = e.target.value;
-                                          handleGlobalCalculation(col.name, globalColSettings[col.name]?.baseValue || 0, globalColSettings[col.name]?.percentageValue || 0, globalColSettings[col.name]?.baseSource || "manual", newOp);
+                                          handleGlobalCalculation(col.name, globalColSettings[col.name]?.baseValue || 0, globalColSettings[col.name]?.percentageValue || 0, globalColSettings[col.name]?.baseSource || "manual", newOp, globalColSettings[col.name]?.multiplierSource || "manual");
                                         }}
                                       >
                                         <option value="%">%</option>
@@ -2070,21 +2112,54 @@ export default function FinalizeBoq() {
                                         <option value="+">+</option>
                                       </select>
 
-                                      <div className="flex items-center gap-1.5 w-20 flex-shrink-0">
-                                        <input
-                                          type="number"
-                                          placeholder="Value"
-                                          className="w-14 h-9 bg-white border-2 border-purple-300 rounded-md px-2 text-[13px] font-black text-purple-700 outline-none focus:ring-2 ring-purple-400/50 text-right shadow-sm transition-all"
-                                          value={globalColSettings[col.name]?.percentageValue || ""}
+                                      <div className="flex items-center gap-1.5 w-auto flex-shrink-0">
+                                        <select
+                                          className="bg-white border border-purple-200 rounded text-[10px] font-black text-purple-700 outline-none h-7 px-1 cursor-pointer"
+                                          value={globalColSettings[col.name]?.multiplierSource || "manual"}
                                           onClick={(e) => e.stopPropagation()}
-                                          onChange={async (e) => {
-                                            const newVal = parseFloat(e.target.value) || 0;
-                                            const currentBase = globalColSettings[col.name]?.baseValue || 0;
-                                            const currentSource = globalColSettings[col.name]?.baseSource || "manual";
-                                            const currentOp = globalColSettings[col.name]?.operator || "%";
-                                            handleGlobalCalculation(col.name, currentBase, newVal, currentSource, currentOp);
+                                          onChange={(e) => {
+                                            const newMS = e.target.value;
+                                            handleGlobalCalculation(
+                                              col.name,
+                                              globalColSettings[col.name]?.baseValue || 0,
+                                              globalColSettings[col.name]?.percentageValue || 0,
+                                              globalColSettings[col.name]?.baseSource || "manual",
+                                              globalColSettings[col.name]?.operator || "%",
+                                              newMS
+                                            );
                                           }}
-                                        />
+                                        >
+                                          <option value="manual">Val</option>
+                                          <option value="Rate / Unit">E: Rate / Unit</option>
+                                          <option value="Qty">F: Qty</option>
+                                          <option value="Total Value (₹)">G: Total Value (₹)</option>
+                                          {allCols.filter(c => c.name !== col.name).map((c) => {
+                                            const colIdx = allCols.findIndex(cc => cc.name === c.name);
+                                            return (
+                                              <option key={c.name} value={c.name}>
+                                                {getExcelColumnName(colIdx + 7)}: {c.name}
+                                              </option>
+                                            );
+                                          })}
+                                        </select>
+
+                                        {(globalColSettings[col.name]?.multiplierSource || "manual") === "manual" && (
+                                          <input
+                                            type="number"
+                                            placeholder="Value"
+                                            className="w-14 h-9 bg-white border-2 border-purple-300 rounded-md px-2 text-[13px] font-black text-purple-700 outline-none focus:ring-2 ring-purple-400/50 text-right shadow-sm transition-all"
+                                            value={globalColSettings[col.name]?.percentageValue || ""}
+                                            onClick={(e) => e.stopPropagation()}
+                                            onChange={async (e) => {
+                                              const newVal = parseFloat(e.target.value) || 0;
+                                              const currentBase = globalColSettings[col.name]?.baseValue || 0;
+                                              const currentSource = globalColSettings[col.name]?.baseSource || "manual";
+                                              const currentOp = globalColSettings[col.name]?.operator || "%";
+                                              const currentMS = globalColSettings[col.name]?.multiplierSource || "manual";
+                                              handleGlobalCalculation(col.name, currentBase, newVal, currentSource, currentOp, currentMS);
+                                            }}
+                                          />
+                                        )}
                                         <span className="text-[13px] text-purple-600 font-black">{globalColSettings[col.name]?.operator || "%"}</span>
                                       </div>
                                     </div>
@@ -2291,22 +2366,47 @@ export default function FinalizeBoq() {
                                       {isCalculated && (
                                         <div className="absolute left-1 top-1 flex flex-col gap-0.5 z-10 pointer-events-none group-hover/cell:pointer-events-auto">
                                           <div className="flex items-center gap-1.5 opacity-0 group-hover/cell:opacity-100 focus-within:opacity-100 transition-opacity bg-white/90 p-1 rounded-md shadow-sm border border-purple-100">
-                                            <input
-                                              type="number"
-                                              className="w-14 h-8 bg-white border-2 border-purple-400 rounded-md px-1.5 text-[12px] font-black text-purple-800 outline-none text-right shadow-sm focus:ring-2 ring-purple-600/30"
-                                              value={itemMultiplier}
+                                            <select
+                                              className="bg-white border border-purple-300 rounded text-[9px] font-black text-purple-700 outline-none h-6 px-1 cursor-pointer"
+                                              value={(itemCol as any).multiplierSource || "manual"}
                                               disabled={isVersionSubmitted}
                                               onChange={(e) => {
-                                                const newVal = parseFloat(e.target.value) || 0;
-                                                handleItemCalculation(boqItem.id, col.name, newVal, itemOp);
+                                                handleItemCalculation(boqItem.id, col.name, itemMultiplier, itemOp, e.target.value);
                                               }}
-                                            />
+                                            >
+                                              <option value="manual">Val</option>
+                                              <option value="Rate / Unit">E: Rate / Unit</option>
+                                              <option value="Qty">F: Qty</option>
+                                              <option value="Total Value (₹)">G: Total Value (₹)</option>
+                                              {allCols.filter(c => c.name !== col.name).map((c) => {
+                                                const colIdx = allCols.findIndex(cc => cc.name === c.name);
+                                                return (
+                                                  <option key={c.name} value={c.name}>
+                                                    {getExcelColumnName(colIdx + 7)}: {c.name}
+                                                  </option>
+                                                );
+                                              })}
+                                            </select>
+
+                                            {((itemCol as any).multiplierSource || "manual") === "manual" && (
+                                              <input
+                                                type="number"
+                                                className="w-14 h-8 bg-white border-2 border-purple-400 rounded-md px-1.5 text-[12px] font-black text-purple-800 outline-none text-right shadow-sm focus:ring-2 ring-purple-600/30"
+                                                value={itemMultiplier}
+                                                disabled={isVersionSubmitted}
+                                                onChange={(e) => {
+                                                  const newVal = parseFloat(e.target.value) || 0;
+                                                  handleItemCalculation(boqItem.id, col.name, newVal, itemOp, (itemCol as any).multiplierSource || "manual");
+                                                }}
+                                              />
+                                            )}
+
                                             <select
                                               className="bg-white border border-purple-300 rounded text-[9px] font-black text-purple-700 outline-none h-6 px-1 cursor-pointer"
                                               value={itemOp}
                                               disabled={isVersionSubmitted}
                                               onChange={(e) => {
-                                                handleItemCalculation(boqItem.id, col.name, itemMultiplier, e.target.value);
+                                                handleItemCalculation(boqItem.id, col.name, itemMultiplier, e.target.value, (itemCol as any).multiplierSource || "manual");
                                               }}
                                             >
                                               <option value="%">%</option>
