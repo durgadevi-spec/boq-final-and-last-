@@ -283,7 +283,7 @@ export function Sidebar() {
                 </span>
               </Link>
 
-              
+
 
               <Link href="/create-project">
                 <span
@@ -561,84 +561,41 @@ export function Sidebar() {
             </>
           )}
 
-          {!isPreSales && !isContractor && (user?.role === "supplier" ||
-            user?.role === "admin") ? (
+          {!isPreSales && !isContractor && user?.role === "supplier" ? (
             <>
               <div className="px-3 mb-2 text-xs font-semibold text-muted-foreground uppercase tracking-wider">
-                {user?.role === "admin" ? "Materials" : "Supplier"}
+                Supplier
               </div>
-              {user?.role === "supplier" && (
-                <Link href="/supplier/shops">
-                  <span
-                    className={cn(
-                      "flex items-center gap-3 rounded-md px-3 py-2 text-sm font-medium transition-colors cursor-pointer",
-                      location === "/supplier/shops"
-                        ? "bg-sidebar-primary text-sidebar-primary-foreground"
-                        : "text-sidebar-foreground hover:bg-sidebar-accent",
-                    )}
-                    onClick={() => setIsOpen(false)}
-                  >
-                    <Building2 className="h-4 w-4" /> Add Shop
-                  </span>
-                </Link>
-              )}
-              {(user?.role === 'supplier') && (
-                <Link href="/supplier/materials">
-                  <span
-                    className={cn(
-                      "flex items-center gap-3 rounded-md px-3 py-2 text-sm font-medium transition-colors mb-4 cursor-pointer",
-                      location === "/supplier/materials"
-                        ? "bg-sidebar-primary text-sidebar-primary-foreground"
-                        : "text-sidebar-foreground hover:bg-sidebar-accent",
-                    )}
-                    onClick={() => setIsOpen(false)}
-                  >
-                    <Package className="h-4 w-4" /> Manage Materials
-                  </span>
-                </Link>
-              )}
+              <Link href="/supplier/shops">
+                <span
+                  className={cn(
+                    "flex items-center gap-3 rounded-md px-3 py-2 text-sm font-medium transition-colors cursor-pointer",
+                    location === "/supplier/shops"
+                      ? "bg-sidebar-primary text-sidebar-primary-foreground"
+                      : "text-sidebar-foreground hover:bg-sidebar-accent",
+                  )}
+                  onClick={() => setIsOpen(false)}
+                >
+                  <Building2 className="h-4 w-4" /> Add Shop
+                </span>
+              </Link>
+              <Link href="/supplier/materials">
+                <span
+                  className={cn(
+                    "flex items-center gap-3 rounded-md px-3 py-2 text-sm font-medium transition-colors mb-4 cursor-pointer",
+                    location === "/supplier/materials"
+                      ? "bg-sidebar-primary text-sidebar-primary-foreground"
+                      : "text-sidebar-foreground hover:bg-sidebar-accent",
+                  )}
+                  onClick={() => setIsOpen(false)}
+                >
+                  <Package className="h-4 w-4" /> Manage Materials
+                </span>
+              </Link>
             </>
           ) : null}
 
-          {/* Sub-Categories Section */}
-          {(isContractor || isClient || isAdminOrSoftware || user?.role === "purchase_team") && (
-            <>
-              <div className="px-3 mb-2 text-xs font-semibold text-muted-foreground uppercase tracking-wider">
-                Sub-Categories
-              </div>
-              <div className="px-3 mb-2">
-                <input
-                  value={estSearch}
-                  onChange={(e) => setEstSearch(e.target.value)}
-                  placeholder="Search Sub-Categories"
-                  className="w-full rounded-md border px-2 py-1 text-sm bg-transparent text-sidebar-foreground placeholder:text-muted-foreground"
-                />
-              </div>
-              <div className="max-h-[260px] overflow-y-auto pr-1">
-                {filteredEstimators.map((item: any) => {
-                  // Generate href for database-only items (those without predefined href)
-                  const itemHref = item.href || `/estimators/${(item.name || item.label).toLowerCase().replace(/[\s/]+/g, '-')}`;
-                  const Icon = item.icon;
-                  return (
-                    <Link key={item.id || itemHref} href={itemHref}>
-                      <div
-                        className={cn(
-                          "flex items-center gap-3 rounded-md px-3 py-2 text-sm font-medium transition-colors cursor-pointer",
-                          location === itemHref
-                            ? "bg-sidebar-primary text-sidebar-primary-foreground shadow-md"
-                            : "text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground",
-                        )}
-                        onClick={() => setIsOpen(false)}
-                      >
-                        {Icon && <Icon className="h-4 w-4" />}
-                        {item.name || item.label}
-                      </div>
-                    </Link>
-                  );
-                })}
-              </div>
-            </>
-          )}
+
 
           {/* Other Links */}
           {!isPreSales && !isContractor && (

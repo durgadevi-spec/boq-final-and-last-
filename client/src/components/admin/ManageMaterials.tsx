@@ -666,7 +666,7 @@ export default function ManageMaterials() {
                           <SelectValue placeholder="Select a shop" />
                         </SelectTrigger>
                         <SelectContent className="max-h-72 overflow-y-auto">
-                          {shops.map((shop) => (
+                          {[...shops].sort((a, b) => a.name.localeCompare(b.name)).map((shop) => (
                             <SelectItem key={shop.id} value={shop.id}>{shop.name}</SelectItem>
                           ))}
                         </SelectContent>
@@ -739,7 +739,7 @@ export default function ManageMaterials() {
                         <SelectTrigger>
                           <SelectValue placeholder="Select category" />
                         </SelectTrigger>
-                        <SelectContent>
+                        <SelectContent className="max-h-72 overflow-y-auto">
                           {categories.map((cat) => (
                             <SelectItem key={cat} value={cat}>{cat}</SelectItem>
                           ))}
@@ -755,7 +755,7 @@ export default function ManageMaterials() {
                         <SelectTrigger>
                           <SelectValue placeholder={subcategories.length === 0 ? "No subcategories" : "Select subcategory"} />
                         </SelectTrigger>
-                        <SelectContent>
+                        <SelectContent className="max-h-72 overflow-y-auto">
                           {subcategories.map((subcat) => (
                             <SelectItem key={subcat} value={subcat}>{subcat}</SelectItem>
                           ))}

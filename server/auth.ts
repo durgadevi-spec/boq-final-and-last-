@@ -10,7 +10,7 @@ export interface JWTPayload {
   id: string;
   username: string;
   role: string;
-}
+}      
 
 /* ================= PASSWORD ================= */
 
@@ -68,3 +68,4 @@ export function extractTokenFromHeader(
   // Fallback: raw token
   return header;
 }
+              
