@@ -63,17 +63,20 @@ export function computeBoq(
     const base = Number(basis.baseRequiredQty) || 1; // avoid div-by-zero
     const target = Number(targetRequiredQty) || 0;
     // Accept either fraction (0.05) or percent (5) from UI/older data.
+    // If value is > 1 we treat it as a percent (e.g. 5 -> 0.05),
+    // otherwise assume it's already a fraction (e.g. 0.05 -> 0.05).
     let defaultW = Number(basis.wastagePctDefault ?? 0);
     if (defaultW > 1) defaultW = defaultW / 100;
 
     const computed: ComputedLine[] = lines.map((l) => {
         const baseQty = Number(l.baseQty) || 0;
         const applyW = l.applyWastage !== false; // Default to true if undefined
-        // Per-line wastage may be stored as percent (e.g. 5) or fraction (0.05).
-        let w = applyW ? (l.wastagePct !== undefined ? Number(l.wastagePct) : defaultW) : 0;
-        if (w > 1) w = w / 100;
+        // Per-row wastage may be stored as percent (5) or fraction (0.05).
+        const rowWRaw = l.wastagePct !== undefined ? Number(l.wastagePct) : NaN;
+        const rowW = !isNaN(rowWRaw) ? (rowWRaw > 1 ? rowWRaw / 100 : rowWRaw) : undefined;
+        const wastagePctUsed = applyW ? (rowW !== undefined ? rowW : defaultW) : 0;
 
-        const wastageQty = baseQty * w;
+        const wastageQty = baseQty * wastagePctUsed;
         const effectiveQty = baseQty + wastageQty;
         const perUnitQty = base > 0 ? effectiveQty / base : 0;
 
@@ -89,7 +92,7 @@ export function computeBoq(
 
         return {
             ...l,
-            wastagePctUsed: w,
+            wastagePctUsed,
             wastageQty,
             effectiveQty,
             perUnitQty,

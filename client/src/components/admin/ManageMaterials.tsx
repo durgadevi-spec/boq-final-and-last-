@@ -25,7 +25,6 @@ import {
   Plus,
   Loader2,
   AlertTriangle,
-  Copy,
 } from "lucide-react";
 import { postJSON } from "@/lib/api";
 
@@ -634,9 +633,6 @@ export default function ManageMaterials() {
                           <div className="font-medium text-sm">{template.name}</div>
                         </div>
                         <div className="flex gap-1">
-                          <Button size="sm" variant="outline" className="h-7 px-2 text-blue-600 border-blue-200 hover:bg-blue-50" title="Clone Template" onClick={(e) => { e.stopPropagation(); handleCloneMasterMaterial(template); }}>
-                            <Copy size={12} />
-                          </Button>
                           <Button size="sm" variant="outline" className="h-7" onClick={() => handleSelectTemplate(template)}>Select</Button>
                         </div>
                       </div>
