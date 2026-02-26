@@ -496,6 +496,9 @@ export async function registerRoutes(
     await query(
       `ALTER TABLE material_templates ADD COLUMN IF NOT EXISTS technicalspecification TEXT`,
     );
+    await query(
+      `ALTER TABLE material_templates ADD COLUMN IF NOT EXISTS brandname VARCHAR(255)`,
+    );
     console.log("[db] material_templates tax/vendor/techspec columns ensured");
   } catch (err: unknown) {
     console.warn(
@@ -2114,9 +2117,9 @@ export async function registerRoutes(
               const tId = randomUUID();
               const tCode = code || `ITM-${tId.slice(0, 8)}`;
               const tpl = await query(
-                `INSERT INTO material_templates (id, name, code, category, subcategory, vendor_category, tax_code_type, tax_code_value, technicalspecification, created_at, updated_at)
-                 VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,NOW(),NOW()) RETURNING *`,
-                [tId, name, tCode, category, subcategory, vendor_category, tax_code_type, tax_code_value, technicalspecification],
+                `INSERT INTO material_templates (id, name, code, category, subcategory, vendor_category, tax_code_type, tax_code_value, technicalspecification, brandname, created_at, updated_at)
+                 VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,NOW(),NOW()) RETURNING *`,
+                [tId, name, tCode, category, subcategory, vendor_category, tax_code_type, tax_code_value, technicalspecification, raw.brandname || raw.brandName || null],
               );
               templateId = tpl.rows[0].id;
               createdTemplates.push(tpl.rows[0]);

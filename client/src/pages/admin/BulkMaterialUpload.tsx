@@ -50,6 +50,7 @@ const materialHeaders = [
   "vendor_category",
   "tax_code_type",
   "tax_code_value",
+  "brandname",
   "technicalspecification",
 ];
 
@@ -61,6 +62,7 @@ const materialHeaderLabels: Record<string, string> = {
   vendor_category: "Vendor Category",
   tax_code_type: "Tax Code Type",
   tax_code_value: "Tax Code Value",
+  brandname: "Brand",
 };
 
 function generateCodeFromName(name: string) {
@@ -78,7 +80,7 @@ function emptyMaterialRow() {
   return {
     name: "", code: "", unit: "", rate: "",
     category: "", subcategory: "", shop_name: "", vendor_category: "",
-    tax_code_type: "", tax_code_value: "", technicalspecification: ""
+    tax_code_type: "", tax_code_value: "", brandname: "", technicalspecification: ""
   };
 }
 
