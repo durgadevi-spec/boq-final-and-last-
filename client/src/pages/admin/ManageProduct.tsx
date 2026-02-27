@@ -327,7 +327,7 @@ export default function ManageProduct() {
         }
     };
 
-    // Save without navigating away — stays on current step, saves to Step 3's own table
+    // Save without navigating away — submits to approval queue
     const handleSaveInPlace = async () => {
         if (!selectedProduct) return;
 
@@ -335,8 +335,8 @@ export default function ManageProduct() {
         try {
             const uniqueConfigName = configName || `${selectedProduct.name}_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
 
-            // Save to Step 3's own table
-            const step3Res = await apiFetch("/api/product-step3-config", {
+            // Submit for approval instead of saving directly
+            const approvalRes = await apiFetch("/api/product-approvals", {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({
@@ -357,12 +357,12 @@ export default function ManageProduct() {
                         materialId: m.id,
                         materialName: m.name,
                         unit: m.unit,
-                        qty: m.roundOffQty, // Use effective qty (incl wastage)
+                        qty: m.roundOffQty,
                         rate: m.rate,
                         supplyRate: m.supplyRate,
                         installRate: m.installRate,
                         location: m.location,
-                        amount: m.lineTotal, // Use calculated total
+                        amount: m.lineTotal,
                         baseQty: m.baseQty,
                         wastagePct: m.wastagePct ?? null,
                         applyWastage: m.applyWastage,
@@ -371,56 +371,18 @@ export default function ManageProduct() {
                 }),
             });
 
-            if (!step3Res.ok) throw new Error("Failed to save configuration to step3-config table");
-
-            // Also save to step11_products table
-            const step11Res = await apiFetch("/api/step11-products", {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({
-                    productId: selectedProduct.id,
-                    productName: selectedProduct.name,
-                    configName: uniqueConfigName,
-                    categoryId: selectedCategory,
-                    subcategoryId: selectedSubcategory,
-                    totalCost: totalCost,
-                    requiredUnitType: requiredUnitType,
-                    baseRequiredQty: baseRequiredQty,
-                    wastagePctDefault: wastagePctDefault,
-                    description: productDescription,
-                    items: boqResults.computed.map(m => ({
-                        materialId: m.id,
-                        materialName: m.name,
-                        unit: m.unit,
-                        qty: m.roundOffQty, // Use effective qty (incl wastage)
-                        rate: m.rate,
-                        supplyRate: m.supplyRate,
-                        installRate: m.installRate,
-                        location: m.location,
-                        amount: m.lineTotal, // Use calculated total
-                        baseQty: m.baseQty,
-                        wastagePct: m.wastagePct ?? null,
-                        applyWastage: m.applyWastage,
-                        shop_name: m.shop_name
-                    }))
-                }),
-            });
-
-            if (!step11Res.ok) throw new Error("Failed to save configuration to step11-products table");
+            if (!approvalRes.ok) throw new Error("Failed to submit for approval");
 
             toast({
-                title: "Configuration Saved",
-                description: `"${selectedProduct.name}" configuration saved. It will now appear in Manage Product and when using Add Product in Create BOM.`,
+                title: "Submitted for Approval",
+                description: `"${selectedProduct.name}" configuration has been submitted for approval. An admin will review it shortly.`,
             });
-
-            // Refresh the previous configs list
-            fetchPreviousConfigs(selectedProduct.id);
 
             // Stay on the same step — don't reset anything
         } catch (error: any) {
             toast({
                 title: "Error",
-                description: error.message || "Failed to save configuration",
+                description: error.message || "Failed to submit for approval",
                 variant: "destructive",
             });
         } finally {
@@ -1228,10 +1190,10 @@ export default function ManageProduct() {
                                             >
                                                 {isSaving ? (
                                                     <>
-                                                        <Loader2 className="mr-2 h-5 w-5 animate-spin" /> Saving...
+                                                        <Loader2 className="mr-2 h-5 w-5 animate-spin" /> Submitting...
                                                     </>
                                                 ) : (
-                                                    "Save Configuration"
+                                                    "Submit for Approval"
                                                 )}
                                             </Button>
                                             <Button size="lg" onClick={nextStep} className="w-full sm:w-auto bg-primary hover:bg-primary/90 text-white font-bold px-12 transition-all">

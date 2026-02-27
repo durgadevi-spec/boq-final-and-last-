@@ -78,6 +78,7 @@ export function Sidebar() {
   // Fetch pending counts from API
   const [pendingShopCount, setPendingShopCount] = useState(0);
   const [pendingMaterialCount, setPendingMaterialCount] = useState(0);
+  const [pendingProductCount, setPendingProductCount] = useState(0);
   const [messageCount, setMessageCount] = useState(0);
 
   // Fetch subcategories from API
@@ -138,6 +139,27 @@ export function Sidebar() {
         console.warn("load shop count failed", e);
       }
     })();
+  }, []);
+
+  // fetch pending product approvals count
+  useEffect(() => {
+    let cancelled = false;
+    const load = async () => {
+      try {
+        const res = await apiFetch("/api/product-approvals");
+        if (!res || !res.ok) return setPendingProductCount(0);
+        const data = await res.json();
+        if (cancelled) return;
+        setPendingProductCount((data?.approvals || []).filter((a: any) => a.status === "pending").length || 0);
+      } catch (e) {
+        console.warn("load product approval count failed", e);
+        setPendingProductCount(0);
+      }
+    };
+
+    load();
+    const iv = setInterval(load, 30000);
+    return () => { cancelled = true; clearInterval(iv); };
   }, []);
 
   // derive material pending count from central store (keeps counts consistent)
@@ -503,6 +525,7 @@ export function Sidebar() {
                 </span>
               </Link>
 
+
               {/* Supplier approvals (admin only) */}
               {isAdminOnly && (
                 <Link href="/admin/suppliers">
@@ -516,6 +539,28 @@ export function Sidebar() {
                     onClick={() => setIsOpen(false)}
                   >
                     <Users className="h-4 w-4" /> Supplier Approvals
+                  </span>
+                </Link>
+              )}
+
+              {/* Product approvals (admin + software_team) */}
+              {isAdminOrSoftware && (
+                <Link href="/admin/product-approvals">
+                  <span
+                    className={cn(
+                      "flex items-center gap-3 rounded-md px-3 py-2 text-sm font-medium transition-colors cursor-pointer",
+                      location === "/admin/product-approvals"
+                        ? "bg-sidebar-primary text-sidebar-primary-foreground"
+                        : "text-sidebar-foreground hover:bg-sidebar-accent",
+                    )}
+                    onClick={() => setIsOpen(false)}
+                  >
+                    <FolderKanban className="h-4 w-4" /> Product Approvals
+                    {pendingProductCount > 0 && (
+                      <Badge variant="destructive" className="ml-auto">
+                        {pendingProductCount}
+                      </Badge>
+                    )}
                   </span>
                 </Link>
               )}

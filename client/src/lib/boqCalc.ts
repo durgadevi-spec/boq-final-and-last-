@@ -62,18 +62,16 @@ export function computeBoq(
 ): BoqResult {
     const base = Number(basis.baseRequiredQty) || 1; // avoid div-by-zero
     const target = Number(targetRequiredQty) || 0;
-    // Accept either fraction (0.05) or percent (5) from UI/older data.
-    // If value is > 1 we treat it as a percent (e.g. 5 -> 0.05),
-    // otherwise assume it's already a fraction (e.g. 0.05 -> 0.05).
-    let defaultW = Number(basis.wastagePctDefault ?? 0);
-    if (defaultW > 1) defaultW = defaultW / 100;
+    // Wastage is ALWAYS stored and entered as a percentage (e.g. 5 = 5%).
+    // Always divide by 100 to get the fraction for calculation.
+    let defaultW = Number(basis.wastagePctDefault ?? 0) / 100;
 
     const computed: ComputedLine[] = lines.map((l) => {
         const baseQty = Number(l.baseQty) || 0;
         const applyW = l.applyWastage !== false; // Default to true if undefined
-        // Per-row wastage may be stored as percent (5) or fraction (0.05).
+        // Per-row wastage is always a percentage (e.g. 5 = 5%). Divide by 100.
         const rowWRaw = l.wastagePct !== undefined ? Number(l.wastagePct) : NaN;
-        const rowW = !isNaN(rowWRaw) ? (rowWRaw > 1 ? rowWRaw / 100 : rowWRaw) : undefined;
+        const rowW = !isNaN(rowWRaw) ? rowWRaw / 100 : undefined;
         const wastagePctUsed = applyW ? (rowW !== undefined ? rowW : defaultW) : 0;
 
         const wastageQty = baseQty * wastagePctUsed;

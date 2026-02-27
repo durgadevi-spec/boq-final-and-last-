@@ -211,7 +211,7 @@ const DraggableHeaderCol = ({
       as="th"
       dragListener={false}
       dragControls={controls}
-      className={`border-r border-sky-300 px-2 py-2 text-left min-w-[130px] group relative ${col.isTotal ? "text-green-900 bg-emerald-100" : "text-slate-900 bg-sky-100"}`}
+      className={`border-r border-gray-200 px-2 py-2 text-left min-w-[130px] group relative bg-white text-slate-900 ${col.isTotal ? "font-semibold" : ""}`}
     >
       <div className="flex flex-col gap-1">
         <div className="flex items-center justify-between gap-1 overflow-hidden">
@@ -384,6 +384,7 @@ export default function FinalizeBoq() {
   const [savingLayoutId, setSavingLayoutId] = useState<string | null>(null);
   const [showColumnTotals, setShowColumnTotals] = useState(true);
   const [hideSystemTotalFooter, setHideSystemTotalFooter] = useState(false);
+  const [isFullscreen, setIsFullscreen] = useState(false);
   // Manual quantity per boqItem: { [id: string]: string }
   const [productQuantities, setProductQuantities] = useState<{ [id: string]: string }>({});
   // Manual unit per boqItem: { [id: string]: string }
@@ -698,6 +699,20 @@ export default function FinalizeBoq() {
 
     loadProjects();
   }, []);
+
+  // Handle fullscreen side-effects: Escape to close and prevent body scroll
+  useEffect(() => {
+    if (!isFullscreen) return;
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setIsFullscreen(false);
+    };
+    document.body.style.overflow = 'hidden';
+    window.addEventListener('keydown', onKeyDown);
+    return () => {
+      document.body.style.overflow = '';
+      window.removeEventListener('keydown', onKeyDown);
+    };
+  }, [isFullscreen]);
 
   const loadTemplates = React.useCallback(async () => {
     try {
@@ -1194,9 +1209,18 @@ export default function FinalizeBoq() {
     const nextValsMap: any = {};
 
     boqItems.forEach(item => {
-      let itemCols = customColumns[item.id] || [];
-      const itemCol = itemCols.find(c => c.name === colName);
+      let itemCols = [...(customColumns[item.id] || [])];
+      let colIdx = itemCols.findIndex(c => c.name === colName);
 
+      if (colIdx === -1) {
+        // If missing locally, find global definition to copy from
+        const globalCol = allCols.find(c => c.name === colName);
+        if (globalCol) itemCols.push({ ...globalCol });
+        else itemCols.push({ name: colName, isTotal: false });
+        colIdx = itemCols.length - 1;
+      }
+
+      const itemCol = itemCols[colIdx];
       const currentRowMultiplier = itemCol?.percentageValue || oldMultiplier;
       const newRowMultiplier = currentRowMultiplier + deltaMultiplier;
 
@@ -1254,9 +1278,16 @@ export default function FinalizeBoq() {
         }
       }
 
-      const updatedCols = itemCols.map(c =>
-        c.name === colName ? { ...c, baseValue: base, percentageValue: newRowMultiplier, baseSource, operator, multiplierSource, isPercentage: (baseSource !== "manual") } : c
-      );
+      itemCols[colIdx] = {
+        ...itemCols[colIdx],
+        baseValue: base,
+        percentageValue: newRowMultiplier,
+        baseSource,
+        operator,
+        multiplierSource,
+        isPercentage: (baseSource !== "manual")
+      };
+      const updatedCols = itemCols;
       nextColsMap[item.id] = updatedCols;
 
       let rowMultiplierVal = 0;
@@ -1300,11 +1331,19 @@ export default function FinalizeBoq() {
     const item = boqItems.find(i => i.id === boqItemId);
     if (!item) return;
 
-    const itemCols = customColumns[item.id] || [];
-    const itemCol = itemCols.find(c => c.name === colName);
-    if (!itemCol) return;
+    let itemCols = [...(customColumns[item.id] || [])];
+    let colIdx = itemCols.findIndex(c => c.name === colName);
 
-    const baseSource = baseSourceOverride || itemCol.baseSource || "manual";
+    if (colIdx === -1) {
+      const globalCol = allCols.find(c => c.name === colName);
+      if (!globalCol) return;
+      itemCols.push({ ...globalCol });
+      colIdx = itemCols.length - 1;
+    }
+
+    const itemCol = itemCols[colIdx];
+
+    const baseSource = baseSourceOverride || itemCol.baseSource || "Total Value (₹)";
     let rowBase = 0;
 
     // Ensure system values available
@@ -1383,17 +1422,25 @@ export default function FinalizeBoq() {
     else if (operator === "/") calculated = rowMultiplierVal !== 0 ? rowBase / rowMultiplierVal : 0;
     else if (operator === "+") calculated = rowBase + rowMultiplierVal;
 
-    const nextCols = itemCols.map(c =>
-      c.name === colName ? { ...c, percentageValue: multiplier, operator, multiplierSource, baseSource, isPercentage: (baseSource !== "manual") } : c
-    );
+    // Update the column definition for this item
+    itemCols[colIdx] = {
+      ...itemCols[colIdx],
+      baseSource,
+      percentageValue: multiplier,
+      operator,
+      multiplierSource,
+      isPercentage: (baseSource !== "manual")
+    };
+    const updatedCols = itemCols;
 
     const itemVals = { ...(customColumnValues[item.id] || {}) };
     itemVals[0] = { ...(itemVals[0] || {}), [colName]: calculated.toFixed(2) };
 
-    setCustomColumns(prev => ({ ...prev, [item.id]: nextCols }));
+    setCustomColumns(prev => ({ ...prev, [item.id]: updatedCols }));
     setCustomColumnValues(prev => ({ ...prev, [item.id]: itemVals }));
 
-    await saveItemLayout(item.id, nextCols, itemVals);
+    // Save both column definitions and values
+    await saveItemLayout(item.id, updatedCols, itemVals);
   };
 
   const getEditedValue = (
@@ -1887,12 +1934,12 @@ export default function FinalizeBoq() {
         }
       });
       sheetData.push(footerRow);
-      
+
       // Add Terms and Conditions at the bottom
       if (termsAndConditions && termsAndConditions.trim()) {
         sheetData.push([]); // Spacer
         sheetData.push([]); // Spacer
-        
+
         const termsHeaderRow = Array(selectedExportCols.length).fill("");
         termsHeaderRow[0] = "Terms & Conditions:";
         sheetData.push(termsHeaderRow);
@@ -2218,7 +2265,7 @@ export default function FinalizeBoq() {
                         ))}
                       </SelectContent>
                     </Select>
-                    
+
                     <div className="flex gap-1">
                       {selectedVersionId && (
                         <Button
@@ -2308,7 +2355,7 @@ export default function FinalizeBoq() {
                                 onClick={() => handleApplyTemplate(t.id)}
                               >
                                 <span className="text-xs truncate">{t.name}</span>
-                                <Trash2 
+                                <Trash2
                                   className="h-3.3 w-3.5 text-slate-300 hover:text-red-500 opacity-0 group-hover:opacity-100"
                                   onClick={(e) => { e.stopPropagation(); handleDeleteTemplate(t.id); }}
                                 />
@@ -2466,7 +2513,12 @@ export default function FinalizeBoq() {
                 </CardContent>
               </Card>
             ) : (
-              <Card className="border-2 border-gray-200 overflow-hidden shadow-sm">
+              <Card className={`border-2 border-gray-200 overflow-hidden shadow-sm ${isFullscreen ? 'fixed inset-0 z-50 m-0 p-6 bg-white overflow-auto' : ''}`}>
+                {isFullscreen && (
+                  <div className="absolute top-4 right-6 z-50">
+                    <Button variant="ghost" onClick={() => setIsFullscreen(false)} className="bg-white/80">Close</Button>
+                  </div>
+                )}
                 {!isVersionSubmitted && (
                   <div className="flex items-center gap-3 p-4 bg-gray-50/80 border-b overflow-x-auto whitespace-nowrap scrollbar-hide">
                     <span className="text-[12px] font-semibold uppercase tracking-widest text-gray-500 mr-2 flex-shrink-0">Unified BOM Actions:</span>
@@ -2493,6 +2545,14 @@ export default function FinalizeBoq() {
                       }}
                     >
                       + Add Global Column
+                    </Button>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="h-9 px-4 text-[12px] font-bold uppercase border-gray-300 text-gray-700 hover:bg-gray-100 transition-all shadow-sm ml-2"
+                      onClick={() => setIsFullscreen(true)}
+                    >
+                      Full Screen
                     </Button>
                     <Button
                       variant="outline"
@@ -2594,46 +2654,46 @@ export default function FinalizeBoq() {
                   <table className="border-collapse text-sm min-w-full">
                     <thead>
                       {/* Excel-style Column Labels */}
-                      <tr className="bg-sky-50 border-b border-sky-200 text-[11px] font-black text-sky-800 shadow-inner">
-                        <th className="border-r border-sky-200 py-1.5 w-10 text-center">A</th>
-                        <th className="border-r border-sky-200 py-1.5 w-12 text-center text-blue-700">B</th>
-                        <th className="border-r border-sky-200 py-1.5 text-center w-64">C</th>
-                        <th className="border-r border-sky-200 py-1.5 text-center w-72">D</th>
-                        <th className="border-r border-sky-200 py-1.5 text-center w-24">E</th>
-                        <th className="border-r border-sky-200 py-1.5 text-center w-24">F</th>
-                        <th className="border-r border-sky-200 py-1.5 text-center w-32">G</th>
-                        <th className="border-r border-sky-200 py-1.5 text-center w-24">H</th>
-                        <th className="border-r border-sky-200 py-1.5 text-center w-28">I</th>
-                        <th className="border-r border-sky-200 py-1.5 text-center text-green-800 w-32">J</th>
-                        <th className="border-r border-sky-200 py-1.5 text-center text-blue-800 w-32">K</th>
-                        <th className="border-r border-sky-200 py-1.5 text-center text-green-800 w-32">L</th>
+                      <tr className="bg-gray-100 border-b border-gray-200 text-[11px] font-semibold text-gray-700">
+                        <th className="border-r border-gray-200 py-1.5 w-10 text-center">A</th>
+                        <th className="border-r border-gray-200 py-1.5 w-12 text-center text-gray-700">B</th>
+                        <th className="border-r border-gray-200 py-1.5 text-center w-64">C</th>
+                        <th className="border-r border-gray-200 py-1.5 text-center w-72">D</th>
+                        <th className="border-r border-gray-200 py-1.5 text-center w-24">E</th>
+                        <th className="border-r border-gray-200 py-1.5 text-center w-24">F</th>
+                        <th className="border-r border-gray-200 py-1.5 text-center w-32">G</th>
+                        <th className="border-r border-gray-200 py-1.5 text-center w-24">H</th>
+                        <th className="border-r border-gray-200 py-1.5 text-center w-28">I</th>
+                        <th className="border-r border-gray-200 py-1.5 text-center text-gray-700 w-32">J</th>
+                        <th className="border-r border-gray-200 py-1.5 text-center text-gray-700 w-32">K</th>
+                        <th className="border-r border-gray-200 py-1.5 text-center text-gray-700 w-32">L</th>
                         {allCols.map((_, idx) => (
-                          <th key={idx} className="border-r border-sky-200 py-1.5 text-center text-slate-900 text-[11px] font-black bg-sky-100/50">
+                          <th key={idx} className="border-r border-gray-200 py-1.5 text-center text-slate-900 text-[11px] font-semibold bg-gray-50">
                             {getExcelColumnName(idx + 12)}
                           </th>
                         ))}
                       </tr>
                       {/* Grouping Header Row */}
-                      <tr className="bg-sky-100 text-slate-900 text-[13px] font-black uppercase tracking-widest border-b border-sky-200">
-                        <th colSpan={10} className="py-2.5 border-r border-sky-200 bg-sky-200/40">Item Details</th>
-                        <th colSpan={2} className="py-2.5 border-r border-sky-200 bg-blue-200 text-blue-900">OVERRIDE</th>
-                        <th colSpan={allCols.length} className="py-2.5 bg-purple-200 text-purple-900">Custom Filters & Totals</th>
+                      <tr className="bg-gray-100 text-slate-900 text-[13px] font-semibold uppercase tracking-widest border-b border-gray-200">
+                        <th colSpan={10} className="py-2.5 border-r border-gray-200 bg-gray-50/40">Item Details</th>
+                        <th colSpan={2} className="py-2.5 border-r border-gray-200 bg-gray-50 text-gray-700">OVERRIDE</th>
+                        <th colSpan={allCols.length} className="py-2.5 bg-gray-50 text-gray-700">Custom Filters & Totals</th>
                       </tr>
-                      <tr className="bg-sky-200 text-slate-900 border-b border-sky-300 text-[12px] font-black uppercase tracking-wider shadow-sm">
-                        <th className="border-r border-sky-300 px-2 py-2.5 text-center w-10">
-                          <GripVertical size={18} className="mx-auto text-sky-600" />
+                      <tr className="bg-gray-200 text-slate-900 border-b border-gray-300 text-[12px] font-semibold uppercase tracking-wider shadow-sm">
+                        <th className="border-r border-gray-300 px-2 py-2.5 text-center w-10">
+                          <GripVertical size={18} className="mx-auto text-gray-500" />
                         </th>
-                        <th className="border-r border-sky-300 px-1 py-2.5 text-left min-w-[30px] w-12 text-[11px]">S.No</th>
-                        <th className="border-r border-sky-300 px-3 py-2.5 text-left min-w-[250px] text-[11px]">Product / Material</th>
-                        <th className="border-r border-sky-300 px-3 py-2.5 text-left min-w-[250px] text-[11px]">Description / Location</th>
-                        <th className="border-r border-sky-300 px-1 py-2.5 text-center w-24 text-[11px]">HSN</th>
-                        <th className="border-r border-sky-300 px-1 py-2.5 text-center w-24 text-[11px]">SAC</th>
-                        <th className="border-r border-sky-300 px-1 py-2.5 text-right w-32 text-[11px]">Rate</th>
-                        <th className="border-r border-sky-300 px-1 py-2.5 text-center w-24 text-[11px]">Unit</th>
-                        <th className="border-r border-sky-300 px-1 py-2.5 text-center w-28 text-[11px]">Qty</th>
-                        <th className="border-r border-sky-300 px-1 py-1.5 text-right w-32 text-emerald-900 bg-emerald-100/50 text-[11px]">System Total (J)</th>
-                        <th className="border-r border-sky-300 px-1 py-1.5 text-right w-32 text-blue-900 bg-blue-100/50 text-[11px]">Rate (K)</th>
-                        <th className="border-r border-sky-300 px-1 py-1.5 text-right w-32 text-emerald-900 bg-emerald-100/50 text-[11px]">Total (L)</th>
+                        <th className="border-r border-gray-300 px-1 py-2.5 text-left min-w-[30px] w-12 text-[11px]">S.No</th>
+                        <th className="border-r border-gray-300 px-3 py-2.5 text-left min-w-[250px] text-[11px]">Product / Material</th>
+                        <th className="border-r border-gray-300 px-3 py-2.5 text-left min-w-[250px] text-[11px]">Description / Location</th>
+                        <th className="border-r border-gray-300 px-1 py-2.5 text-center w-24 text-[11px]">HSN</th>
+                        <th className="border-r border-gray-300 px-1 py-2.5 text-center w-24 text-[11px]">SAC</th>
+                        <th className="border-r border-gray-300 px-1 py-2.5 text-right w-32 text-[11px]">Rate</th>
+                        <th className="border-r border-gray-300 px-1 py-2.5 text-center w-24 text-[11px]">Unit</th>
+                        <th className="border-r border-gray-300 px-1 py-2.5 text-center w-28 text-[11px]">Qty</th>
+                        <th className="border-r border-gray-300 px-1 py-1.5 text-right w-32 text-gray-800 bg-gray-50/20 text-[11px]">System Total (J)</th>
+                        <th className="border-r border-gray-300 px-1 py-1.5 text-right w-32 text-gray-800 bg-gray-50/20 text-[11px]">Rate (K)</th>
+                        <th className="border-r border-gray-300 px-1 py-1.5 text-right w-32 text-gray-800 bg-gray-50/20 text-[11px]">Total (L)</th>
                         <Reorder.Group
                           axis="x"
                           values={allCols}
@@ -2816,7 +2876,7 @@ export default function FinalizeBoq() {
                                 placeholder="Qty"
                               />
                             </td>
-                            <td className="border-r px-2 py-1.5 text-right font-semibold text-green-700 bg-green-50/20 align-middle text-[10px] w-32">
+                            <td className="border-r px-2 py-1.5 text-right font-semibold text-gray-800 bg-gray-50 align-middle text-[10px] w-32">
                               ₹{(rateSqft * (productQuantities[boqItem.id] !== undefined ? parseFloat(productQuantities[boqItem.id]) || 0 : (tableData.materialLines && tableData.targetRequiredQty !== undefined ? Number(tableData.targetRequiredQty) : Number(currentStep11Items[0]?.qty || 0)))).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                             </td>
                             <td className="border-r px-2 py-1 text-center font-semibold text-gray-800 align-middle w-32 min-w-[100px]">
@@ -2826,11 +2886,11 @@ export default function FinalizeBoq() {
                                 disabled={isVersionSubmitted}
                                 onChange={e => setOverrideRates(prev => ({ ...prev, [boqItem.id]: e.target.value }))}
                                 onBlur={() => saveItemLayout(boqItem.id, undefined, undefined, undefined, undefined, overrideRates[boqItem.id])}
-                                className="w-full border-none rounded p-0.5 text-[10px] focus:ring-1 ring-blue-300 outline-none bg-blue-50/50 text-right font-semibold h-7 px-2"
+                                className="w-full border-none rounded p-0.5 text-[10px] focus:ring-1 ring-gray-300 outline-none bg-gray-50 text-right font-semibold h-7 px-2"
                                 placeholder="0.00"
                               />
                             </td>
-                            <td className="border-r px-2 py-1.5 text-right font-semibold text-green-800 bg-green-50/40 align-middle text-[10px] w-32">
+                            <td className="border-r px-2 py-1.5 text-right font-semibold text-gray-800 bg-gray-50 align-middle text-[10px] w-32">
                               ₹{((parseFloat(overrideRates[boqItem.id] || "0") || 0) * (productQuantities[boqItem.id] !== undefined ? parseFloat(productQuantities[boqItem.id]) || 0 : (tableData.materialLines && tableData.targetRequiredQty !== undefined ? Number(tableData.targetRequiredQty) : Number(currentStep11Items[0]?.qty || 0)))).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                             </td>
                             {/* Custom columns */}
@@ -2857,7 +2917,8 @@ export default function FinalizeBoq() {
                                   const itemColList = customColumns[boqItem.id] || [];
                                   const itemCol = itemColList.find((c: any) => c.name === col.name) || col;
                                   const baseSource = (itemCol as any).baseSource;
-                                  const isCalculated = baseSource && baseSource !== "manual";
+                                  const currentBaseSource = baseSource || "Total Value (₹)";
+                                  const isCalculated = currentBaseSource && currentBaseSource !== "manual";
                                   let valNum = 0;
                                   const multiplierSource = (itemCol as any).multiplierSource || "manual";
                                   const manualMultiplier = (itemCol as any).percentageValue || 0;
@@ -2914,14 +2975,17 @@ export default function FinalizeBoq() {
 
                                   rowCalculatedValues[col.name] = valNum;
                                   accumulator += valNum;
-                                  const displayVal = isCalculated ? valNum.toFixed(2) : (customColumnValues[boqItem.id]?.[0]?.[col.name] || "");
+                                  const savedVal = customColumnValues[boqItem.id]?.[0]?.[col.name];
+                                  const displayVal = (savedVal !== undefined && savedVal !== null && savedVal !== "")
+                                    ? String(savedVal)
+                                    : (isCalculated ? valNum.toFixed(2) : "");
                                   const itemMultiplier = (itemCol as any).percentageValue || 0;
                                   const itemOp = (itemCol as any).operator || "%";
 
                                   return (
-                                    <td key={`${col.name}-${idx}`} className="border-r px-2 py-1 bg-purple-50/10 relative group/cell align-middle text-[11px] min-w-[180px]">
+                                    <td key={`${col.name}-${idx}`} className="border-r px-2 py-1 bg-transparent relative group/cell align-middle text-[11px] min-w-[180px]">
                                       <div className="flex flex-col h-full min-h-[45px] justify-between">
-                                        {isCalculated && (
+                                        {!col.isTotal && (
                                           <div className="absolute left-1 top-1 z-20 pointer-events-none group-hover/cell:pointer-events-auto focus-within:pointer-events-auto">
                                             <div className="flex items-center gap-1 opacity-0 group-hover/cell:opacity-100 focus-within:opacity-100 transition-opacity bg-white/95 p-1 rounded-md shadow-md border border-purple-200">
                                               <select
@@ -2951,14 +3015,15 @@ export default function FinalizeBoq() {
 
                                               <select
                                                 className="bg-white border border-purple-300 rounded text-[10px] font-semibold text-purple-700 outline-none h-6 px-1 cursor-pointer"
-                                                value={(itemCol as any).baseSource || "manual"}
+                                                value={(itemCol as any).baseSource || "Total Value (₹)"}
                                                 disabled={isVersionSubmitted}
                                                 onChange={(e) => {
                                                   handleItemCalculation(boqItem.id, col.name, itemMultiplier, itemOp, (itemCol as any).multiplierSource || "manual", e.target.value);
                                                 }}
                                               >
-                                                <option value="manual">Source</option>
+                                                <option value="manual">Fixed Value</option>
                                                 <option value="Total Value (₹)">J: Total</option>
+
                                                 <option value="Rate / Unit">G: Rate</option>
                                                 <option value="Qty">I: Qty</option>
                                                 <option value="Override Rate">K: O.Rate</option>
@@ -2981,7 +3046,7 @@ export default function FinalizeBoq() {
                                                   disabled={isVersionSubmitted}
                                                   onChange={(e) => {
                                                     const newVal = parseFloat(e.target.value) || 0;
-                                                    handleItemCalculation(boqItem.id, col.name, newVal, itemOp, (itemCol as any).multiplierSource || "manual", (itemCol as any).baseSource || "manual");
+                                                    handleItemCalculation(boqItem.id, col.name, newVal, itemOp, (itemCol as any).multiplierSource || "manual", (itemCol as any).baseSource || "Total Value (₹)");
                                                   }}
                                                 />
                                               )}
@@ -2991,7 +3056,7 @@ export default function FinalizeBoq() {
                                                 value={itemOp}
                                                 disabled={isVersionSubmitted}
                                                 onChange={(e) => {
-                                                  handleItemCalculation(boqItem.id, col.name, itemMultiplier, e.target.value, (itemCol as any).multiplierSource || "manual", (itemCol as any).baseSource || "manual");
+                                                  handleItemCalculation(boqItem.id, col.name, itemMultiplier, e.target.value, (itemCol as any).multiplierSource || "manual", (itemCol as any).baseSource || "Total Value (₹)");
                                                 }}
                                               >
                                                 <option value="%">%</option>
@@ -3015,7 +3080,7 @@ export default function FinalizeBoq() {
                                             }
                                           }))}
                                           onBlur={() => saveItemLayout(boqItem.id)}
-                                          className={`w-full h-7 border-transparent rounded px-1 py-0.5 text-[11px] outline-none bg-transparent text-right font-bold transition-colors ${isCalculated ? "text-indigo-700" : "text-purple-800 focus:ring-1 ring-purple-400 hover:border-purple-200"}`}
+                                          className={`w-full h-7 border-transparent rounded px-1 py-0.5 text-[11px] outline-none bg-transparent text-right font-bold transition-colors text-gray-800`}
                                           placeholder="0.00"
                                         />
 
@@ -3063,7 +3128,7 @@ export default function FinalizeBoq() {
                           <td className="border-r px-4 py-3 text-right font-semibold text-gray-600 bg-gray-50/50">
                             {/* Qty Total intentionally left empty per user request */}
                           </td>
-                          <td className="border-r px-2 py-1.5 text-right font-semibold text-green-700 bg-green-50/30 group/total relative text-[11px] w-32">
+                          <td className="border-r px-2 py-1.5 text-right font-semibold text-gray-800 bg-gray-50 group/total relative text-[11px] w-32">
                             {!hideSystemTotalFooter ? (
                               <>
                                 ₹{calculatedColumnTotals.totalValueSum.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
@@ -3078,22 +3143,22 @@ export default function FinalizeBoq() {
                             ) : (
                               <button
                                 onClick={() => handleSetSystemTotalVisibility(true)}
-                                className="text-blue-500 hover:text-blue-700 text-[10px] font-bold uppercase transition-colors"
+                                className="text-gray-700 hover:text-gray-900 text-[10px] font-bold uppercase transition-colors"
                               >
                                 + Restore Total
                               </button>
                             )}
                           </td>
-                          <td className="border-r px-2 py-1.5 text-right font-semibold text-gray-600 bg-gray-50/50 text-[11px] w-32">
+                          <td className="border-r px-2 py-1.5 text-right font-semibold text-gray-600 bg-gray-50 text-[11px] w-32">
                             {/* Override Rate total - empty */}
                           </td>
-                          <td className="border-r px-2 py-1.5 text-right font-semibold text-green-800 bg-green-50/40 text-[11px] w-32">
+                          <td className="border-r px-2 py-1.5 text-right font-semibold text-gray-800 bg-gray-50 text-[11px] w-32">
                             ₹{calculatedColumnTotals.overrideTotalSum.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                           </td>
                           {allCols.map((col, idx) => (
                             <td
                               key={`total-${idx}`}
-                              className={`border-r px-2 py-1.5 text-right font-semibold group/total relative text-[11px] ${col.isTotal ? "text-green-900 bg-green-100/40" : "text-purple-700 bg-purple-50"}`}
+                              className={`border-r px-2 py-1.5 text-right font-semibold group/total relative text-[11px] text-gray-800 bg-gray-50`}
                             >
                               {!col.hideTotal ? (
                                 <>
@@ -3109,7 +3174,7 @@ export default function FinalizeBoq() {
                               ) : (
                                 <button
                                   onClick={() => handleToggleColumnTotalVisibility(col.name, false)}
-                                  className="text-blue-500 hover:text-blue-700 text-[10px] font-bold uppercase transition-colors"
+                                  className="text-gray-700 hover:text-gray-900 text-[10px] font-bold uppercase transition-colors"
                                 >
                                   + Restore
                                 </button>
@@ -3273,6 +3338,6 @@ export default function FinalizeBoq() {
           </DialogContent>
         </Dialog>
       </div>
-    </Layout>
+    </Layout >
   );
 }

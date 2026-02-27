@@ -4957,5 +4957,259 @@ export async function registerRoutes(
     }
   });
 
+  // ==================== PRODUCT APPROVAL ROUTES ====================
+
+  // POST /api/product-approvals - Submit for approval
+  app.post(
+    "/api/product-approvals",
+    authMiddleware,
+    async (req: Request, res: Response) => {
+      try {
+        const {
+          productId, productName, configName, categoryId, subcategoryId,
+          totalCost, items, requiredUnitType, baseRequiredQty, wastagePctDefault,
+          dimA, dimB, dimC, description
+        } = req.body;
+
+        if (!productId) {
+          res.status(400).json({ message: "Product ID is required" });
+          return;
+        }
+
+        await query("BEGIN");
+        try {
+          const approvalResult = await query(
+            `INSERT INTO product_approvals (
+              product_id, product_name, config_name, category_id, subcategory_id,
+              total_cost, required_unit_type, base_required_qty, wastage_pct_default,
+              dim_a, dim_b, dim_c, description, status, created_by,
+              created_at, updated_at
+            ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,'pending',$14,NOW(),NOW()) RETURNING id`,
+            [
+              productId, productName, configName || "Default", categoryId, subcategoryId,
+              totalCost, requiredUnitType || 'Sqft', baseRequiredQty || 1, wastagePctDefault || 0,
+              dimA || null, dimB || null, dimC || null, description || null,
+              (req.user as any)?.username || 'unknown'
+            ]
+          );
+          const approvalId = approvalResult.rows[0].id;
+
+          if (items && Array.isArray(items)) {
+            for (const item of items) {
+              await query(
+                `INSERT INTO product_approval_items
+                 (approval_id, material_id, material_name, unit, qty, rate, supply_rate, install_rate, location, amount, base_qty, wastage_pct, apply_wastage, shop_name)
+                 VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)`,
+                [
+                  approvalId, item.materialId, item.materialName, item.unit, item.qty, item.rate,
+                  item.supplyRate, item.installRate, item.location, item.amount,
+                  item.baseQty, item.wastagePct,
+                  item.applyWastage !== undefined ? item.applyWastage : true,
+                  item.shopName || item.shop_name || null
+                ]
+              );
+            }
+          }
+
+          await query("COMMIT");
+          res.status(201).json({ message: "Product configuration submitted for approval", id: approvalId });
+        } catch (err) {
+          await query("ROLLBACK");
+          throw err;
+        }
+      } catch (err) {
+        console.error("POST /api/product-approvals error:", err);
+        res.status(500).json({ message: "Failed to submit for approval" });
+      }
+    }
+  );
+
+  // GET /api/product-approvals - List all approval requests
+  app.get(
+    "/api/product-approvals",
+    authMiddleware,
+    requireRole("admin", "software_team"),
+    async (_req: Request, res: Response) => {
+      try {
+        const result = await query(
+          "SELECT * FROM product_approvals ORDER BY created_at DESC"
+        );
+        res.json({ approvals: result.rows });
+      } catch (err) {
+        console.error("GET /api/product-approvals error:", err);
+        res.status(500).json({ message: "Failed to load approval requests" });
+      }
+    }
+  );
+
+  // GET /api/product-approvals/:id - Get details for a specific approval
+  app.get(
+    "/api/product-approvals/:id",
+    authMiddleware,
+    requireRole("admin", "software_team"),
+    async (req: Request, res: Response) => {
+      try {
+        const approvalResult = await query("SELECT * FROM product_approvals WHERE id = $1", [req.params.id]);
+        if (approvalResult.rows.length === 0) {
+          res.status(404).json({ message: "Approval request not found" });
+          return;
+        }
+        const itemsResult = await query(
+          "SELECT * FROM product_approval_items WHERE approval_id = $1 ORDER BY id ASC",
+          [req.params.id]
+        );
+        res.json({ approval: approvalResult.rows[0], items: itemsResult.rows });
+      } catch (err) {
+        console.error("GET /api/product-approvals/:id error:", err);
+        res.status(500).json({ message: "Failed to load approval details" });
+      }
+    }
+  );
+
+  // POST /api/product-approvals/:id/approve - Approve a request
+  app.post(
+    "/api/product-approvals/:id/approve",
+    authMiddleware,
+    requireRole("admin", "software_team"),
+    async (req: Request, res: Response) => {
+      const { id } = req.params;
+      try {
+        await query("BEGIN");
+        try {
+          const approvalResult = await query(
+            "SELECT * FROM product_approvals WHERE id = $1 AND status = 'pending'", [id]
+          );
+          if (approvalResult.rows.length === 0) {
+            await query("ROLLBACK");
+            res.status(404).json({ message: "Pending approval request not found" });
+            return;
+          }
+          const appVal = approvalResult.rows[0];
+          const itemsResult = await query(
+            "SELECT * FROM product_approval_items WHERE approval_id = $1", [id]
+          );
+          const appItems = itemsResult.rows;
+
+          // 1. Save to product_step3_config (overwrite)
+          await query("DELETE FROM product_step3_config WHERE product_id = $1", [appVal.product_id]);
+          // Ensure columns exist (best-effort)
+          await query("ALTER TABLE product_step3_config ADD COLUMN IF NOT EXISTS dim_a DECIMAL(10,4)").catch(() => { });
+          await query("ALTER TABLE product_step3_config ADD COLUMN IF NOT EXISTS dim_b DECIMAL(10,4)").catch(() => { });
+          await query("ALTER TABLE product_step3_config ADD COLUMN IF NOT EXISTS dim_c DECIMAL(10,4)").catch(() => { });
+          await query("ALTER TABLE product_step3_config ADD COLUMN IF NOT EXISTS description TEXT").catch(() => { });
+
+          const step3ConfigResult = await query(
+            `INSERT INTO product_step3_config (
+              product_id, product_name, config_name, category_id, subcategory_id,
+              total_cost, required_unit_type, base_required_qty, wastage_pct_default,
+              dim_a, dim_b, dim_c, description, created_at, updated_at
+            ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,NOW(),NOW()) RETURNING id`,
+            [
+              appVal.product_id, appVal.product_name, appVal.config_name,
+              appVal.category_id, appVal.subcategory_id, appVal.total_cost,
+              appVal.required_unit_type, appVal.base_required_qty, appVal.wastage_pct_default,
+              appVal.dim_a, appVal.dim_b, appVal.dim_c, appVal.description
+            ]
+          );
+          const step3Id = step3ConfigResult.rows[0].id;
+
+          // Ensure item columns exist
+          await query("ALTER TABLE product_step3_config_items ADD COLUMN IF NOT EXISTS apply_wastage BOOLEAN DEFAULT TRUE").catch(() => { });
+          await query("ALTER TABLE product_step3_config_items ADD COLUMN IF NOT EXISTS shop_name VARCHAR(255)").catch(() => { });
+
+          for (const item of appItems) {
+            await query(
+              `INSERT INTO product_step3_config_items
+               (step3_config_id, material_id, material_name, unit, qty, rate, supply_rate, install_rate, location, amount, base_qty, wastage_pct, apply_wastage, shop_name)
+               VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)`,
+              [
+                step3Id, item.material_id, item.material_name, item.unit,
+                item.qty, item.rate, item.supply_rate, item.install_rate,
+                item.location, item.amount, item.base_qty, item.wastage_pct,
+                item.apply_wastage, item.shop_name
+              ]
+            );
+          }
+
+          // 2. Save to step11_products (include all columns matching the original POST route)
+          await query("ALTER TABLE step11_products ADD COLUMN IF NOT EXISTS required_unit_type VARCHAR(20)").catch(() => { });
+          await query("ALTER TABLE step11_products ADD COLUMN IF NOT EXISTS base_required_qty DECIMAL(10,4)").catch(() => { });
+          await query("ALTER TABLE step11_products ADD COLUMN IF NOT EXISTS wastage_pct_default DECIMAL(10,4)").catch(() => { });
+          await query("ALTER TABLE step11_products ADD COLUMN IF NOT EXISTS dim_a DECIMAL(10,4)").catch(() => { });
+          await query("ALTER TABLE step11_products ADD COLUMN IF NOT EXISTS dim_b DECIMAL(10,4)").catch(() => { });
+          await query("ALTER TABLE step11_products ADD COLUMN IF NOT EXISTS dim_c DECIMAL(10,4)").catch(() => { });
+          await query("ALTER TABLE step11_products ADD COLUMN IF NOT EXISTS description TEXT").catch(() => { });
+
+          // Delete existing config with same config_name if any
+          if (appVal.config_name) {
+            await query("DELETE FROM step11_products WHERE product_id = $1 AND config_name = $2", [appVal.product_id, appVal.config_name]);
+          }
+
+          const step11Result = await query(
+            `INSERT INTO step11_products (product_id, product_name, config_name, category_id, subcategory_id, total_cost, required_unit_type, base_required_qty, wastage_pct_default, dim_a, dim_b, dim_c, description, created_at, updated_at)
+             VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,NOW(),NOW()) RETURNING id`,
+            [
+              appVal.product_id, appVal.product_name, appVal.config_name || 'Default Configuration',
+              appVal.category_id, appVal.subcategory_id, appVal.total_cost,
+              appVal.required_unit_type || 'Sqft', appVal.base_required_qty || 1, appVal.wastage_pct_default || 0,
+              appVal.dim_a, appVal.dim_b, appVal.dim_c, appVal.description
+            ]
+          );
+          const step11Id = step11Result.rows[0].id;
+
+          await query("ALTER TABLE step11_product_items ADD COLUMN IF NOT EXISTS apply_wastage BOOLEAN DEFAULT TRUE").catch(() => { });
+          await query("ALTER TABLE step11_product_items ADD COLUMN IF NOT EXISTS shop_name VARCHAR(255)").catch(() => { });
+
+          for (const item of appItems) {
+            await query(
+              `INSERT INTO step11_product_items (step11_product_id, material_id, material_name, unit, qty, rate, supply_rate, install_rate, location, amount, apply_wastage, shop_name)
+               VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)`,
+              [
+                step11Id, item.material_id, item.material_name, item.unit,
+                item.qty, item.rate, item.supply_rate, item.install_rate,
+                item.location, item.amount, item.apply_wastage, item.shop_name
+              ]
+            );
+          }
+
+          // 3. Mark approved
+          await query("UPDATE product_approvals SET status = 'approved', updated_at = NOW() WHERE id = $1", [id]);
+
+          await query("COMMIT");
+          res.json({ message: "Product configuration approved and saved successfully" });
+        } catch (err) {
+          await query("ROLLBACK");
+          throw err;
+        }
+      } catch (err) {
+        console.error("POST /api/product-approvals/:id/approve error:", err);
+        res.status(500).json({ message: "Failed to approve request" });
+      }
+    }
+  );
+
+  // POST /api/product-approvals/:id/reject - Reject a request
+  app.post(
+    "/api/product-approvals/:id/reject",
+    authMiddleware,
+    requireRole("admin", "software_team"),
+    async (req: Request, res: Response) => {
+      try {
+        const result = await query(
+          "UPDATE product_approvals SET status = 'rejected', updated_at = NOW() WHERE id = $1 AND status = 'pending' RETURNING id",
+          [req.params.id]
+        );
+        if (result.rows.length === 0) {
+          res.status(404).json({ message: "Pending approval not found" });
+          return;
+        }
+        res.json({ message: "Product configuration rejected" });
+      } catch (err) {
+        console.error("POST /api/product-approvals/:id/reject error:", err);
+        res.status(500).json({ message: "Failed to reject request" });
+      }
+    }
+  );
+
   return httpServer;
 }
