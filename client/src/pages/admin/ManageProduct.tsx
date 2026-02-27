@@ -21,6 +21,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { ArrowLeft, ArrowRight, Edit, Loader2, Search } from "lucide-react";
+import { Textarea } from "@/components/ui/textarea";
 import apiFetch from "@/lib/api";
 import { useToast } from "@/hooks/use-toast";
 import { Layout } from "@/components/layout/Layout";
@@ -91,6 +92,7 @@ export default function ManageProduct() {
     const [dimA, setDimA] = useState<number | undefined>(undefined);
     const [dimB, setDimB] = useState<number | undefined>(undefined);
     const [dimC, setDimC] = useState<number | undefined>(undefined);
+    const [productDescription, setProductDescription] = useState<string>("");
 
     const resetSelection = () => {
         setConfigName("");
@@ -104,6 +106,7 @@ export default function ManageProduct() {
         setDimA(undefined);
         setDimB(undefined);
         setDimC(undefined);
+        setProductDescription("");
     };
 
     const fetchPreviousConfigs = async (productId: string) => {
@@ -278,6 +281,7 @@ export default function ManageProduct() {
                     categoryId: selectedCategory,
                     subcategoryId: selectedSubcategory,
                     totalCost: totalCost,
+                    description: productDescription,
                     requiredUnitType: requiredUnitType,
                     baseRequiredQty: baseRequiredQty,
                     wastagePctDefault: wastagePctDefault,
@@ -348,6 +352,7 @@ export default function ManageProduct() {
                     dimA: dimA,
                     dimB: dimB,
                     dimC: dimC,
+                    description: productDescription,
                     items: boqResults.computed.map(m => ({
                         materialId: m.id,
                         materialName: m.name,
@@ -382,6 +387,7 @@ export default function ManageProduct() {
                     requiredUnitType: requiredUnitType,
                     baseRequiredQty: baseRequiredQty,
                     wastagePctDefault: wastagePctDefault,
+                    description: productDescription,
                     items: boqResults.computed.map(m => ({
                         materialId: m.id,
                         materialName: m.name,
@@ -457,6 +463,7 @@ export default function ManageProduct() {
                     setDimA(step3Data.config.dim_a ? Number(step3Data.config.dim_a) : undefined);
                     setDimB(step3Data.config.dim_b ? Number(step3Data.config.dim_b) : undefined);
                     setDimC(step3Data.config.dim_c ? Number(step3Data.config.dim_c) : undefined);
+                    setProductDescription(step3Data.config.description || "");
 
                     setSelectedMaterials(mappedItems);
                     setConfigMaterials(mappedItems);
@@ -510,6 +517,7 @@ export default function ManageProduct() {
                     setDimA(latestConfig.product.dim_a ? Number(latestConfig.product.dim_a) : undefined);
                     setDimB(latestConfig.product.dim_b ? Number(latestConfig.product.dim_b) : undefined);
                     setDimC(latestConfig.product.dim_c ? Number(latestConfig.product.dim_c) : undefined);
+                    setProductDescription(latestConfig.product.description || "");
 
                     setSelectedMaterials(mappedItems);
                     setConfigMaterials(mappedItems);
@@ -552,6 +560,7 @@ export default function ManageProduct() {
             setDimA(config.dim_a ? Number(config.dim_a) : undefined);
             setDimB(config.dim_b ? Number(config.dim_b) : undefined);
             setDimC(config.dim_c ? Number(config.dim_c) : undefined);
+            setProductDescription(config.description || "");
 
             setSelectedMaterials(mappedItems);
             setConfigMaterials(mappedItems);
@@ -1005,6 +1014,16 @@ export default function ManageProduct() {
                                                     <SelectItem value="RFT">RFT</SelectItem>
                                                 </SelectContent>
                                             </Select>
+                                        </div>
+
+                                        <div className="md:col-span-5 space-y-2">
+                                            <label className="text-xs font-bold uppercase text-muted-foreground">Product Description</label>
+                                            <Textarea
+                                                placeholder="Enter a description for this product configuration..."
+                                                value={productDescription}
+                                                onChange={(e) => setProductDescription(e.target.value)}
+                                                className="min-h-[80px] font-medium"
+                                            />
                                         </div>
 
                                         <div className="space-y-2">

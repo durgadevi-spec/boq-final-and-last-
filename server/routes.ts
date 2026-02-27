@@ -1553,7 +1553,7 @@ export async function registerRoutes(
   app.delete(
     "/api/materials/:id",
     authMiddleware,
-    requireRole("admin", "software_team"),
+    requireRole("admin", "software_team", "purchase_team"),
     async (req, res) => {
       try {
         const id = req.params.id;
@@ -1665,6 +1665,17 @@ export async function registerRoutes(
           return;
         }
 
+        // Case-insensitive check before insert
+        const existing = await query(
+          "SELECT id FROM vendor_categories WHERE LOWER(name) = LOWER($1)",
+          [name.trim()],
+        );
+
+        if (existing.rows.length > 0) {
+          res.status(409).json({ message: "VENDOR CATEGORY ALREADY EXISTS" });
+          return;
+        }
+
         const result = await query(
           `INSERT INTO vendor_categories (name, description, created_at, updated_at) 
            VALUES ($1, $2, NOW(), NOW()) 
@@ -1677,7 +1688,7 @@ export async function registerRoutes(
         console.error("/api/vendor-categories POST error", err);
         if (err.code === "23505") {
           // Unique constraint violation
-          res.status(409).json({ message: "Vendor category already exists" });
+          res.status(409).json({ message: "VENDOR CATEGORY ALREADY EXISTS" });
         } else {
           res.status(500).json({ message: "failed to create vendor category" });
         }
@@ -2714,8 +2725,9 @@ export async function registerRoutes(
         const { name, subcategory, taxCodeType, taxCodeValue, hsn_code, sac_code, hsnCode, sacCode } = req.body;
 
         // Support both hsn_code (db style) and hsnCode (frontend style)
-        const finalHsnCode = hsn_code || hsnCode;
-        const finalSacCode = sac_code || sacCode;
+        // Prioritize camelCase (hsnCode/sacCode) if both are present to reflect latest frontend intent
+        const finalHsnCode = hsnCode !== undefined ? hsnCode : hsn_code;
+        const finalSacCode = sacCode !== undefined ? sacCode : sac_code;
 
         console.log(`/api/products/${id} PUT body ->`, { name, subcategory, hsn_code: finalHsnCode, sac_code: finalSacCode });
 
@@ -4568,12 +4580,13 @@ export async function registerRoutes(
           await query("ALTER TABLE step11_products ADD COLUMN IF NOT EXISTS dim_a DECIMAL(10,4)");
           await query("ALTER TABLE step11_products ADD COLUMN IF NOT EXISTS dim_b DECIMAL(10,4)");
           await query("ALTER TABLE step11_products ADD COLUMN IF NOT EXISTS dim_c DECIMAL(10,4)");
+          await query("ALTER TABLE step11_products ADD COLUMN IF NOT EXISTS description TEXT");
 
           // 2. Insert into step11_products
           console.log(`[POST /api/step11-products] Inserting new product config for productId: ${productId}`);
           const productResult = await query(
-            `INSERT INTO step11_products (product_id, product_name, config_name, category_id, subcategory_id, total_cost, required_unit_type, base_required_qty, wastage_pct_default, dim_a, dim_b, dim_c, created_at, updated_at)
-             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, NOW(), NOW())
+            `INSERT INTO step11_products (product_id, product_name, config_name, category_id, subcategory_id, total_cost, required_unit_type, base_required_qty, wastage_pct_default, dim_a, dim_b, dim_c, description, created_at, updated_at)
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, NOW(), NOW())
              RETURNING id`,
             [
               productId,
@@ -4587,7 +4600,8 @@ export async function registerRoutes(
               req.body.wastagePctDefault || 0,
               req.body.dimA || null,
               req.body.dimB || null,
-              req.body.dimC || null
+              req.body.dimC || null,
+              req.body.description || null
             ],
           );
 
@@ -4663,7 +4677,8 @@ export async function registerRoutes(
           wastagePctDefault,
           dimA,
           dimB,
-          dimC
+          dimC,
+          description
         } = req.body;
 
         if (!productId) {
@@ -4680,16 +4695,17 @@ export async function registerRoutes(
           await query("ALTER TABLE product_step3_config ADD COLUMN IF NOT EXISTS dim_a DECIMAL(10,4)");
           await query("ALTER TABLE product_step3_config ADD COLUMN IF NOT EXISTS dim_b DECIMAL(10,4)");
           await query("ALTER TABLE product_step3_config ADD COLUMN IF NOT EXISTS dim_c DECIMAL(10,4)");
+          await query("ALTER TABLE product_step3_config ADD COLUMN IF NOT EXISTS description TEXT");
 
           // Insert new Step 3 config header
           const configResult = await query(
             `INSERT INTO product_step3_config (
               product_id, product_name, config_name, category_id, subcategory_id, 
               total_cost, required_unit_type, base_required_qty, wastage_pct_default,
-              dim_a, dim_b, dim_c,
+              dim_a, dim_b, dim_c, description,
               created_at, updated_at
             )
-             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, NOW(), NOW()) RETURNING id`,
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, NOW(), NOW()) RETURNING id`,
             [
               productId,
               productName,
@@ -4702,7 +4718,8 @@ export async function registerRoutes(
               wastagePctDefault || 0,
               dimA || null,
               dimB || null,
-              dimC || null
+              dimC || null,
+              description || null
             ],
           );
 
@@ -4801,10 +4818,10 @@ export async function registerRoutes(
 
         // Fetch latest Step 3 config for this product to use as smart fallback
         const step3Result = await query(
-          "SELECT required_unit_type, base_required_qty, wastage_pct_default FROM product_step3_config WHERE product_id = $1 ORDER BY updated_at DESC LIMIT 1",
+          "SELECT required_unit_type, base_required_qty, wastage_pct_default, description FROM product_step3_config WHERE product_id = $1 ORDER BY updated_at DESC LIMIT 1",
           [productId]
         );
-        const step3Fallback = step3Result.rows[0] || { required_unit_type: 'Sqft', base_required_qty: 100, wastage_pct_default: 0 };
+        const step3Fallback = step3Result.rows[0] || { required_unit_type: 'Sqft', base_required_qty: 100, wastage_pct_default: 0, description: null };
 
         // Enhance configurations with their items
         const enhancedConfigs = await Promise.all(productResult.rows.map(async (p: any) => {
@@ -4812,6 +4829,7 @@ export async function registerRoutes(
           p.required_unit_type = p.required_unit_type || step3Fallback.required_unit_type || 'Sqft';
           p.base_required_qty = p.base_required_qty || step3Fallback.base_required_qty || 100;
           p.wastage_pct_default = p.wastage_pct_default || step3Fallback.wastage_pct_default || 0;
+          p.description = p.description || step3Fallback.description;
 
           const itemsResult = await query(
             "SELECT * FROM step11_product_items WHERE step11_product_id = $1",
@@ -4853,15 +4871,16 @@ export async function registerRoutes(
         const product = productResult.rows[0];
         // Fetch Step 3 fallback for legacy records
         const step3Result = await query(
-          "SELECT required_unit_type, base_required_qty, wastage_pct_default FROM product_step3_config WHERE product_id = $1 ORDER BY updated_at DESC LIMIT 1",
+          "SELECT required_unit_type, base_required_qty, wastage_pct_default, description FROM product_step3_config WHERE product_id = $1 ORDER BY updated_at DESC LIMIT 1",
           [product.product_id]
         );
-        const step3Fallback = step3Result.rows[0] || { required_unit_type: 'Sqft', base_required_qty: 100, wastage_pct_default: 0 };
+        const step3Fallback = step3Result.rows[0] || { required_unit_type: 'Sqft', base_required_qty: 100, wastage_pct_default: 0, description: null };
 
         // Apply fallbacks for legacy records
         product.required_unit_type = product.required_unit_type || step3Fallback.required_unit_type || 'Sqft';
         product.base_required_qty = product.base_required_qty || step3Fallback.base_required_qty || 100;
         product.wastage_pct_default = product.wastage_pct_default || step3Fallback.wastage_pct_default || 0;
+        product.description = product.description || step3Fallback.description;
 
         const itemsResult = await query(
           "SELECT * FROM step11_product_items WHERE step11_product_id = $1",

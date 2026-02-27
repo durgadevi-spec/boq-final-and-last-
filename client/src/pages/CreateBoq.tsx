@@ -879,6 +879,7 @@ export default function CreateBom() {
 
         // Keep for backward compatibility/preview
         step11_items: pendingItems,
+        finalize_description: pendingItems[0]?.description || "",
         created_at: new Date().toISOString(),
       };
 

@@ -2,6 +2,7 @@ import React, { useEffect, useState, useRef } from "react";
 import { Reorder, useDragControls } from "framer-motion";
 import { Layout } from "@/components/layout/Layout";
 import { Card, CardHeader, CardContent } from "@/components/ui/card";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -13,10 +14,16 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@/components/ui/popover";
+import {
   Dialog,
   DialogContent,
   DialogHeader,
   DialogTitle,
+  DialogDescription,
   DialogFooter,
 } from "@/components/ui/dialog";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -29,7 +36,7 @@ import { computeBoq, UnitType } from "@/lib/boqCalc";
 
 import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
-import { Trash2, Copy, GripVertical, GripHorizontal, Eye, EyeOff, Edit2 } from "lucide-react";
+import { Trash2, Copy, GripVertical, GripHorizontal, Eye, EyeOff, Edit2, ChevronDown, Briefcase, MapPin, IndianRupee, Lock, Edit3, Plus } from "lucide-react";
 
 /** Helper to generate Excel-style column names (A, B, C... Z, AA, AB...) */
 const getExcelColumnName = (n: number) => {
@@ -1617,6 +1624,43 @@ export default function FinalizeBoq() {
     }
   };
 
+  const handleDeleteTemplate = async (templateId: string) => {
+    if (!templateId) return;
+    const templateToDelete = templates.find((t) => t.id === templateId);
+    if (!templateToDelete) return;
+
+    if (!confirm(`Are you sure you want to delete the template "${templateToDelete.name}"?`)) {
+      return;
+    }
+
+    try {
+      const resp = await apiFetch(`/api/boq-templates/${templateId}`, {
+        method: "DELETE",
+      });
+
+      if (resp.ok) {
+        setTemplates((prev) => prev.filter((t) => t.id !== templateId));
+        if (selectedTemplateId === templateId) {
+          setSelectedTemplateId("");
+        }
+        toast({
+          title: "Template Deleted",
+          description: `Template "${templateToDelete.name}" has been removed.`,
+        });
+      } else {
+        const errorData = await resp.json().catch(() => ({}));
+        throw new Error(errorData.message || "Failed to delete template");
+      }
+    } catch (error: any) {
+      console.error("Failed to delete template:", error);
+      toast({
+        title: "Error",
+        description: error.message || "Failed to delete template",
+        variant: "destructive",
+      });
+    }
+  };
+
   const handleApplyTemplate = async (templateId: string) => {
     const template = templates.find(t => t.id === templateId);
     if (!template) return;
@@ -1682,14 +1726,8 @@ export default function FinalizeBoq() {
       const sheetData: any[] = [];
 
       // Add project info at the top if needed, or just headers
-      // Map headers to include percentages if applicable
-      const headers = selectedExportCols.map(colName => {
-        const settings = globalColSettings[colName];
-        if (settings?.percentageValue) {
-          return `${colName} (${settings.percentageValue}%)`;
-        }
-        return colName;
-      });
+      // Map headers - simple column names only
+      const headers = selectedExportCols.map(colName => colName);
       sheetData.push(headers);
 
       boqItems.forEach((boqItem, boqIdx) => {
@@ -1849,6 +1887,23 @@ export default function FinalizeBoq() {
         }
       });
       sheetData.push(footerRow);
+      
+      // Add Terms and Conditions at the bottom
+      if (termsAndConditions && termsAndConditions.trim()) {
+        sheetData.push([]); // Spacer
+        sheetData.push([]); // Spacer
+        
+        const termsHeaderRow = Array(selectedExportCols.length).fill("");
+        termsHeaderRow[0] = "Terms & Conditions:";
+        sheetData.push(termsHeaderRow);
+
+        const lines = termsAndConditions.split("\n");
+        lines.forEach(line => {
+          const lineRow = Array(selectedExportCols.length).fill("");
+          lineRow[0] = line.trim();
+          sheetData.push(lineRow);
+        });
+      }
 
       // Simple Worksheet creation
       const ws = XLSX.utils.aoa_to_sheet(sheetData);
@@ -2122,224 +2177,194 @@ export default function FinalizeBoq() {
 
         {/* Project creation moved to dedicated Create Project page */}
 
-        {/* Select Project Section */}
-        <Card>
-          <CardContent className="space-y-4 pt-6">
-            <h2 className="text-lg font-semibold">Select Project</h2>
-            <div className="flex-1">
-              <Label>Projects</Label>
-              <Select onValueChange={(v) => setSelectedProjectId(v || null)}>
-                <SelectTrigger className="w-full">
-                  <SelectValue
-                    placeholder={
-                      projects.length === 0 ? "No projects" : "Select project"
-                    }
-                  />
-                </SelectTrigger>
-                <SelectContent>
-                  {projects.map((p) => (
-                    <SelectItem value={p.id} key={p.id}>
-                      {p.name} — {p.client || "(No client)"} — {p.location || "(No location)"}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-
-            {selectedProject && (
-              <div className="text-sm text-gray-600 space-y-1">
-                <div>
-                  <strong>Budget:</strong> {selectedProject.budget || "—"}
-                </div>
-                <div>
-                  <strong>Status:</strong> {selectedProject.status || "draft"}
-                </div>
+        {/* Header Controls Section */}
+        <Card className="border-none shadow-sm bg-slate-50/50">
+          <CardContent className="p-4 space-y-4">
+            <div className="grid grid-cols-1 md:grid-cols-12 gap-4 items-end">
+              {/* Project Select */}
+              <div className="md:col-span-5 space-y-1.5">
+                <Label className="text-[11px] uppercase tracking-wider text-slate-500 font-bold ml-1">Project</Label>
+                <Select onValueChange={(v) => setSelectedProjectId(v || null)} value={selectedProjectId || ""}>
+                  <SelectTrigger className="bg-white border-slate-200">
+                    <SelectValue placeholder="Select project" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {projects.map((p) => (
+                      <SelectItem value={p.id} key={p.id}>
+                        {p.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
               </div>
-            )}
 
-            {selectedProjectId && (
-              <div className="pt-4 space-y-4">
-                {/* Version Selector */}
-                <div className="space-y-2">
-                  <Label>BOM Versions</Label>
+              {/* Version Select */}
+              {selectedProjectId && (
+                <div className="md:col-span-4 space-y-1.5">
+                  <Label className="text-[11px] uppercase tracking-wider text-slate-500 font-bold ml-1">BOM Version</Label>
                   <div className="flex gap-2">
                     <Select
                       value={selectedVersionId || ""}
                       onValueChange={setSelectedVersionId}
                     >
-                      <SelectTrigger className="flex-1">
+                      <SelectTrigger className="bg-white border-slate-200">
                         <SelectValue placeholder="Select version" />
                       </SelectTrigger>
                       <SelectContent>
                         {versions.map((v) => (
                           <SelectItem value={v.id} key={v.id}>
-                            {v.project_name ? `[${v.project_name}] ` : ""}V
-                            {v.version_number} (
-                            {v.status === "submitted" ? "Locked" : "Draft"})
+                            V{v.version_number} ({v.status === "submitted" ? "Locked" : "Draft"})
                           </SelectItem>
                         ))}
                       </SelectContent>
                     </Select>
-                    {selectedVersionId && (
-                      <Button
-                        onClick={async () => {
-                          if (!selectedVersionId) return;
-                          if (
-                            !confirm(
-                              "Delete this version and all its BOM items? This cannot be undone.",
-                            )
-                          )
-                            return;
-                          try {
-                            const resp = await apiFetch(
-                              `/api/boq-versions/${encodeURIComponent(selectedVersionId)}`,
-                              { method: "DELETE" },
-                            );
-                            if (resp.ok) {
-                              // Reload versions for the project
-                              const r2 = await apiFetch(
-                                `/api/boq-versions/${encodeURIComponent(selectedProjectId!)}`,
-                                { headers: {} },
-                              );
-                              if (r2.ok) {
-                                const data = await r2.json();
-                                setVersions(data.versions || []);
-                                // auto-select a draft or first version
-                                const draftVersion = (data.versions || []).find(
-                                  (v: any) => v.status === "draft",
-                                );
-                                if (draftVersion)
-                                  setSelectedVersionId(draftVersion.id);
-                                else if ((data.versions || []).length > 0)
-                                  setSelectedVersionId(data.versions[0].id);
-                                else setSelectedVersionId(null);
-                                setBoqItems([]);
-                                toast({
-                                  title: "Deleted",
-                                  description: "Version removed",
-                                });
+                    
+                    <div className="flex gap-1">
+                      {selectedVersionId && (
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="h-9 w-9 text-slate-400 hover:text-red-600 hover:bg-red-50"
+                          onClick={async () => {
+                            if (!selectedVersionId) return;
+                            if (!confirm("Delete this version?")) return;
+                            try {
+                              const resp = await apiFetch(`/api/boq-versions/${encodeURIComponent(selectedVersionId)}`, { method: "DELETE" });
+                              if (resp.ok) {
+                                const r2 = await apiFetch(`/api/boq-versions/${encodeURIComponent(selectedProjectId!)}`, { headers: {} });
+                                if (r2.ok) {
+                                  const data = await r2.json();
+                                  setVersions(data.versions || []);
+                                  const draftVersion = (data.versions || []).find((v: any) => v.status === "draft");
+                                  if (draftVersion) setSelectedVersionId(draftVersion.id);
+                                  else if ((data.versions || []).length > 0) setSelectedVersionId(data.versions[0].id);
+                                  else setSelectedVersionId(null);
+                                  setBoqItems([]);
+                                  toast({ title: "Deleted", description: "Version removed" });
+                                }
                               }
-                            } else {
-                              const text = await resp.text();
-                              throw new Error(
-                                text || "Failed to delete version",
-                              );
+                            } catch (e) {
+                              console.error(e);
+                              toast({ title: "Error", description: "Failed to delete", variant: "destructive" });
                             }
-                          } catch (e) {
-                            console.error("Failed to delete version", e);
-                            toast({
-                              title: "Error",
-                              description: "Failed to delete version",
-                              variant: "destructive",
-                            });
-                          }
-                        }}
-                        variant="destructive"
-                      >
-                        Delete Version
-                      </Button>
-                    )}
-                    {versions.length > 0 && (
+                          }}
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </Button>
+                      )}
                       <Button
+                        variant="outline"
+                        size="icon"
+                        className="h-9 w-9 bg-white border-slate-200 hover:bg-slate-50"
                         onClick={() => {
                           const lastVersion = versions[0];
-                          if (
-                            confirm(
-                              `Copy items from V${lastVersion.version_number}?`,
-                            )
-                          ) {
-                            handleCreateNewVersion(true);
-                          } else {
-                            handleCreateNewVersion(false);
-                          }
+                          if (lastVersion && confirm(`Copy from V${lastVersion.version_number}?`)) handleCreateNewVersion(true);
+                          else handleCreateNewVersion(false);
                         }}
-                        variant="outline"
                       >
-                        + New Version
+                        <Plus className="h-4 w-4" />
                       </Button>
-                    )}
-                    {versions.length === 0 && selectedProjectId && (
-                      <Button
-                        onClick={() => handleCreateNewVersion(false)}
-                        variant="outline"
-                      >
-                        Create V1
-                      </Button>
-                    )}
-                  </div>
-                </div>
-
-                {/* BOQ Templates Section */}
-                <div className="space-y-3 pt-4 border-t border-gray-100">
-                  <div className="flex items-center justify-between">
-                    <Label className="text-gray-700">BOQ Column Templates</Label>
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      onClick={() => setIsSaveTemplateDialogOpen(true)}
-                      className="text-blue-600 hover:text-blue-700 hover:bg-blue-50 text-[11px] font-bold uppercase tracking-wider"
-                    >
-                      Save Current as Template
-                    </Button>
-                  </div>
-                  <div className="flex gap-2">
-                    <Select
-                      value={selectedTemplateId}
-                      onValueChange={handleApplyTemplate}
-                    >
-                      <SelectTrigger className="flex-1 bg-gray-50/50 border-gray-200">
-                        <SelectValue placeholder={templates.length === 0 ? "No templates saved" : "Apply saved template..."} />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {templates.map((t) => (
-                          <SelectItem value={t.id} key={t.id}>
-                            {t.name}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  </div>
-                  <p className="text-[10px] text-gray-500 italic">
-                    Applying a template will update columns and formulas for all items in this version.
-                  </p>
-                </div>
-                {selectedVersion && (
-                  <div className="space-y-4">
-                    <div className="text-sm text-gray-600 space-y-1 bg-blue-50 p-3 rounded">
-                      <div>
-                        <strong>Project:</strong>{" "}
-                        {selectedVersion.project_name || "Unknown"}
-                      </div>
-                      <div>
-                        <strong>Version:</strong> V
-                        {selectedVersion.version_number}
-                      </div>
-                      {selectedVersion.project_client && (
-                        <div>
-                          <strong>Client:</strong>{" "}
-                          {selectedVersion.project_client}
-                        </div>
-                      )}
-                      {selectedVersion.project_location && (
-                        <div>
-                          <strong>Location:</strong>{" "}
-                          {selectedVersion.project_location}
-                        </div>
-                      )}
-                      {isVersionSubmitted && (
-                        <span className="inline-block bg-yellow-100 text-yellow-800 px-2 py-1 rounded text-xs font-semibold">
-                          Submitted (Locked)
-                        </span>
-                      )}
-                      {!isVersionSubmitted && (
-                        <span className="inline-block bg-green-100 text-green-800 px-2 py-1 rounded text-xs font-semibold">
-                          Draft (Editable)
-                        </span>
-                      )}
                     </div>
-
                   </div>
-                )}
+                </div>
+              )}
+
+              {/* Template Select */}
+              {selectedProjectId && (
+                <div className="md:col-span-3 space-y-1.5">
+                  <div className="flex justify-between items-center ml-1">
+                    <Label className="text-[11px] uppercase tracking-wider text-slate-500 font-bold">Template</Label>
+                    <button
+                      onClick={() => setIsSaveTemplateDialogOpen(true)}
+                      className="text-[10px] text-blue-600 font-semibold hover:underline"
+                    >
+                      SAVE NEW
+                    </button>
+                  </div>
+                  <Popover>
+                    <PopoverTrigger asChild>
+                      <Button
+                        variant="outline"
+                        className="w-full justify-between bg-white border-slate-200 font-normal h-9 px-3"
+                      >
+                        <span className="truncate text-sm">
+                          {selectedTemplateId
+                            ? templates.find((t) => t.id === selectedTemplateId)?.name
+                            : "Select template..."}
+                        </span>
+                        <ChevronDown className="h-3 w-3 opacity-50" />
+                      </Button>
+                    </PopoverTrigger>
+                    <PopoverContent className="w-[200px] p-0" align="end">
+                      <div className="max-h-[250px] overflow-y-auto">
+                        {templates.length === 0 ? (
+                          <div className="p-3 text-center text-xs text-slate-400">No templates</div>
+                        ) : (
+                          <div className="p-1">
+                            {templates.map((t) => (
+                              <div
+                                key={t.id}
+                                className="flex items-center justify-between p-2 rounded hover:bg-slate-100 cursor-pointer group"
+                                onClick={() => handleApplyTemplate(t.id)}
+                              >
+                                <span className="text-xs truncate">{t.name}</span>
+                                <Trash2 
+                                  className="h-3.3 w-3.5 text-slate-300 hover:text-red-500 opacity-0 group-hover:opacity-100"
+                                  onClick={(e) => { e.stopPropagation(); handleDeleteTemplate(t.id); }}
+                                />
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    </PopoverContent>
+                  </Popover>
+                </div>
+              )}
+            </div>
+
+            {/* Compact Summary Bar */}
+            {selectedVersion && (
+              <div className="flex flex-wrap items-center gap-x-6 gap-y-2 py-2.5 px-4 bg-white border border-slate-200 rounded-lg shadow-sm overflow-hidden">
+                <div className="flex items-center gap-2 min-w-fit">
+                  <div className="p-1.5 bg-blue-50 rounded text-blue-600"><Briefcase className="h-3.5 w-3.5" /></div>
+                  <div className="flex flex-col">
+                    <span className="text-[10px] leading-none text-slate-400 font-bold uppercase tracking-tight">Client</span>
+                    <span className="text-xs font-semibold text-slate-700">{selectedVersion.project_client || "—"}</span>
+                  </div>
+                </div>
+
+                <div className="hidden md:block w-px h-6 bg-slate-100" />
+
+                <div className="flex items-center gap-2 min-w-fit">
+                  <div className="p-1.5 bg-indigo-50 rounded text-indigo-600"><MapPin className="h-3.5 w-3.5" /></div>
+                  <div className="flex flex-col">
+                    <span className="text-[10px] leading-none text-slate-400 font-bold uppercase tracking-tight">Location</span>
+                    <span className="text-xs font-semibold text-slate-700">{selectedVersion.project_location || "—"}</span>
+                  </div>
+                </div>
+
+                <div className="hidden md:block w-px h-6 bg-slate-100" />
+
+                <div className="flex items-center gap-2 min-w-fit">
+                  <div className="p-1.5 bg-emerald-50 rounded text-emerald-600"><IndianRupee className="h-3.5 w-3.5" /></div>
+                  <div className="flex flex-col">
+                    <span className="text-[10px] leading-none text-slate-400 font-bold uppercase tracking-tight">Budget</span>
+                    <span className="text-xs font-semibold text-slate-700">{selectedProject?.budget || "—"}</span>
+                  </div>
+                </div>
+
+                <div className="ml-auto flex items-center gap-3">
+                  {isVersionSubmitted ? (
+                    <Badge variant="outline" className="bg-amber-50 text-amber-700 border-amber-200 text-[10px] font-bold px-2 py-0 h-6">
+                      <Lock className="h-2.5 w-2.5 mr-1" /> LOCKED
+                    </Badge>
+                  ) : (
+                    <Badge variant="outline" className="bg-emerald-50 text-emerald-700 border-emerald-200 text-[10px] font-bold px-2 py-0 h-6">
+                      <Edit3 className="h-2.5 w-2.5 mr-1" /> DRAFT
+                    </Badge>
+                  )}
+                </div>
               </div>
             )}
           </CardContent>
@@ -2606,9 +2631,9 @@ export default function FinalizeBoq() {
                         <th className="border-r border-sky-300 px-1 py-2.5 text-right w-32 text-[11px]">Rate</th>
                         <th className="border-r border-sky-300 px-1 py-2.5 text-center w-24 text-[11px]">Unit</th>
                         <th className="border-r border-sky-300 px-1 py-2.5 text-center w-28 text-[11px]">Qty</th>
-                        <th className="border-r border-sky-300 px-1 py-2.5 text-right w-32 text-emerald-900 bg-emerald-100/50 text-[11px]">System Total</th>
-                        <th className="border-r border-sky-300 px-1 py-2.5 text-right w-32 text-blue-900 bg-blue-100/50 text-[11px]">Rate (j)</th>
-                        <th className="border-r border-sky-300 px-1 py-2.5 text-right w-32 text-emerald-900 bg-emerald-100/50 text-[11px]">Total (k)</th>
+                        <th className="border-r border-sky-300 px-1 py-1.5 text-right w-32 text-emerald-900 bg-emerald-100/50 text-[11px]">System Total (J)</th>
+                        <th className="border-r border-sky-300 px-1 py-1.5 text-right w-32 text-blue-900 bg-blue-100/50 text-[11px]">Rate (K)</th>
+                        <th className="border-r border-sky-300 px-1 py-1.5 text-right w-32 text-emerald-900 bg-emerald-100/50 text-[11px]">Total (L)</th>
                         <Reorder.Group
                           axis="x"
                           values={allCols}
@@ -3247,7 +3272,7 @@ export default function FinalizeBoq() {
             </DialogFooter>
           </DialogContent>
         </Dialog>
-      </div >
-    </Layout >
+      </div>
+    </Layout>
   );
 }

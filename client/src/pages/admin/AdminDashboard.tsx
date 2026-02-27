@@ -372,10 +372,19 @@ export default function AdminDashboard() {
     }
 
     try {
-      const res = await apiFetch(`/products/${editingProduct.id}`, {
-        method: 'PUT',
-        body: JSON.stringify(editingProduct),
-      });
+    const payload: any = {
+      name: editingProduct.name,
+      subcategory: editingProduct.subcategory,
+    };
+    if (editingProduct.taxCodeType) payload.taxCodeType = editingProduct.taxCodeType;
+    if (editingProduct.taxCodeValue) payload.taxCodeValue = editingProduct.taxCodeValue;
+    if (editingProduct.hsnCode !== undefined) payload.hsn_code = editingProduct.hsnCode;
+    if (editingProduct.sacCode !== undefined) payload.sac_code = editingProduct.sacCode;
+
+    const res = await apiFetch(`/products/${editingProduct.id}`, {
+      method: 'PUT',
+      body: JSON.stringify(payload),
+    });
 
       const updated = await res.json();
       const updatedProd = mapProduct(updated.product || updated);

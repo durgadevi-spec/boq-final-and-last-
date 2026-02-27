@@ -68,6 +68,18 @@ export default function VendorCategories() {
             return;
         }
 
+        // Check for duplicates before sending (redundant if checking inline, but good as a final guard)
+        const isDuplicate = categories.some(
+            (cat) => 
+                cat.name.toLowerCase() === formData.name.trim().toLowerCase() && 
+                cat.id !== editingId
+        );
+
+        if (isDuplicate) {
+            // No toast needed here as it's shown inline
+            return;
+        }
+
         try {
             const method = editingId ? "PUT" : "POST";
             const url = editingId
@@ -210,6 +222,15 @@ export default function VendorCategories() {
                                         placeholder="e.g., Fire Safety Goods & Service Supplier"
                                         required
                                     />
+                                    {formData.name.trim() && categories.some(
+                                        (cat) => 
+                                            cat.name.toLowerCase() === formData.name.trim().toLowerCase() && 
+                                            cat.id !== editingId
+                                    ) && (
+                                        <p className="text-xs text-red-600 mt-1">
+                                            ⚠️ VENDOR CATEGORY ALREADY EXISTS
+                                        </p>
+                                    )}
                                 </div>
 
                                 <div className="space-y-2">

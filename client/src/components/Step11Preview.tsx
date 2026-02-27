@@ -360,7 +360,7 @@ export default function Step11Preview({
                         </td>
                         <td className="border-r border-black p-3 text-center italic">Main Area</td>
                         <td className="border-r border-black p-3 text-[10px] text-muted-foreground leading-tight">
-                          Consolidated configuration for {product.name}
+                          {selectedConfig?.product.description || `Consolidated configuration for ${product.name}`}
                         </td>
                         <td className="border-r border-black p-3 text-center font-bold">{selectedConfig?.product.required_unit_type || "Sqft"}</td>
                         <td className="border-r border-black p-3 text-center font-black">1</td>
@@ -464,7 +464,7 @@ export default function Step11Preview({
                       estimator: getEstimatorTypeFromProduct(product) || "generic",
                       group_id: product.id,
                       title: product.name,
-                      description: `Consolidated configuration for ${product.name}`,
+                      description: selectedConfig?.product.description || `Consolidated configuration for ${product.name}`,
                       unit: selectedConfig?.product.required_unit_type || "Sqft",
                       qty: 1,
                       supply_rate: totalSupply,
