@@ -246,6 +246,89 @@ export default function ManageMaterials() {
         formElement.scrollIntoView({ behavior: "smooth", block: "start" });
       }
     }, 100);
+
+    // If no shop selected, actively probe each known shop for a saved rate
+    // for this template and choose the shop with the lowest rate found.
+    if (!selectedShop && shops && shops.length > 0) {
+      (async () => {
+        try {
+          const checks = await Promise.all(
+            shops.map(async (sh) => {
+              try {
+                const resp = await fetch(
+                  `/api/material-rate?template_id=${encodeURIComponent(template.id)}&shop_id=${encodeURIComponent(sh.id)}`
+                );
+                if (!resp.ok) return null;
+                const data = await resp.json();
+                if (data.found && data.material) {
+                  const r = Number(data.material.rate ?? data.material.supply_rate ?? data.material.default_rate ?? 0) || 0;
+                  return { shop_id: sh.id, rate: r, material: data.material, source: data.source };
+                }
+                return null;
+              } catch (e) {
+                return null;
+              }
+            })
+          );
+
+          let found = checks.filter(Boolean) as Array<any>;
+
+          // Also include any approved materials and pending submissions globally
+          try {
+            const matsResp = await fetch('/api/materials');
+            const mats = matsResp.ok ? (await matsResp.json()).materials || [] : [];
+            for (const m of mats) {
+              if (String(m.template_id) === String(template.id) && m.shop_id) {
+                const r = Number(m.rate ?? m.supply_rate ?? m.default_rate ?? 0) || 0;
+                found.push({ shop_id: String(m.shop_id), rate: r, material: m, source: 'approved' });
+              }
+            }
+          } catch (e) {
+            // ignore
+          }
+
+          try {
+            const subsResp = await fetch('/api/material-submissions');
+            const subs = subsResp.ok ? (await subsResp.json()).submissions || [] : [];
+            for (const s of subs) {
+              if (String(s.template_id) === String(template.id) && s.shop_id) {
+                const r = Number(s.rate ?? 0) || 0;
+                found.push({ shop_id: String(s.shop_id), rate: r, material: s, source: 'pending' });
+              }
+            }
+          } catch (e) {
+            // ignore
+          }
+
+          if (found.length === 0) return;
+
+          found.sort((a, b) => a.rate - b.rate);
+          const best = found[0];
+          // Select the cheapest shop; this will trigger the existing useEffect to fetch
+          // and prefill rate. Also prefill immediately for snappier UX.
+          setSelectedShop(best.shop_id);
+          // Prefill immediately
+          setFormData((prev) => ({
+            ...prev,
+            rate: best.material.rate != null ? String(best.material.rate) : prev.rate || "",
+            unit: best.material.unit || prev.unit || "",
+            brandname: best.material.brandname || prev.brandname || "",
+            modelnumber: best.material.modelnumber || prev.modelnumber || "",
+            category: best.material.category || prev.category || prev.category || "",
+            subcategory: best.material.subcategory || prev.subcategory || "",
+            product: best.material.product || prev.product || "",
+            technicalspecification: best.material.technicalspecification || prev.technicalspecification || "",
+            dimensions: best.material.dimensions || prev.dimensions || "",
+            finishtype: best.material.finishtype || prev.finishtype || "",
+            materialtype: best.material.materialtype || best.material.metaltype || prev.materialtype || "",
+          }));
+          setRateMessage({ type: "success", text: `✓ Existing Rate Loaded (${best.source === "approved" ? "Approved" : "Pending"})` });
+          if (best.material.category) await loadSubcategories(best.material.category);
+        } catch (err) {
+          console.warn('[ManageMaterials] Failed to auto-select cheapest shop', err);
+        }
+      })();
+    }
   };
 
   // When both shop and template are selected, automatically fetch the existing rate

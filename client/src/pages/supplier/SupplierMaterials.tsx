@@ -235,6 +235,43 @@ export default function SupplierMaterials() {
     if (template.category) {
       loadSubcategories(template.category);
     }
+    // If non-supplier: try to auto-select the cheapest shop that already has this template
+    if (user?.role !== 'supplier') {
+      (async () => {
+        try {
+          // Fetch approved materials
+          const matResp = await fetch('/api/materials');
+          const mats = matResp.ok ? (await matResp.json()).materials || [] : [];
+
+          // Fetch submitted material entries (all suppliers) to include pending rates
+          const subsResp = await fetch('/api/material-submissions');
+          const subs = subsResp.ok ? (await subsResp.json()).submissions || [] : [];
+
+          const candidates: Array<{shop_id: string; rate: number}> = [];
+
+          for (const m of mats) {
+            if (String(m.template_id) === String(template.id) && m.shop_id) {
+              const r = Number(m.rate ?? m.supply_rate ?? m.default_rate ?? 0) || 0;
+              candidates.push({ shop_id: String(m.shop_id), rate: r });
+            }
+          }
+
+          for (const s of subs) {
+            if (String(s.template_id) === String(template.id) && s.shop_id) {
+              const r = Number(s.rate ?? 0) || 0;
+              candidates.push({ shop_id: String(s.shop_id), rate: r });
+            }
+          }
+
+          if (candidates.length > 0) {
+            candidates.sort((a, b) => a.rate - b.rate);
+            setSelectedShop(candidates[0].shop_id);
+          }
+        } catch (err) {
+          console.warn('Failed to auto-select cheapest shop for template', err);
+        }
+      })();
+    }
     // Scroll to form after a brief delay to ensure state is updated
     setTimeout(() => {
       const formElement = document.getElementById("material-form");
