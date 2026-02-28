@@ -118,7 +118,7 @@ export async function registerRoutes(
   });
 
   // POST /api/alerts - create alert
-  app.post('/api/alerts', authMiddleware, requireRole('admin','software_team','purchase_team'), async (req: Request, res: Response) => {
+  app.post('/api/alerts', authMiddleware, requireRole('admin', 'software_team', 'purchase_team'), async (req: Request, res: Response) => {
     try {
       const { type, materialId, name, oldRate, newRate, editedBy, shopId, shopName } = req.body || {};
       const id = randomUUID();
@@ -131,7 +131,7 @@ export async function registerRoutes(
   });
 
   // DELETE /api/alerts - clear all
-  app.delete('/api/alerts', authMiddleware, requireRole('admin','software_team'), async (_req, res) => {
+  app.delete('/api/alerts', authMiddleware, requireRole('admin', 'software_team'), async (_req, res) => {
     try {
       await query(`DELETE FROM alerts`);
       res.json({ message: 'alerts cleared' });
@@ -142,7 +142,7 @@ export async function registerRoutes(
   });
 
   // DELETE /api/alerts/:id - dismiss single alert
-  app.delete('/api/alerts/:id', authMiddleware, requireRole('admin','software_team'), async (req: Request, res: Response) => {
+  app.delete('/api/alerts/:id', authMiddleware, requireRole('admin', 'software_team'), async (req: Request, res: Response) => {
     try {
       const { id } = req.params;
       await query(`DELETE FROM alerts WHERE id = $1`, [id]);
@@ -4884,24 +4884,42 @@ export async function registerRoutes(
       fs.appendFileSync('server_api_log.txt', logMsg);
 
       try {
-        const productResult = await query(
-          "SELECT * FROM step11_products WHERE product_id = $1 ORDER BY updated_at DESC",
-          [productId],
+        // 0. Fetch the product name for this productId to ensure we catch all configurations
+        // (Legacy data might use different UUIDs for the same product name)
+        const productInfo = await query("SELECT name FROM products WHERE id = $1", [productId]);
+        const productName = productInfo.rows[0]?.name;
+
+        // 1. Fetch approved configurations (Step 11)
+        // Query by BOTH productId and productName to ensure consistency
+        const step11Result = await query(
+          `SELECT *, 'approved' as status FROM step11_products 
+           WHERE product_id = $1 ${productName ? "OR product_name = $2" : ""} 
+           ORDER BY updated_at DESC`,
+          productName ? [productId, productName] : [productId],
         );
 
-        const resLog = `  -> Found ${productResult.rows.length} configurations\n`;
+        // 2. Fetch draft configurations (Step 3)
+        const step3Result = await query(
+          `SELECT *, 'draft' as status FROM product_step3_config 
+           WHERE product_id = $1 ${productName ? "OR product_name = $2" : ""} 
+           ORDER BY updated_at DESC`,
+          productName ? [productId, productName] : [productId],
+        );
+
+        const resLog = `  -> Found ${step11Result.rows.length} approved and ${step3Result.rows.length} draft configurations\n`;
         fs.appendFileSync('server_api_log.txt', resLog);
 
-        // Fetch latest Step 3 config for this product to use as smart fallback
-        const step3Result = await query(
-          "SELECT required_unit_type, base_required_qty, wastage_pct_default, description FROM product_step3_config WHERE product_id = $1 ORDER BY updated_at DESC LIMIT 1",
-          [productId]
+        // Fetch latest Step 3 config for this product to use as smart fallback for legacy records
+        const step3LatestResult = await query(
+          `SELECT required_unit_type, base_required_qty, wastage_pct_default, description FROM product_step3_config 
+           WHERE product_id = $1 ${productName ? "OR product_name = $2" : ""} 
+           ORDER BY updated_at DESC LIMIT 1`,
+          productName ? [productId, productName] : [productId]
         );
-        const step3Fallback = step3Result.rows[0] || { required_unit_type: 'Sqft', base_required_qty: 100, wastage_pct_default: 0, description: null };
+        const step3Fallback = step3LatestResult.rows[0] || { required_unit_type: 'Sqft', base_required_qty: 100, wastage_pct_default: 0, description: null };
 
-        // Enhance configurations with their items
-        const enhancedConfigs = await Promise.all(productResult.rows.map(async (p: any) => {
-          // Apply fallbacks from Step 3 if Step 11 is missing them or using legacy defaults
+        // 3. Process Step 11 configurations
+        const enhancedStep11 = await Promise.all(step11Result.rows.map(async (p: any) => {
           p.required_unit_type = p.required_unit_type || step3Fallback.required_unit_type || 'Sqft';
           p.base_required_qty = p.base_required_qty || step3Fallback.base_required_qty || 100;
           p.wastage_pct_default = p.wastage_pct_default || step3Fallback.wastage_pct_default || 0;
@@ -4917,8 +4935,35 @@ export async function registerRoutes(
           };
         }));
 
+        // 4. Process Step 3 configurations
+        const enhancedStep3 = await Promise.all(step3Result.rows.map(async (p: any) => {
+          const itemsResult = await query(
+            "SELECT * FROM product_step3_config_items WHERE step3_config_id = $1",
+            [p.id],
+          );
+          return {
+            product: p,
+            items: itemsResult.rows,
+          };
+        }));
+
+        // 5. Merge, Sort, and Deduplicate by config_name
+        const mergedConfigs = [...enhancedStep11, ...enhancedStep3].sort((a, b) =>
+          new Date(b.product.updated_at).getTime() - new Date(a.product.updated_at).getTime()
+        );
+
+        const seenNames = new Set<string>();
+        const allConfigs = mergedConfigs.filter(cfg => {
+          const configName = (cfg.product.config_name || "").toLowerCase().trim();
+          if (seenNames.has(configName)) {
+            return false;
+          }
+          seenNames.add(configName);
+          return true;
+        });
+
         res.json({
-          configurations: enhancedConfigs,
+          configurations: allConfigs,
         });
       } catch (err) {
         console.error("GET /api/step11-products/:productId error", err);

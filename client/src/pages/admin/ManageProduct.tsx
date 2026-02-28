@@ -1097,14 +1097,14 @@ export default function ManageProduct() {
                                                             </TableCell>
                                                             <TableCell className="text-[10px] font-medium">{m.unit}</TableCell>
                                                             <TableCell>
-                                                                                                                                <div className="flex justify-center">
-                                                                                                                                    <Input
-                                                                                                                                        type="number"
-                                                                                                                                        value={m.baseQty}
-                                                                                                                                        onChange={(e) => updateConfig(m.id!, "baseQty", Number(e.target.value))}
-                                                                                                                                        className="h-8 border-muted text-[11px] px-2 font-bold w-20 text-center"
-                                                                                                                                    />
-                                                                                                                                </div>
+                                                                <div className="flex justify-center">
+                                                                    <Input
+                                                                        type="number"
+                                                                        value={m.baseQty}
+                                                                        onChange={(e) => updateConfig(m.id!, "baseQty", Number(e.target.value))}
+                                                                        className="h-8 border-muted text-[11px] px-2 font-bold w-20 text-center"
+                                                                    />
+                                                                </div>
                                                             </TableCell>
                                                             <TableCell className="text-[10px] font-bold">
                                                                 ₹{(m.supplyRate + m.installRate).toLocaleString()}

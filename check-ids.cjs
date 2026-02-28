@@ -18,6 +18,6 @@ async function checkIds() {
   } finally {
     pool.end();
   }
-}
+}    
 
 checkIds();

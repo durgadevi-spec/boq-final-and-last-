@@ -3,7 +3,7 @@ import { useLocation } from "wouter";
 import { useData } from "@/lib/store";
 import { Layout } from "@/components/layout/Layout";
 import {
-  Card,
+  Card, 
   CardContent,
   CardDescription,
   CardHeader,
