@@ -77,6 +77,82 @@ export async function registerRoutes(
     );
   }
 
+  // Ensure alerts table exists (stores system alerts e.g. material rate edits)
+  try {
+    await query(`
+      CREATE TABLE IF NOT EXISTS alerts (
+        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        type TEXT NOT NULL,
+        material_id VARCHAR(100),
+        name TEXT,
+        old_rate NUMERIC,
+        new_rate NUMERIC,
+        edited_by TEXT,
+        shop_id VARCHAR(100),
+        shop_name TEXT,
+        created_at TIMESTAMPTZ DEFAULT now()
+      )
+    `);
+    await query(`CREATE INDEX IF NOT EXISTS idx_alerts_created_at ON alerts (created_at)`);
+  } catch (err: unknown) {
+    console.warn('[migrations] ensure alerts table failed (continuing):', (err as any)?.message || err);
+  }
+  // Ensure alerts table has shop columns (for upgrades)
+  try {
+    await query(`ALTER TABLE alerts ADD COLUMN IF NOT EXISTS shop_id VARCHAR(100)`);
+    await query(`ALTER TABLE alerts ADD COLUMN IF NOT EXISTS shop_name TEXT`);
+  } catch (err: unknown) {
+    console.warn('[migrations] ensure alerts shop columns failed (continuing):', (err as any)?.message || err);
+  }
+
+  // Alerts API endpoints (persisted in DB)
+  // GET /api/alerts
+  app.get('/api/alerts', async (_req, res) => {
+    try {
+      const result = await query(`SELECT id::text, type, material_id, name, old_rate, new_rate, edited_by, shop_id, shop_name, created_at FROM alerts ORDER BY created_at DESC LIMIT 200`);
+      res.json({ alerts: result.rows });
+    } catch (err) {
+      console.error('/api/alerts GET error', err);
+      res.status(500).json({ message: 'failed to load alerts' });
+    }
+  });
+
+  // POST /api/alerts - create alert
+  app.post('/api/alerts', authMiddleware, requireRole('admin','software_team','purchase_team'), async (req: Request, res: Response) => {
+    try {
+      const { type, materialId, name, oldRate, newRate, editedBy, shopId, shopName } = req.body || {};
+      const id = randomUUID();
+      const result = await query(`INSERT INTO alerts (id, type, material_id, name, old_rate, new_rate, edited_by, shop_id, shop_name, created_at) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,NOW()) RETURNING id::text, type, material_id, name, old_rate, new_rate, edited_by, shop_id, shop_name, created_at`, [id, type, materialId || null, name || null, oldRate || null, newRate || null, editedBy || null, shopId || null, shopName || null]);
+      res.status(201).json({ alert: result.rows[0] });
+    } catch (err) {
+      console.error('/api/alerts POST error', err);
+      res.status(500).json({ message: 'failed to create alert' });
+    }
+  });
+
+  // DELETE /api/alerts - clear all
+  app.delete('/api/alerts', authMiddleware, requireRole('admin','software_team'), async (_req, res) => {
+    try {
+      await query(`DELETE FROM alerts`);
+      res.json({ message: 'alerts cleared' });
+    } catch (err) {
+      console.error('/api/alerts DELETE error', err);
+      res.status(500).json({ message: 'failed to clear alerts' });
+    }
+  });
+
+  // DELETE /api/alerts/:id - dismiss single alert
+  app.delete('/api/alerts/:id', authMiddleware, requireRole('admin','software_team'), async (req: Request, res: Response) => {
+    try {
+      const { id } = req.params;
+      await query(`DELETE FROM alerts WHERE id = $1`, [id]);
+      res.json({ message: 'alert dismissed' });
+    } catch (err) {
+      console.error('/api/alerts/:id DELETE error', err);
+      res.status(500).json({ message: 'failed to delete alert' });
+    }
+  });
+
   // Ensure accumulated_products table exists
   try {
     await query(`
@@ -5207,6 +5283,37 @@ export async function registerRoutes(
       } catch (err) {
         console.error("POST /api/product-approvals/:id/reject error:", err);
         res.status(500).json({ message: "Failed to reject request" });
+      }
+    }
+  );
+
+  // DELETE /api/product-approvals/:id - Delete an approval request and its items
+  app.delete(
+    "/api/product-approvals/:id",
+    authMiddleware,
+    requireRole("admin", "software_team"),
+    async (req: Request, res: Response) => {
+      const { id } = req.params;
+      try {
+        await query("BEGIN");
+        try {
+          // remove child items first
+          await query("DELETE FROM product_approval_items WHERE approval_id = $1", [id]);
+          const result = await query("DELETE FROM product_approvals WHERE id = $1 RETURNING id", [id]);
+          if (result.rows.length === 0) {
+            await query("ROLLBACK");
+            res.status(404).json({ message: "Approval request not found" });
+            return;
+          }
+          await query("COMMIT");
+          res.json({ message: "Approval request deleted" });
+        } catch (err) {
+          await query("ROLLBACK");
+          throw err;
+        }
+      } catch (err) {
+        console.error("DELETE /api/product-approvals/:id error:", err);
+        res.status(500).json({ message: "Failed to delete approval request" });
       }
     }
   );

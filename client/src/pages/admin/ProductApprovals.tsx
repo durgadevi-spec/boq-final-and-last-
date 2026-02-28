@@ -143,6 +143,26 @@ export default function ProductApprovals() {
     }
   };
 
+  const handleDelete = async (id: string) => {
+    if (!confirm("Are you sure you want to DELETE this product approval request? This action cannot be undone.")) return;
+    setActionLoading(id);
+    try {
+      const res = await apiFetch(`/api/product-approvals/${id}`, { method: "DELETE" });
+      if (res.ok) {
+        toast({ title: "Deleted", description: "Approval request deleted." });
+        fetchApprovals();
+        setExpandedId(null);
+      } else {
+        const data = await res.json().catch(() => ({}));
+        toast({ title: "Error", description: data.message || "Failed to delete", variant: "destructive" });
+      }
+    } catch (err) {
+      toast({ title: "Error", description: "Failed to delete", variant: "destructive" });
+    } finally {
+      setActionLoading(null);
+    }
+  };
+
   const pendingCount = approvals.filter(a => a.status === "pending").length;
 
   return (
@@ -259,6 +279,18 @@ export default function ProductApprovals() {
                                   </Button>
                                 </div>
                               )}
+                              {/* Delete always available (admin) */}
+                              <div className="mt-2">
+                                <Button
+                                  size="sm"
+                                  variant="ghost"
+                                  onClick={() => handleDelete(approval.id)}
+                                  disabled={actionLoading === approval.id}
+                                  className="h-8 px-3 text-red-600"
+                                >
+                                  Delete
+                                </Button>
+                              </div>
                             </TableCell>
                           </TableRow>
 

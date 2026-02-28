@@ -74,6 +74,7 @@ export function Sidebar() {
   const [subcategories, setSubcategories] = useState<SubcategoryItem[]>([]);
   const [loadingSubcategories, setLoadingSubcategories] = useState(true);
   const { user, logout, supportMessages, materialApprovalRequests } = useData();
+  const [alertsCount, setAlertsCount] = useState(0);
 
   // Fetch pending counts from API
   const [pendingShopCount, setPendingShopCount] = useState(0);
@@ -122,6 +123,27 @@ export function Sidebar() {
     const interval = setInterval(loadSubcategories, 30000);
 
     return () => clearInterval(interval);
+  }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+    const load = async () => {
+      try {
+        const res = await apiFetch('/alerts');
+        if (!res || !res.ok) return setAlertsCount(0);
+        const data = await res.json();
+        if (cancelled) return;
+        const list = data?.alerts || data || [];
+        setAlertsCount(Array.isArray(list) ? list.length : 0);
+      } catch (e) {
+        console.warn('load alerts count failed', e);
+        setAlertsCount(0);
+      }
+    };
+
+    load();
+    const iv = setInterval(load, 30000);
+    return () => { cancelled = true; clearInterval(iv); };
   }, []);
 
   useEffect(() => {
@@ -292,6 +314,27 @@ export function Sidebar() {
                 onClick={() => setIsOpen(false)}
               >
                 <FolderKanban className="h-4 w-4" /> Project Dashboard
+              </span>
+            </Link>
+          )}
+
+          {isAdminOnly && (
+            <Link href="/admin/dashboard?tab=alerts">
+              <span
+                className={cn(
+                  "flex items-center gap-3 rounded-md px-3 py-2 text-sm font-medium transition-colors mb-2 cursor-pointer",
+                  currentAdminTab === "alerts"
+                    ? "bg-sidebar-primary text-sidebar-primary-foreground"
+                    : "text-sidebar-foreground hover:bg-sidebar-accent",
+                )}
+                onClick={() => setIsOpen(false)}
+              >
+                <AlertCircle className="h-4 w-4" /> Alerts
+                {alertsCount > 0 && (
+                  <Badge variant="destructive" className="ml-auto">
+                    {alertsCount}
+                  </Badge>
+                )}
               </span>
             </Link>
           )}

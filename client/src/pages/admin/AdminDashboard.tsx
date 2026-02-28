@@ -448,6 +448,7 @@ export default function AdminDashboard() {
   // Local managed copies so admin can edit/delete/disable items in UI
   const [localMaterials, setLocalMaterials] = useState(() => [] as Array<any>);
   const [localShops, setLocalShops] = useState(() => [] as Array<any>);
+  const [alerts, setAlerts] = useState<Array<any>>([]);
   const [expandedShops, setExpandedShops] = useState<string[]>([]);
   const [masterSearch, setMasterSearch] = useState("");
   const [masterView, setMasterView] = useState<'grid' | 'list'>('grid');
@@ -485,6 +486,38 @@ export default function AdminDashboard() {
     // initialize local copies from store
     setLocalMaterials(materials || []);
   }, [materials]);
+
+  useEffect(() => {
+    let cancelled = false;
+    const load = async () => {
+      try {
+        const res = await apiFetch('/alerts');
+        if (!res || !res.ok) return setAlerts([]);
+        const data = await res.json();
+        if (cancelled) return;
+        const list = data?.alerts || data || [];
+        const normalized = (Array.isArray(list) ? list : []).map((r: any) => ({
+          id: r.id?.toString?.() || String(r.id || ''),
+          type: r.type || r.type,
+          materialId: r.material_id || r.materialId || null,
+          name: r.name || r['name'] || 'Material changed',
+          oldRate: (r.old_rate !== undefined ? Number(r.old_rate) : (r.oldRate !== undefined ? Number(r.oldRate) : 0)),
+          newRate: (r.new_rate !== undefined ? Number(r.new_rate) : (r.newRate !== undefined ? Number(r.newRate) : 0)),
+          editedBy: r.edited_by || r.editedBy || 'unknown',
+          at: r.created_at || r.at || r.createdAt || null,
+          shopId: r.shop_id || r.shopId || null,
+          shopName: r.shop_name || r.shopName || null,
+        }));
+        setAlerts(normalized);
+      } catch (e) {
+        console.warn('load alerts failed', e);
+        setAlerts([]);
+      }
+    };
+    load();
+    const iv = setInterval(load, 30000);
+    return () => { cancelled = true; clearInterval(iv); };
+  }, []);
 
   useEffect(() => {
     setLocalShops(shops || []);
@@ -758,6 +791,11 @@ export default function AdminDashboard() {
 
   const handleUpdateMaterial = async () => {
     if (!editingMaterialId) return;
+    const prevMat = localMaterials.find((m: any) => m.id === editingMaterialId);
+    const oldRate = prevMat?.rate ?? null;
+    const newRate = newMaterial.rate ?? null;
+    const rateChanged = oldRate != null && newRate != null && Number(oldRate) !== Number(newRate);
+
     try {
       // try server update using PUT (server expects lowercased field names)
       try {
@@ -806,6 +844,45 @@ export default function AdminDashboard() {
       } catch (e) {
         console.warn('[handleUpdateMaterial] server update failed, applying locally', e);
         setLocalMaterials((prev: any[]) => prev.map((m: any) => (m.id === editingMaterialId ? { ...m, ...newMaterial } : m)));
+      }
+      // create alert if rate changed
+      if (rateChanged) {
+        // attempt to attach shop info if available
+        const shopId = prevMat?.shop_id || prevMat?.shopId || newMaterial.shopId || null;
+        const shopName = (shopId ? (localShops.find((s: any) => String(s.id) === String(shopId))?.name) : null) || prevMat?.shop_name || prevMat?.shopName || null;
+        const alert = {
+          type: 'material-rate-edit',
+          materialId: editingMaterialId,
+          name: (newMaterial.name || prevMat?.name || ""),
+          oldRate,
+          newRate,
+          editedBy: user?.username || user?.fullName || user?.name || user?.id || 'unknown',
+          at: new Date().toISOString(),
+          shopId,
+          shopName,
+        };
+        try {
+          const created = await postJSON('/alerts', alert);
+          const createdAlert = created?.alert || created;
+          // normalize created alert to our client shape
+          const c = createdAlert || {};
+          const added = {
+            id: c.id?.toString?.() || String(c.id || Date.now()),
+            type: c.type || alert.type,
+            materialId: c.material_id || c.materialId || alert.materialId,
+            name: c.name || alert.name,
+            oldRate: (c.old_rate !== undefined ? Number(c.old_rate) : Number(alert.oldRate || 0)),
+            newRate: (c.new_rate !== undefined ? Number(c.new_rate) : Number(alert.newRate || 0)),
+            editedBy: c.edited_by || c.editedBy || alert.editedBy,
+            at: c.created_at || c.at || alert.at,
+            shopId: c.shop_id || c.shopId || alert.shopId,
+            shopName: c.shop_name || c.shopName || alert.shopName,
+          };
+          setAlerts((prev: any[]) => [added, ...(prev || [])]);
+        } catch (e) {
+          console.warn('create alert failed', e);
+          setAlerts((prev: any[]) => [{ id: Date.now().toString(), ...alert }, ...(prev || [])]);
+        }
       }
 
       toast({ title: 'Updated', description: 'Material details updated' });
@@ -1582,6 +1659,72 @@ export default function AdminDashboard() {
                 </Card>
               </div>
             )}
+          </div>
+        )}
+
+        {activeTab === 'alerts' && (
+          <div className="space-y-4">
+            <Card>
+              <CardHeader>
+                <div className="flex items-center justify-between">
+                  <div>
+                    <CardTitle>Alerts</CardTitle>
+                    <CardDescription>Recent system alerts (material rate edits)</CardDescription>
+                  </div>
+                  <div>
+                    <Button size="sm" variant="ghost" onClick={async () => {
+                      try {
+                        const res = await apiFetch('/alerts', { method: 'DELETE' });
+                        if (res && res.ok) setAlerts([]);
+                        else setAlerts([]);
+                      } catch (e) {
+                        console.warn('clear alerts failed', e);
+                        setAlerts([]);
+                      }
+                    }}>
+                      Clear All
+                    </Button>
+                  </div>
+                </div>
+              </CardHeader>
+              <CardContent>
+                {alerts.length === 0 ? (
+                  <p className="text-muted-foreground">No alerts</p>
+                ) : (
+                  <div className="space-y-2">
+                    {alerts.map((a: any) => (
+                      <div key={a.id} className="p-3 border rounded flex items-start justify-between">
+                        <div>
+                          <div className="font-medium">{a.name || 'Material changed'}</div>
+                          {a.shopName ? <div className="text-sm text-muted-foreground">Shop: {a.shopName}</div> : null}
+                          <div className="text-sm text-muted-foreground">Rate changed from <span className="line-through">₹{Number(a.oldRate || 0).toLocaleString()}</span> to <span className="font-semibold">₹{Number(a.newRate || 0).toLocaleString()}</span></div>
+                          <div className="text-xs text-muted-foreground">By {a.editedBy || 'unknown'} • {(a.at ? new Date(a.at).toLocaleString() : 'Unknown')}</div>
+                        </div>
+                        <div className="flex flex-col gap-2">
+                          <Button size="sm" variant="ghost" onClick={async () => {
+                            try {
+                              const res = await apiFetch(`/alerts/${a.id}`, { method: 'DELETE' });
+                              if (res && res.ok) {
+                                const next = alerts.filter((x: any) => x.id !== a.id);
+                                setAlerts(next);
+                              } else {
+                                // fallback local
+                                const next = alerts.filter((x: any) => x.id !== a.id);
+                                setAlerts(next);
+                              }
+                            } catch (e) {
+                              console.warn('dismiss alert failed', e);
+                              const next = alerts.filter((x: any) => x.id !== a.id);
+                              setAlerts(next);
+                            }
+                          }}>Dismiss</Button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </CardContent>
+            </Card>
           </div>
         )}
 
