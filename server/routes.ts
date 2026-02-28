@@ -2542,6 +2542,61 @@ export async function registerRoutes(
     },
   );
 
+  // GET /api/categories/:name/impact - Get impact of deleting a category
+  app.get(
+    "/api/categories/:name/impact",
+    authMiddleware,
+    requireRole("admin", "software_team", "purchase_team", "pre_sales"),
+    async (req: Request, res: Response) => {
+      try {
+        const name = decodeURIComponent(req.params.name);
+
+        const subcategories = await query("SELECT name FROM material_subcategories WHERE category = $1", [name]);
+        const templates = await query("SELECT name FROM material_templates WHERE category = $1", [name]);
+        const materials = await query("SELECT name FROM materials WHERE template_id IN (SELECT id FROM material_templates WHERE category = $1)", [name]);
+
+        res.json({
+          subcategories: subcategories.rows.map(r => r.name),
+          templates: templates.rows.map(r => r.name),
+          materials: materials.rows.map(r => r.name)
+        });
+      } catch (err) {
+        console.error("/api/categories/:name/impact error", err);
+        res.status(500).json({ message: "failed to get category impact" });
+      }
+    }
+  );
+
+  // GET /api/subcategories/:id/impact - Get impact of deleting a subcategory
+  app.get(
+    "/api/subcategories/:id/impact",
+    authMiddleware,
+    requireRole("admin", "software_team", "purchase_team", "pre_sales"),
+    async (req: Request, res: Response) => {
+      try {
+        const { id } = req.params;
+
+        // Find subcategory name first to query products/materials
+        const subResult = await query("SELECT name FROM material_subcategories WHERE id = $1", [id]);
+        if (subResult.rows.length === 0) {
+          return res.status(404).json({ message: "Subcategory not found" });
+        }
+        const subName = subResult.rows[0].name;
+
+        const products = await query("SELECT name FROM products WHERE subcategory = $1", [subName]);
+        const materials = await query("SELECT name FROM materials WHERE subcategory = $1", [subName]);
+
+        res.json({
+          products: products.rows.map(r => r.name),
+          materials: materials.rows.map(r => r.name)
+        });
+      } catch (err) {
+        console.error("/api/subcategories/:id/impact error", err);
+        res.status(500).json({ message: "failed to get subcategory impact" });
+      }
+    }
+  );
+
   // DELETE /api/subcategories/:id - Delete a subcategory (Admin/Software Team/Purchase Team)
   app.delete(
     "/api/subcategories/:id",

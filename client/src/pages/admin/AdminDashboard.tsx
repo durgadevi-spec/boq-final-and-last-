@@ -372,19 +372,19 @@ export default function AdminDashboard() {
     }
 
     try {
-    const payload: any = {
-      name: editingProduct.name,
-      subcategory: editingProduct.subcategory,
-    };
-    if (editingProduct.taxCodeType) payload.taxCodeType = editingProduct.taxCodeType;
-    if (editingProduct.taxCodeValue) payload.taxCodeValue = editingProduct.taxCodeValue;
-    if (editingProduct.hsnCode !== undefined) payload.hsn_code = editingProduct.hsnCode;
-    if (editingProduct.sacCode !== undefined) payload.sac_code = editingProduct.sacCode;
+      const payload: any = {
+        name: editingProduct.name,
+        subcategory: editingProduct.subcategory,
+      };
+      if (editingProduct.taxCodeType) payload.taxCodeType = editingProduct.taxCodeType;
+      if (editingProduct.taxCodeValue) payload.taxCodeValue = editingProduct.taxCodeValue;
+      if (editingProduct.hsnCode !== undefined) payload.hsn_code = editingProduct.hsnCode;
+      if (editingProduct.sacCode !== undefined) payload.sac_code = editingProduct.sacCode;
 
-    const res = await apiFetch(`/products/${editingProduct.id}`, {
-      method: 'PUT',
-      body: JSON.stringify(payload),
-    });
+      const res = await apiFetch(`/products/${editingProduct.id}`, {
+        method: 'PUT',
+        body: JSON.stringify(payload),
+      });
 
       const updated = await res.json();
       const updatedProd = mapProduct(updated.product || updated);
@@ -1851,8 +1851,26 @@ export default function AdminDashboard() {
                                       Edit
                                     </Button>
                                     <Button size="sm" variant="destructive" onClick={async () => {
-                                      if (!window.confirm(`Delete category "${cat}" and its subcategories? This cannot be undone.`)) return;
                                       try {
+                                        const impactRes = await apiFetch(`/categories/${encodeURIComponent(cat)}/impact`);
+                                        const impact = await impactRes.json();
+
+                                        let message = `Are you sure you want to delete category "${cat}"?\n\n`;
+
+                                        if (impact.subcategories?.length > 0) {
+                                          message += `The following ${impact.subcategories.length} subcategories will be deleted:\n- ${impact.subcategories.slice(0, 5).join(', ')}${impact.subcategories.length > 5 ? '...' : ''}\n\n`;
+                                        }
+                                        if (impact.templates?.length > 0) {
+                                          message += `The following ${impact.templates.length} material templates will be deleted:\n- ${impact.templates.slice(0, 5).join(', ')}${impact.templates.length > 5 ? '...' : ''}\n\n`;
+                                        }
+                                        if (impact.materials?.length > 0) {
+                                          message += `The following ${impact.materials.length} materials will be deleted:\n- ${impact.materials.slice(0, 5).join(', ')}${impact.materials.length > 5 ? '...' : ''}\n\n`;
+                                        }
+
+                                        message += "This action cannot be undone.";
+
+                                        if (!window.confirm(message)) return;
+
                                         await apiFetch(`/categories/${encodeURIComponent(cat)}`, { method: 'DELETE' });
                                         setCategories(prev => prev.filter(c => c !== cat));
                                         setSubCategories(prev => prev.filter(s => s.category !== cat));
@@ -2030,8 +2048,23 @@ export default function AdminDashboard() {
                                     Edit
                                   </Button>
                                   <Button size="sm" variant="destructive" onClick={async () => {
-                                    if (!window.confirm(`Delete subcategory "${sub.name}"? This cannot be undone.`)) return;
                                     try {
+                                      const impactRes = await apiFetch(`/subcategories/${sub.id}/impact`);
+                                      const impact = await impactRes.json();
+
+                                      let message = `Are you sure you want to delete subcategory "${sub.name}"?\n\n`;
+
+                                      if (impact.products?.length > 0) {
+                                        message += `The following ${impact.products.length} products will be deleted or orphaned:\n- ${impact.products.slice(0, 5).join(', ')}${impact.products.length > 5 ? '...' : ''}\n\n`;
+                                      }
+                                      if (impact.materials?.length > 0) {
+                                        message += `The following ${impact.materials.length} materials will be deleted or orphaned:\n- ${impact.materials.slice(0, 5).join(', ')}${impact.materials.length > 5 ? '...' : ''}\n\n`;
+                                      }
+
+                                      message += "This action cannot be undone.";
+
+                                      if (!window.confirm(message)) return;
+
                                       const res = await apiFetch(`/subcategories/${sub.id}`, { method: 'DELETE' });
                                       if (res.ok) {
                                         setSubCategories(prev => prev.filter(s => s.id !== sub.id));
