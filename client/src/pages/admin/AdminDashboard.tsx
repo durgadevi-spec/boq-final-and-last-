@@ -210,7 +210,7 @@ export default function AdminDashboard() {
     type: 'category' | 'subcategory';
     name: string;
     id?: string;
-    impact: { subcategories?: string[], products?: string[] };
+    impact: { subcategories?: string[], products?: string[], templates?: string[], materials?: string[] };
   } | null>(null);
 
   const requestDeleteCategory = async (cat: string) => {
@@ -222,6 +222,8 @@ export default function AdminDashboard() {
         name: cat,
         impact: {
           subcategories: impact.subcategories || [],
+          templates: impact.templates || [],
+          materials: impact.materials || [],
           products: impact.products || []
         }
       });
@@ -241,6 +243,7 @@ export default function AdminDashboard() {
         name: sub.name,
         id: sub.id,
         impact: {
+          materials: impact.materials || [],
           products: impact.products || []
         }
       });
@@ -3705,10 +3708,10 @@ export default function AdminDashboard() {
                 </div>
 
                 {deleteData?.type === 'category' && (
-                  <div className="space-y-3 bg-muted/30 p-4 rounded-lg border border-border">
+                  <div className="space-y-3 bg-muted/30 p-4 rounded-lg border border-border max-h-[300px] overflow-y-auto">
                     {deleteData.impact.subcategories && deleteData.impact.subcategories.filter(s => s && s.trim()).length > 0 && (
                       <div>
-                        <p className="text-xs font-bold uppercase tracking-wider text-muted-foreground mb-1">Impacted Subcategories ({deleteData.impact.subcategories.filter(s => s && s.trim()).length})</p>
+                        <p className="text-xs font-bold uppercase tracking-wider text-muted-foreground mb-1">⚠ Subcategories ({deleteData.impact.subcategories.filter(s => s && s.trim()).length})</p>
                         <div className="text-sm flex flex-wrap gap-1">
                           {deleteData.impact.subcategories.filter(s => s && s.trim()).slice(0, 10).map((s, i) => (
                             <Badge key={i} variant="outline" className="bg-white/50">{s}</Badge>
@@ -3718,9 +3721,33 @@ export default function AdminDashboard() {
                       </div>
                     )}
 
+                    {deleteData.impact.templates && deleteData.impact.templates.filter(t => t && t.trim()).length > 0 && (
+                      <div className="mt-2">
+                        <p className="text-xs font-bold uppercase tracking-wider text-muted-foreground mb-1">⚠ Material Templates ({deleteData.impact.templates.filter(t => t && t.trim()).length})</p>
+                        <div className="text-sm flex flex-wrap gap-1">
+                          {deleteData.impact.templates.filter(t => t && t.trim()).slice(0, 10).map((t, i) => (
+                            <Badge key={i} variant="secondary" className="bg-amber-50 text-amber-700 hover:bg-amber-50 border-amber-200">{t}</Badge>
+                          ))}
+                          {deleteData.impact.templates.filter(t => t && t.trim()).length > 10 && <span className="text-xs text-muted-foreground pt-1">...and more</span>}
+                        </div>
+                      </div>
+                    )}
+
+                    {deleteData.impact.materials && deleteData.impact.materials.filter(m => m && m.trim()).length > 0 && (
+                      <div className="mt-2">
+                        <p className="text-xs font-bold uppercase tracking-wider text-muted-foreground mb-1">⚠ Materials ({deleteData.impact.materials.filter(m => m && m.trim()).length})</p>
+                        <div className="text-sm flex flex-wrap gap-1">
+                          {deleteData.impact.materials.filter(m => m && m.trim()).slice(0, 10).map((m, i) => (
+                            <Badge key={i} variant="secondary" className="bg-orange-50 text-orange-700 hover:bg-orange-50 border-orange-200">{m}</Badge>
+                          ))}
+                          {deleteData.impact.materials.filter(m => m && m.trim()).length > 10 && <span className="text-xs text-muted-foreground pt-1">...and more</span>}
+                        </div>
+                      </div>
+                    )}
+
                     {deleteData.impact.products && deleteData.impact.products.filter(p => p && p.trim()).length > 0 && (
                       <div className="mt-2">
-                        <p className="text-xs font-bold uppercase tracking-wider text-muted-foreground mb-1">Impacted Products ({deleteData.impact.products.filter(p => p && p.trim()).length})</p>
+                        <p className="text-xs font-bold uppercase tracking-wider text-muted-foreground mb-1">⚠ Products ({deleteData.impact.products.filter(p => p && p.trim()).length})</p>
                         <div className="text-sm flex flex-wrap gap-1">
                           {deleteData.impact.products.filter(p => p && p.trim()).slice(0, 10).map((p, i) => (
                             <Badge key={i} variant="secondary" className="bg-blue-50 text-blue-700 hover:bg-blue-50 border-blue-100">{p}</Badge>
@@ -3730,17 +3757,29 @@ export default function AdminDashboard() {
                       </div>
                     )}
 
-                    {(!deleteData.impact.subcategories?.filter(s => s && s.trim()).length && !deleteData.impact.products?.filter(p => p && p.trim()).length) && (
+                    {(!deleteData.impact.subcategories?.filter(s => s && s.trim()).length && !deleteData.impact.templates?.filter(t => t && t.trim()).length && !deleteData.impact.materials?.filter(m => m && m.trim()).length && !deleteData.impact.products?.filter(p => p && p.trim()).length) && (
                       <p className="text-xs text-muted-foreground italic">No linked items will be affected.</p>
                     )}
                   </div>
                 )}
 
                 {deleteData?.type === 'subcategory' && (
-                  <div className="space-y-3 bg-muted/30 p-4 rounded-lg border border-border">
-                    {deleteData.impact.products && deleteData.impact.products.filter(p => p && p.trim()).length > 0 && (
+                  <div className="space-y-3 bg-muted/30 p-4 rounded-lg border border-border max-h-[300px] overflow-y-auto">
+                    {deleteData.impact.materials && deleteData.impact.materials.filter(m => m && m.trim()).length > 0 && (
                       <div>
-                        <p className="text-xs font-bold uppercase tracking-wider text-muted-foreground mb-1">Impacted Products ({deleteData.impact.products.filter(p => p && p.trim()).length})</p>
+                        <p className="text-xs font-bold uppercase tracking-wider text-muted-foreground mb-1">⚠ Materials ({deleteData.impact.materials.filter(m => m && m.trim()).length})</p>
+                        <div className="text-sm flex flex-wrap gap-1">
+                          {deleteData.impact.materials.filter(m => m && m.trim()).slice(0, 10).map((m, i) => (
+                            <Badge key={i} variant="secondary" className="bg-orange-50 text-orange-700 hover:bg-orange-50 border-orange-200">{m}</Badge>
+                          ))}
+                          {deleteData.impact.materials.filter(m => m && m.trim()).length > 10 && <span className="text-xs text-muted-foreground pt-1">...and more</span>}
+                        </div>
+                      </div>
+                    )}
+
+                    {deleteData.impact.products && deleteData.impact.products.filter(p => p && p.trim()).length > 0 && (
+                      <div className="mt-2">
+                        <p className="text-xs font-bold uppercase tracking-wider text-muted-foreground mb-1">⚠ Products ({deleteData.impact.products.filter(p => p && p.trim()).length})</p>
                         <div className="text-sm flex flex-wrap gap-1">
                           {deleteData.impact.products.filter(p => p && p.trim()).slice(0, 10).map((p, i) => (
                             <Badge key={i} variant="secondary" className="bg-blue-50 text-blue-700 hover:bg-blue-50 border-blue-100">{p}</Badge>
@@ -3750,14 +3789,14 @@ export default function AdminDashboard() {
                       </div>
                     )}
 
-                    {(!deleteData.impact.products?.filter(p => p && p.trim()).length) && (
+                    {(!deleteData.impact.materials?.filter(m => m && m.trim()).length && !deleteData.impact.products?.filter(p => p && p.trim()).length) && (
                       <p className="text-xs text-muted-foreground italic">No linked items will be affected.</p>
                     )}
                   </div>
                 )}
 
                 <p className="text-sm font-semibold text-destructive/80">
-                  Warning: This action is permanent and cannot be undone.
+                  ⚠ All the above items will be permanently deleted. Please reassign them to another category/subcategory first if needed.
                 </p>
               </AlertDialogDescription>
             </AlertDialogHeader>

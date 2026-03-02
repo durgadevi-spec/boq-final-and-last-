@@ -36,7 +36,7 @@ import { computeBoq, UnitType } from "@/lib/boqCalc";
 
 import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
-import { Trash2, Copy, GripVertical, GripHorizontal, Eye, EyeOff, Edit2, ChevronDown, Briefcase, MapPin, IndianRupee, Lock, Edit3, Plus } from "lucide-react";
+import { Trash2, Copy, GripVertical, GripHorizontal, Eye, EyeOff, Edit2, ChevronDown, Briefcase, MapPin, IndianRupee, Lock, Edit3, Plus, CheckCircle2 } from "lucide-react";
 
 /** Helper to generate Excel-style column names (A, B, C... Z, AA, AB...) */
 const getExcelColumnName = (n: number) => {
@@ -61,7 +61,7 @@ type BOMVersion = {
   id: string;
   project_id: string;
   version_number: number;
-  status: "draft" | "submitted";
+  status: "draft" | "submitted" | "pending_approval" | "approved" | "rejected";
   created_at: string;
   updated_at: string;
   project_name?: string;
@@ -398,6 +398,24 @@ export default function FinalizeBoq() {
 
   // Decoupled Global Header State for custom columns
   const [globalColSettings, setGlobalColSettings] = useState<{ [colName: string]: any }>({});
+
+  const filteredVersions = React.useMemo(() => {
+    // Cutoff date for legacy data preservation (March 1, 2026)
+    // Anything from March 2nd onwards must be approved.
+    const CUTOFF_DATE = new Date("2026-03-02T00:00:00Z");
+
+    return versions.filter(v => {
+      // 1. Always show approved versions
+      if (v.status === "approved") return true;
+
+      // 2. Never show pending or rejected for new data
+      if (v.status === "pending_approval" || v.status === "rejected") return false;
+
+      // 3. For draft/submitted, only show if they are "Legacy" (created before March 2)
+      const createdAt = v.created_at ? new Date(v.created_at) : new Date();
+      return createdAt < CUTOFF_DATE;
+    });
+  }, [versions]);
 
   // Excel Export State
   const [isExportDialogOpen, setIsExportDialogOpen] = useState(false);
@@ -775,14 +793,24 @@ export default function FinalizeBoq() {
           ) {
             // keep current selection
           } else {
-            // Auto-select first draft version, or first version
-            const draftVersion = versionList.find(
-              (v: BOMVersion) => v.status === "draft",
+            // Auto-select first approved version if available, or first available from filtered list
+            const approvedVersion = versionList.find(
+              (v: BOMVersion) => v.status === "approved",
             );
-            if (draftVersion) {
-              setSelectedVersionId(draftVersion.id);
-            } else if (versionList.length > 0) {
-              setSelectedVersionId(versionList[0].id);
+
+            // Re-apply filtering logic to the new list to find what SHOULD be selectable
+            const CUTOFF_DATE = new Date("2026-03-02T00:00:00Z");
+            const selectable = versionList.filter((v: BOMVersion) => {
+              if (v.status === "approved") return true;
+              if (v.status === "pending_approval" || v.status === "rejected") return false;
+              const createdAt = v.created_at ? new Date(v.created_at) : new Date();
+              return createdAt < CUTOFF_DATE;
+            });
+
+            if (approvedVersion && selectable.some(v => v.id === approvedVersion.id)) {
+              setSelectedVersionId(approvedVersion.id);
+            } else if (selectable.length > 0) {
+              setSelectedVersionId(selectable[0].id);
             } else {
               setSelectedVersionId(null);
             }
@@ -2258,9 +2286,9 @@ export default function FinalizeBoq() {
                         <SelectValue placeholder="Select version" />
                       </SelectTrigger>
                       <SelectContent>
-                        {versions.map((v) => (
+                        {filteredVersions.map((v) => (
                           <SelectItem value={v.id} key={v.id}>
-                            V{v.version_number} ({v.status === "submitted" ? "Locked" : "Draft"})
+                            V{v.version_number} ({v.status === "approved" ? "Approved" : v.status === "submitted" ? "Locked" : "Draft"})
                           </SelectItem>
                         ))}
                       </SelectContent>
@@ -2402,12 +2430,16 @@ export default function FinalizeBoq() {
                 </div>
 
                 <div className="ml-auto flex items-center gap-3">
-                  {isVersionSubmitted ? (
+                  {selectedVersion?.status === "approved" ? (
+                    <Badge variant="outline" className="bg-emerald-100 text-emerald-700 border-emerald-200 text-[10px] font-bold px-2 py-0 h-6">
+                      <CheckCircle2 className="h-2.5 w-2.5 mr-1" /> APPROVED
+                    </Badge>
+                  ) : isVersionSubmitted ? (
                     <Badge variant="outline" className="bg-amber-50 text-amber-700 border-amber-200 text-[10px] font-bold px-2 py-0 h-6">
                       <Lock className="h-2.5 w-2.5 mr-1" /> LOCKED
                     </Badge>
                   ) : (
-                    <Badge variant="outline" className="bg-emerald-50 text-emerald-700 border-emerald-200 text-[10px] font-bold px-2 py-0 h-6">
+                    <Badge variant="outline" className="bg-blue-50 text-blue-700 border-blue-200 text-[10px] font-bold px-2 py-0 h-6">
                       <Edit3 className="h-2.5 w-2.5 mr-1" /> DRAFT
                     </Badge>
                   )}

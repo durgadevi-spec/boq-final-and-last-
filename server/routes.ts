@@ -382,6 +382,7 @@ export async function registerRoutes(
         project_location TEXT,
         version_number INTEGER NOT NULL,
         status VARCHAR(50) DEFAULT 'draft',
+        rejection_reason TEXT,
         created_at TIMESTAMP DEFAULT NOW(),
         updated_at TIMESTAMP DEFAULT NOW(),
         FOREIGN KEY (project_id) REFERENCES boq_projects(id) ON DELETE CASCADE,
@@ -407,6 +408,7 @@ export async function registerRoutes(
     await query(`ALTER TABLE boq_versions ADD COLUMN IF NOT EXISTS project_name VARCHAR(255)`);
     await query(`ALTER TABLE boq_versions ADD COLUMN IF NOT EXISTS project_client VARCHAR(255)`);
     await query(`ALTER TABLE boq_versions ADD COLUMN IF NOT EXISTS project_location TEXT`);
+    await query(`ALTER TABLE boq_versions ADD COLUMN IF NOT EXISTS rejection_reason TEXT`);
 
     // Populate project_name, project_client and project_location from boq_projects where missing
     await query(`
@@ -3712,7 +3714,7 @@ export async function registerRoutes(
 
 
 
-        if (status && !["draft", "submitted"].includes(status)) {
+        if (status && !["draft", "submitted", "pending_approval", "approved", "rejected"].includes(status)) {
           res.status(400).json({ message: "Invalid status" });
           return;
         }
@@ -3742,6 +3744,67 @@ export async function registerRoutes(
         res.status(500).json({ message: "Failed to update version" });
       }
     },
+  );
+
+  // ==================== BOM APPROVAL ROUTES ====================
+
+  // GET /api/bom-approvals - List all submitted BOM versions
+  app.get(
+    "/api/bom-approvals",
+    authMiddleware,
+    requireRole("admin", "software_team"),
+    async (_req: Request, res: Response) => {
+      try {
+        const result = await query(
+          "SELECT * FROM boq_versions WHERE status != 'draft' AND created_at >= '2026-03-02 00:00:00' ORDER BY created_at DESC"
+        );
+        res.json({ approvals: result.rows });
+      } catch (err) {
+        console.error("GET /api/bom-approvals error:", err);
+        res.status(500).json({ message: "Failed to load BOM approval requests" });
+      }
+    }
+  );
+
+  // POST /api/bom-approvals/:id/approve - Approve a BOM version
+  app.post(
+    "/api/bom-approvals/:id/approve",
+    authMiddleware,
+    requireRole("admin", "software_team"),
+    async (req: Request, res: Response) => {
+      try {
+        const { id } = req.params;
+        await query(
+          "UPDATE boq_versions SET status = 'approved', updated_at = NOW() WHERE id = $1",
+          [id]
+        );
+        res.json({ message: "BOM version approved successfully" });
+      } catch (err) {
+        console.error("POST /api/bom-approvals/:id/approve error:", err);
+        res.status(500).json({ message: "Failed to approve BOM version" });
+      }
+    }
+  );
+
+  // POST /api/bom-approvals/:id/reject - Reject a BOM version
+  app.post(
+    "/api/bom-approvals/:id/reject",
+    authMiddleware,
+    requireRole("admin", "software_team"),
+    async (req: Request, res: Response) => {
+      try {
+        const { id } = req.params;
+        const { reason } = req.body;
+        await query(
+          "UPDATE boq_versions SET status = 'rejected', rejection_reason = $1, updated_at = NOW() WHERE id = $2",
+          [reason, id]
+        );
+        res.json({ message: "BOM version rejected successfully" });
+      } catch (err) {
+        console.error("POST /api/bom-approvals/:id/reject error:", err);
+        res.status(500).json({ message: "Failed to reject BOM version" });
+      }
+    }
   );
 
   // GET /api/boq-versions/:versionId - Get a specific version

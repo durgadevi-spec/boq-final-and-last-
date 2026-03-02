@@ -8,7 +8,7 @@ CREATE TABLE IF NOT EXISTS alerts (
   old_rate NUMERIC,
   new_rate NUMERIC,
   edited_by TEXT,
-  shop_id VARCHAR(100),
+  shop_id VARCHAR(100),      
   shop_name TEXT,
   created_at TIMESTAMPTZ DEFAULT now()
 );

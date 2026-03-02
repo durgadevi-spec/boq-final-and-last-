@@ -27,6 +27,7 @@ import VendorCategories from "@/pages/admin/VendorCategories";
 import ManageCategories from "@/pages/admin/ManageCategories";
 import BulkMaterialUpload from "@/pages/admin/BulkMaterialUpload";
 import ProductApprovals from "@/pages/admin/ProductApprovals";
+import BomApprovals from "@/pages/admin/BomApprovals";
 
 import CivilWallEstimator from "@/pages/estimators/CivilWallEstimator";
 import FlooringEstimator from "@/pages/estimators/FlooringEstimator";
@@ -113,6 +114,7 @@ function Router() {
       <Route path="/admin/manage-product" component={ManageProduct} />
       <Route path="/admin/vendor-categories" component={VendorCategories} />
       <Route path="/admin/product-approvals" component={ProductApprovals} />
+      <Route path="/admin/bom-approvals" component={BomApprovals} />
 
       {/* ✅ Supplier Approval (MAIN) */}
       <Route path="/admin/supplier-approval" component={SupplierApproval} />

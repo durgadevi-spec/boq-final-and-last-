@@ -80,6 +80,7 @@ export function Sidebar() {
   const [pendingShopCount, setPendingShopCount] = useState(0);
   const [pendingMaterialCount, setPendingMaterialCount] = useState(0);
   const [pendingProductCount, setPendingProductCount] = useState(0);
+  const [pendingBomCount, setPendingBomCount] = useState(0);
   const [messageCount, setMessageCount] = useState(0);
 
   // Fetch subcategories from API
@@ -176,6 +177,27 @@ export function Sidebar() {
       } catch (e) {
         console.warn("load product approval count failed", e);
         setPendingProductCount(0);
+      }
+    };
+
+    load();
+    const iv = setInterval(load, 30000);
+    return () => { cancelled = true; clearInterval(iv); };
+  }, []);
+
+  // fetch pending BOM approvals count
+  useEffect(() => {
+    let cancelled = false;
+    const load = async () => {
+      try {
+        const res = await apiFetch("/api/bom-approvals");
+        if (!res || !res.ok) return setPendingBomCount(0);
+        const data = await res.json();
+        if (cancelled) return;
+        setPendingBomCount((data?.approvals || []).filter((a: any) => a.status === "pending_approval" || a.status === "submitted").length || 0);
+      } catch (e) {
+        console.warn("load BOM approval count failed", e);
+        setPendingBomCount(0);
       }
     };
 
@@ -590,24 +612,45 @@ export function Sidebar() {
 
               {/* Product approvals (admin + software_team) */}
               {isAdminOrSoftware && (
-                <Link href="/admin/product-approvals">
-                  <span
-                    className={cn(
-                      "flex items-center gap-3 rounded-md px-3 py-2 text-sm font-medium transition-colors cursor-pointer",
-                      location === "/admin/product-approvals"
-                        ? "bg-sidebar-primary text-sidebar-primary-foreground"
-                        : "text-sidebar-foreground hover:bg-sidebar-accent",
-                    )}
-                    onClick={() => setIsOpen(false)}
-                  >
-                    <FolderKanban className="h-4 w-4" /> Product Approvals
-                    {pendingProductCount > 0 && (
-                      <Badge variant="destructive" className="ml-auto">
-                        {pendingProductCount}
-                      </Badge>
-                    )}
-                  </span>
-                </Link>
+                <>
+                  <Link href="/admin/product-approvals">
+                    <span
+                      className={cn(
+                        "flex items-center gap-3 rounded-md px-3 py-2 text-sm font-medium transition-colors cursor-pointer",
+                        location === "/admin/product-approvals"
+                          ? "bg-sidebar-primary text-sidebar-primary-foreground"
+                          : "text-sidebar-foreground hover:bg-sidebar-accent",
+                      )}
+                      onClick={() => setIsOpen(false)}
+                    >
+                      <FolderKanban className="h-4 w-4" /> Product Approvals
+                      {pendingProductCount > 0 && (
+                        <Badge variant="destructive" className="ml-auto">
+                          {pendingProductCount}
+                        </Badge>
+                      )}
+                    </span>
+                  </Link>
+
+                  <Link href="/admin/bom-approvals">
+                    <span
+                      className={cn(
+                        "flex items-center gap-3 rounded-md px-3 py-2 text-sm font-medium transition-colors cursor-pointer",
+                        location === "/admin/bom-approvals"
+                          ? "bg-sidebar-primary text-sidebar-primary-foreground"
+                          : "text-sidebar-foreground hover:bg-sidebar-accent",
+                      )}
+                      onClick={() => setIsOpen(false)}
+                    >
+                      <CheckCircle2 className="h-4 w-4" /> BOM Approvals
+                      {pendingBomCount > 0 && (
+                        <Badge variant="destructive" className="ml-auto">
+                          {pendingBomCount}
+                        </Badge>
+                      )}
+                    </span>
+                  </Link>
+                </>
               )}
             </>
           )}

@@ -1,5 +1,5 @@
 import { useEffect, useState, useRef } from "react";
-import { ChevronUp, ChevronDown } from "lucide-react";
+import { ChevronUp, ChevronDown, Loader2, CheckCircle2, XCircle, Lock } from "lucide-react";
 import { Layout } from "@/components/layout/Layout";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -47,8 +47,9 @@ type BOMVersion = {
   id: string;
   project_id: string;
   version_number: number;
-  status: "draft" | "submitted";
+  status: "draft" | "submitted" | "pending_approval" | "approved" | "rejected";
   created_at: string;
+  rejection_reason?: string;
   updated_at: string;
   project_name?: string;
   project_client?: string;
@@ -1080,13 +1081,13 @@ export default function CreateBom() {
     }
   };
 
-  const handleSubmitVersion = async () => {
+  const handleSubmitVersion = async (status: "submitted" | "pending_approval" = "pending_approval") => {
     if (!selectedVersionId) return;
     try {
       await apiFetch(`/api/boq-versions/${selectedVersionId}`, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ status: "submitted" }),
+        body: JSON.stringify({ status }),
       });
 
       // Reload versions
@@ -1101,13 +1102,13 @@ export default function CreateBom() {
 
       toast({
         title: "Success",
-        description: "BOQ version submitted and locked",
+        description: status === "pending_approval" ? "BOQ version submitted for approval" : "BOQ version locked",
       });
     } catch (err) {
-      console.error("Failed to submit version:", err);
+      console.error("Failed to update status:", err);
       toast({
         title: "Error",
-        description: "Failed to submit version",
+        description: "Failed to update version status",
         variant: "destructive",
       });
     }
@@ -1449,7 +1450,8 @@ export default function CreateBom() {
 
   const selectedProject = projects.find((p) => p.id === selectedProjectId);
   const selectedVersion = versions.find((v) => v.id === selectedVersionId);
-  const isVersionSubmitted = selectedVersion?.status === "submitted";
+  const isVersionLocked = selectedVersion && ["submitted", "pending_approval", "approved", "rejected"].includes(selectedVersion.status);
+  const isVersionSubmitted = isVersionLocked; // Keep name for compatibility with existing disabled props
 
   if (loading) {
     return (
@@ -1520,7 +1522,10 @@ export default function CreateBom() {
                             <SelectItem value={v.id} key={v.id}>
                               {v.project_name ? `[${v.project_name}] ` : ""}V
                               {v.version_number} (
-                              {v.status === "submitted" ? "Locked" : "Draft"})
+                              {v.status === "submitted" ? "Locked" :
+                                v.status === "pending_approval" ? "Pending Approval" :
+                                  v.status === "approved" ? "Approved" :
+                                    v.status === "rejected" ? "Rejected" : "Draft"})
                             </SelectItem>
                           ))}
                         </SelectContent>
@@ -2137,13 +2142,40 @@ export default function CreateBom() {
             selectedProjectId && selectedVersionId && (
               <Card>
                 <CardContent className="space-y-3 pt-6">
-                  {isVersionSubmitted ? (
-                    <div className="bg-yellow-50 border border-yellow-200 rounded p-4 text-sm text-yellow-800">
-                      <strong>This version is locked.</strong> Submit a new version
-                      to make edits.
+                  {selectedVersion?.status === "submitted" ? (
+                    <div className="bg-yellow-50 border border-yellow-200 rounded p-4 text-sm text-yellow-800 flex items-center gap-2">
+                      <Lock className="h-4 w-4" />
+                      <div>
+                        <strong>Version Locked.</strong> This version is locked from further edits.
+                      </div>
+                    </div>
+                  ) : selectedVersion?.status === "pending_approval" ? (
+                    <div className="bg-blue-50 border border-blue-200 rounded p-4 text-sm text-blue-800 flex items-center gap-2">
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                      <div>
+                        <strong>Pending Approval.</strong> This version is being reviewed by admin.
+                      </div>
+                    </div>
+                  ) : selectedVersion?.status === "approved" ? (
+                    <div className="bg-green-50 border border-green-200 rounded p-4 text-sm text-green-800 flex items-center gap-2">
+                      <CheckCircle2 className="h-4 w-4" />
+                      <div>
+                        <strong>Approved!</strong> This version has been approved and moved to Finalize BOQ.
+                      </div>
+                    </div>
+                  ) : selectedVersion?.status === "rejected" ? (
+                    <div className="bg-red-50 border border-red-200 rounded p-4 text-sm text-red-800 space-y-1">
+                      <div className="flex items-center gap-2">
+                        <XCircle className="h-4 w-4" />
+                        <strong>Rejected.</strong> This version was rejected.
+                      </div>
+                      {selectedVersion.rejection_reason && (
+                        <p className="mt-1 italic">Reason: {selectedVersion.rejection_reason}</p>
+                      )}
+                      <p className="text-xs font-semibold mt-2 underline">Note: Create a new version to make requested changes.</p>
                     </div>
                   ) : null}
-                  <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
+                  <div className="grid grid-cols-1 md:grid-cols-5 gap-3">
                     <Button
                       onClick={handleSaveProject}
                       variant="outline"
@@ -2152,25 +2184,34 @@ export default function CreateBom() {
                       Save Draft
                     </Button>
                     <Button
-                      onClick={handleSubmitVersion}
-                      variant="default"
+                      onClick={() => handleSubmitVersion("submitted")}
+                      variant="outline"
+                      className="border-primary text-primary hover:bg-primary/5 font-bold"
                       disabled={isVersionSubmitted || boqItems.length === 0}
                     >
-                      Submit & Lock Version
+                      Lock Version
+                    </Button>
+                    <Button
+                      onClick={() => handleSubmitVersion("pending_approval")}
+                      variant="default"
+                      className="bg-primary hover:bg-primary/90 font-bold"
+                      disabled={isVersionSubmitted || boqItems.length === 0}
+                    >
+                      Submit for Approval
                     </Button>
                     <Button
                       onClick={handleDownloadExcel}
                       variant="outline"
                       disabled={boqItems.length === 0}
                     >
-                      Download as Excel
+                      Download Excel
                     </Button>
                     <Button
                       onClick={handleDownloadPdf}
                       variant="outline"
                       disabled={boqItems.length === 0}
                     >
-                      Download as PDF
+                      Download PDF
                     </Button>
                   </div>
                 </CardContent>
