@@ -263,7 +263,6 @@ export default function ManageProduct() {
         const mapped = mapItems(items);
         setSelectedMaterials(mapped); setConfigMaterials(mapped);
         // Store rejection reason in a temporary way if needed, or just rely on the config object
-        setProductDescription(prev => config.rejection_reason ? `REJECTION REASON: ${config.rejection_reason}\n\n${prev}` : prev);
         toast({ title: "Configuration Loaded", description: src });
     };
 
@@ -525,7 +524,7 @@ export default function ManageProduct() {
                                     </div>
                                 )}
                                 <div className="flex justify-end pt-4">
-                                    <Button size="lg" onClick={nextStep} disabled={!selectedProduct} className="px-8">Next Step <ArrowRight className="ml-2 h-5 w-5" /></Button>
+                                    <Button size="sm" onClick={nextStep} disabled={!selectedProduct} className="px-6 h-10">Next Step <ArrowRight className="ml-2 h-4 w-4" /></Button>
                                 </div>
                             </div>
                         )}
@@ -597,10 +596,10 @@ export default function ManageProduct() {
                                     </div>
                                 </div>
                                 <div className="flex flex-col sm:flex-row justify-between items-center gap-4 pt-6 mt-4 border-t">
-                                    <Button variant="outline" size="lg" onClick={() => setStep(step - 1)} className="w-full sm:w-auto px-8"><ArrowLeft className="mr-2 h-5 w-5" /> Back</Button>
-                                    <div className="flex items-center gap-6 w-full sm:w-auto">
-                                        <p className="text-sm font-bold text-muted-foreground whitespace-nowrap">{selectedMaterials.length} SELECTED</p>
-                                        <Button size="lg" onClick={nextStep} disabled={selectedMaterials.length === 0} className="w-full sm:w-auto px-10">Review Selection <ArrowRight className="ml-2 h-5 w-5" /></Button>
+                                    <Button variant="outline" size="sm" onClick={() => setStep(step - 1)} className="w-full sm:w-auto px-6 h-10"><ArrowLeft className="mr-2 h-4 w-4" /> Back</Button>
+                                    <div className="flex items-center gap-4 w-full sm:w-auto">
+                                        <p className="text-xs font-bold text-muted-foreground whitespace-nowrap">{selectedMaterials.length} SELECTED</p>
+                                        <Button size="sm" onClick={nextStep} disabled={selectedMaterials.length === 0} className="w-full sm:w-auto px-6 h-10">Review Selection <ArrowRight className="ml-2 h-4 w-4" /></Button>
                                     </div>
                                 </div>
                             </div>
@@ -660,89 +659,90 @@ export default function ManageProduct() {
                                             <Input type="number" value={baseRequiredQty} onChange={e => setBaseRequiredQty(Number(e.target.value) || 0)} className="font-bold bg-muted/30" />
                                         </div>
                                         <div className="space-y-2">
-                                            <div className="flex items-center justify-between">
-                                                <label className="text-xs font-bold uppercase text-muted-foreground">Wastage %</label>
-                                                <Dialog>
-                                                    <DialogTrigger asChild>
-                                                        <Button variant="ghost" size="sm" className="h-6 px-2 text-[10px] font-bold text-primary hover:bg-primary/10">
-                                                            <Plus className="h-3 w-3 mr-1" /> Add Item
-                                                        </Button>
-                                                    </DialogTrigger>
-                                                    <DialogContent className="max-w-3xl max-h-[80vh] flex flex-col">
-                                                        <DialogHeader>
-                                                            <DialogTitle className="text-xl font-bold">Add Additional Materials</DialogTitle>
-                                                        </DialogHeader>
-                                                        <div className="relative my-4">
-                                                            <Search className="absolute left-3 top-2.5 h-4 w-4 text-muted-foreground" />
-                                                            <Input
-                                                                placeholder="Search materials by name or code..."
-                                                                className="pl-10 h-10"
-                                                                value={step3MaterialSearch}
-                                                                onChange={e => setStep3MaterialSearch(e.target.value)}
-                                                            />
-                                                        </div>
-                                                        <div className="overflow-y-auto border rounded-xl flex-1">
-                                                            <Table>
-                                                                <TableHeader className="bg-muted/50 sticky top-0 z-10">
-                                                                    <TableRow>
-                                                                        <TableHead className="font-bold">Material Name</TableHead>
-                                                                        <TableHead className="font-bold">Unit</TableHead>
-                                                                        <TableHead className="font-bold">Shop</TableHead>
-                                                                        <TableHead className="text-right font-bold pr-6">Action</TableHead>
-                                                                    </TableRow>
-                                                                </TableHeader>
-                                                                <TableBody>
-                                                                    {loadingMaterials ? (
-                                                                        <TableRow><TableCell colSpan={4} className="text-center py-10"><Loader2 className="h-6 w-6 animate-spin mx-auto text-primary" /></TableCell></TableRow>
-                                                                    ) : (uniqueMaterials || []).filter(m => {
-                                                                        const q = step3MaterialSearch.toLowerCase();
-                                                                        return (m.name || "").toLowerCase().includes(q) || (m.code || "").toLowerCase().includes(q);
-                                                                    }).map(material => (
-                                                                        <TableRow key={material.id} className="hover:bg-muted/10">
-                                                                            <TableCell className="font-medium">{material.name}<div className="text-[10px] text-muted-foreground">Code: {material.code || material.id}</div></TableCell>
-                                                                            <TableCell>{material.unit || "-"}</TableCell>
-                                                                            <TableCell>{material.shop_name || "-"}</TableCell>
-                                                                            <TableCell className="text-right pr-4">
-                                                                                <Button
-                                                                                    size="sm"
-                                                                                    variant="outline"
-                                                                                    className="h-8 text-xs font-bold border-primary text-primary hover:bg-primary hover:text-white"
-                                                                                    onClick={() => {
-                                                                                        if (configMaterials.some(m => m.id === material.id)) {
-                                                                                            toast({ title: "Already Added", description: "This material is already in your configuration.", variant: "destructive" });
-                                                                                            return;
-                                                                                        }
-                                                                                        const rate = Number(material.rate) || 0;
-                                                                                        const newItem: SelectedMaterial = {
-                                                                                            ...material,
-                                                                                            qty: 1,
-                                                                                            baseQty: 1,
-                                                                                            wastagePct: wastagePctDefault,
-                                                                                            amount: rate,
-                                                                                            rate,
-                                                                                            supplyRate: rate,
-                                                                                            installRate: 0,
-                                                                                            location: material.technicalspecification || material.name || "",
-                                                                                            description: material.technicalspecification || material.name || "",
-                                                                                            applyWastage: true
-                                                                                        };
-                                                                                        setConfigMaterials(prev => [...prev, newItem]);
-                                                                                        setSelectedMaterials(prev => [...prev, material]);
-                                                                                        toast({ title: "Material Added", description: `${material.name} added to configuration.` });
-                                                                                    }}
-                                                                                >
-                                                                                    Add
-                                                                                </Button>
-                                                                            </TableCell>
-                                                                        </TableRow>
-                                                                    ))}
-                                                                </TableBody>
-                                                            </Table>
-                                                        </div>
-                                                    </DialogContent>
-                                                </Dialog>
-                                            </div>
+                                            <label className="text-xs font-bold uppercase text-muted-foreground">Wastage %</label>
                                             <Input type="number" value={wastagePctDefault} onChange={e => { const v = Number(e.target.value) || 0; setWastagePctDefault(v); setConfigMaterials(prev => prev.map(m => m.applyWastage ? { ...m, wastagePct: v } : m)); }} className="font-bold border-orange-200" />
+                                        </div>
+                                        <div className="space-y-2">
+                                            <label className="text-xs font-bold uppercase text-muted-foreground invisible">Actions</label>
+                                            <Dialog>
+                                                <DialogTrigger asChild>
+                                                    <Button variant="outline" size="sm" className="w-full h-10 px-4 text-xs font-bold text-primary border-primary hover:bg-primary/10 transition-all flex items-center justify-center gap-2">
+                                                        <Plus className="h-4 w-4" /> Add Item
+                                                    </Button>
+                                                </DialogTrigger>
+                                                <DialogContent className="max-w-3xl max-h-[80vh] flex flex-col">
+                                                    <DialogHeader>
+                                                        <DialogTitle className="text-xl font-bold">Add Additional Materials</DialogTitle>
+                                                    </DialogHeader>
+                                                    <div className="relative my-4">
+                                                        <Search className="absolute left-3 top-2.5 h-4 w-4 text-muted-foreground" />
+                                                        <Input
+                                                            placeholder="Search materials by name or code..."
+                                                            className="pl-10 h-10"
+                                                            value={step3MaterialSearch}
+                                                            onChange={e => setStep3MaterialSearch(e.target.value)}
+                                                        />
+                                                    </div>
+                                                    <div className="overflow-y-auto border rounded-xl flex-1">
+                                                        <Table>
+                                                            <TableHeader className="bg-muted/50 sticky top-0 z-10">
+                                                                <TableRow>
+                                                                    <TableHead className="font-bold">Material Name</TableHead>
+                                                                    <TableHead className="font-bold">Unit</TableHead>
+                                                                    <TableHead className="font-bold">Shop</TableHead>
+                                                                    <TableHead className="text-right font-bold pr-6">Action</TableHead>
+                                                                </TableRow>
+                                                            </TableHeader>
+                                                            <TableBody>
+                                                                {loadingMaterials ? (
+                                                                    <TableRow><TableCell colSpan={4} className="text-center py-10"><Loader2 className="h-6 w-6 animate-spin mx-auto text-primary" /></TableCell></TableRow>
+                                                                ) : (uniqueMaterials || []).filter(m => {
+                                                                    const q = step3MaterialSearch.toLowerCase();
+                                                                    return (m.name || "").toLowerCase().includes(q) || (m.code || "").toLowerCase().includes(q);
+                                                                }).map(material => (
+                                                                    <TableRow key={material.id} className="hover:bg-muted/10">
+                                                                        <TableCell className="font-medium">{material.name}<div className="text-[10px] text-muted-foreground">Code: {material.code || material.id}</div></TableCell>
+                                                                        <TableCell>{material.unit || "-"}</TableCell>
+                                                                        <TableCell>{material.shop_name || "-"}</TableCell>
+                                                                        <TableCell className="text-right pr-4">
+                                                                            <Button
+                                                                                size="sm"
+                                                                                variant="outline"
+                                                                                className="h-8 text-xs font-bold border-primary text-primary hover:bg-primary hover:text-white"
+                                                                                onClick={() => {
+                                                                                    if (configMaterials.some(m => m.id === material.id)) {
+                                                                                        toast({ title: "Already Added", description: "This material is already in your configuration.", variant: "destructive" });
+                                                                                        return;
+                                                                                    }
+                                                                                    const rate = Number(material.rate) || 0;
+                                                                                    const newItem: SelectedMaterial = {
+                                                                                        ...material,
+                                                                                        qty: 1,
+                                                                                        baseQty: 1,
+                                                                                        wastagePct: wastagePctDefault,
+                                                                                        amount: rate,
+                                                                                        rate,
+                                                                                        supplyRate: rate,
+                                                                                        installRate: 0,
+                                                                                        location: material.technicalspecification || material.name || "",
+                                                                                        description: material.technicalspecification || material.name || "",
+                                                                                        applyWastage: true
+                                                                                    };
+                                                                                    setConfigMaterials(prev => [...prev, newItem]);
+                                                                                    setSelectedMaterials(prev => [...prev, material]);
+                                                                                    toast({ title: "Material Added", description: `${material.name} added to configuration.` });
+                                                                                }}
+                                                                            >
+                                                                                Add
+                                                                            </Button>
+                                                                        </TableCell>
+                                                                    </TableRow>
+                                                                ))}
+                                                            </TableBody>
+                                                        </Table>
+                                                    </div>
+                                                </DialogContent>
+                                            </Dialog>
                                         </div>
                                     </div>
                                     <div className="rounded-xl border shadow-sm overflow-hidden bg-white">
@@ -816,17 +816,17 @@ export default function ManageProduct() {
                                     </div>
                                     <div className="flex flex-col sm:flex-row justify-between items-center gap-4 pt-6 mt-4 border-t">
                                         <div className="flex items-center gap-3 w-full sm:w-auto">
-                                            <Button variant="outline" size="lg" onClick={() => setStep(step - 1)} className="w-full sm:w-auto px-8"><ArrowLeft className="mr-2 h-5 w-5" /> Back to Selection</Button>
-                                            <Button variant="outline" size="lg" onClick={() => { setSelectedProduct(null); setConfigName(""); setSelectedCategory(""); setSelectedSubcategory(""); setSelectedMaterials([]); setConfigMaterials([]); setRequiredUnitType("Sqft"); setBaseRequiredQty(100); setWastagePctDefault(5); setDimA(undefined); setDimB(undefined); setDimC(undefined); setStep(1); }} className="w-full sm:w-auto px-8 border-blue-400 text-blue-700 hover:bg-blue-50">+ Add Another Product</Button>
+                                            <Button variant="outline" size="sm" onClick={() => setStep(step - 1)} className="w-full sm:w-auto px-6 h-10"><ArrowLeft className="mr-2 h-4 w-4" /> Back to Selection</Button>
+                                            <Button variant="outline" size="sm" onClick={() => { setSelectedProduct(null); setConfigName(""); setSelectedCategory(""); setSelectedSubcategory(""); setSelectedMaterials([]); setConfigMaterials([]); setRequiredUnitType("Sqft"); setBaseRequiredQty(100); setWastagePctDefault(5); setDimA(undefined); setDimB(undefined); setDimC(undefined); setStep(1); }} className="w-full sm:w-auto px-6 h-10 border-blue-400 text-blue-700 hover:bg-blue-50">+ Add Another Product</Button>
                                         </div>
                                         <div className="flex items-center gap-3 w-full sm:w-auto">
-                                            <Button variant="outline" size="lg" onClick={handleSaveDraft} disabled={isSaving || configMaterials.length === 0} className="w-full sm:w-auto border-orange-400 text-orange-700 hover:bg-orange-50">
+                                            <Button variant="outline" size="sm" onClick={handleSaveDraft} disabled={isSaving || configMaterials.length === 0} className="w-full sm:w-auto h-10 border-orange-400 text-orange-700 hover:bg-orange-50 px-6">
                                                 {isSaving ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : "Save Draft"}
                                             </Button>
-                                            <Button size="lg" onClick={handleSaveInPlace} disabled={isSaving || configMaterials.length === 0} className="w-full sm:w-auto bg-green-600 hover:bg-green-700 text-white font-bold px-10 transition-all shadow-lg">
-                                                {isSaving ? <><Loader2 className="mr-2 h-5 w-5 animate-spin" /> Submitting...</> : "Submit for Approval"}
+                                            <Button size="sm" onClick={handleSaveInPlace} disabled={isSaving || configMaterials.length === 0} className="w-full sm:w-auto h-10 bg-green-600 hover:bg-green-700 text-white font-bold px-6 transition-all shadow-md">
+                                                {isSaving ? <><Loader2 className="mr-2 h-4 w-4 animate-spin" /> Submitting...</> : "Submit for Approval"}
                                             </Button>
-                                            <Button size="lg" onClick={nextStep} className="w-full sm:w-auto bg-primary hover:bg-primary/90 text-white font-bold px-12 transition-all">Continue to Review <ArrowRight className="ml-2 h-5 w-5" /></Button>
+                                            <Button size="sm" onClick={nextStep} className="w-full sm:w-auto h-10 bg-primary hover:bg-primary/90 text-white font-bold px-6 transition-all">Continue to Review <ArrowRight className="ml-2 h-4 w-4" /></Button>
                                         </div>
                                     </div>
                                 </div>
@@ -888,10 +888,10 @@ export default function ManageProduct() {
                                         </tfoot>
                                     </table>
                                 </div>
-                                <div className="flex flex-col sm:flex-row justify-between items-center gap-4 pt-12 mt-8 border-t border-black/10">
-                                    <Button variant="outline" onClick={() => setStep(step - 1)} className="w-full sm:w-auto px-6 font-bold uppercase tracking-wide" disabled={isSaving}><ArrowLeft className="mr-2 h-4 w-4" /> Back</Button>
-                                    <Button onClick={handleSave} disabled={isSaving} className="w-full sm:w-auto bg-blue-600 hover:bg-blue-700 text-white font-bold px-8 uppercase tracking-wide transition-all shadow-lg hover:scale-105">
-                                        {isSaving ? <><Loader2 className="mr-2 h-6 w-6 animate-spin" /> Finalizing...</> : "Add to Create BOQ"}
+                                <div className="flex flex-col sm:flex-row justify-between items-center gap-4 pt-8 mt-8 border-t border-black/10">
+                                    <Button variant="outline" size="sm" onClick={() => setStep(step - 1)} className="w-full sm:w-auto px-6 h-10 font-bold uppercase tracking-wide" disabled={isSaving}><ArrowLeft className="mr-2 h-4 w-4" /> Back</Button>
+                                    <Button size="sm" onClick={handleSave} disabled={isSaving} className="w-full sm:w-auto h-10 bg-blue-600 hover:bg-blue-700 text-white font-bold px-8 uppercase tracking-wide transition-all shadow-md">
+                                        {isSaving ? <><Loader2 className="mr-2 h-4 w-4 animate-spin" /> Finalizing...</> : "Add to Create BOQ"}
                                     </Button>
                                 </div>
                             </div>

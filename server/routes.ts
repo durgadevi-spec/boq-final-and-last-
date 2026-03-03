@@ -2785,7 +2785,7 @@ export async function registerRoutes(
 
         // Update materials to be uncategorized for this subcategory
         await query(
-          "UPDATE materials SET \"subCategory\" = NULL WHERE \"subCategory\" = $1",
+          "UPDATE materials SET subcategory = NULL WHERE subcategory = $1",
           [subName]
         );
 
