@@ -140,6 +140,30 @@ export default function ManageProduct() {
 
     const uniqueMaterials = Array.from(new Map((materialsData || []).map(m => [(m.id || Math.random()).toString(), m])).values());
 
+    // Units from materials + defaults
+    const availableUnitTypes = useMemo(() => {
+        const defaults = ["Sqft", "Sqmt", "Length", "LS", "RFT", "RMT"];
+        const materialUnits = (materialsData || []).map(m => m.unit?.trim()).filter(Boolean) as string[];
+
+        const finalUnits = [...defaults];
+        materialUnits.forEach(u => {
+            const lowerU = u.toLowerCase();
+            // Treat 'sft' and 'sqft' variant identically for deduplication
+            const isSqftVariant = lowerU === 'sft' || lowerU === 'sqft';
+            const hasSqftVariant = finalUnits.some(fu => {
+                const lfu = fu.toLowerCase();
+                return lfu === 'sft' || lfu === 'sqft';
+            });
+            if (isSqftVariant && hasSqftVariant) return;
+
+            // General case-insensitive check
+            const exists = finalUnits.some(fu => fu.toLowerCase() === lowerU);
+            if (!exists) finalUnits.push(u);
+        });
+
+        return finalUnits.sort();
+    }, [materialsData]);
+
     const filteredMaterials = uniqueMaterials.filter(m => {
         if (materialSearch) {
             const q = materialSearch.toLowerCase();
@@ -514,30 +538,30 @@ export default function ManageProduct() {
                                                                 </div>
                                                                 <div className="flex items-center gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
                                                                     <Button variant="ghost" size="sm" onClick={() => loadSpecificConfig(cd)} className="h-8 text-primary hover:text-primary hover:bg-primary/10"><Edit className="h-4 w-4 mr-1" /> Load</Button>
-                                                                                <Button variant="ghost" size="sm" onClick={async () => {
-                                                                                    const newName = prompt('Enter new configuration name:', cd.product.config_name || '');
-                                                                                    if (newName === null) return;
-                                                                                    const trimmed = newName.trim();
-                                                                                    if (!trimmed) { alert('Name cannot be empty'); return; }
-                                                                                    try {
-                                                                                        const res = await apiFetch(`/api/step11-products/config/${cd.product.id}`, {
-                                                                                            method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ config_name: trimmed })
-                                                                                        });
-                                                                                        if (res.ok) {
-                                                                                            // update local list
-                                                                                            setPreviousConfigs(prev => prev.map(p => p.product.id === cd.product.id ? { ...p, product: { ...p.product, config_name: trimmed } } : p));
-                                                                                            setConfigName(trimmed);
-                                                                                            toast({ title: 'Renamed', description: 'Configuration renamed successfully.' });
-                                                                                        } else {
-                                                                                            const data = await res.json().catch(() => ({}));
-                                                                                            toast({ title: 'Error', description: data.message || 'Failed to rename', variant: 'destructive' });
-                                                                                        }
-                                                                                    } catch (e) {
-                                                                                        console.error(e);
-                                                                                        toast({ title: 'Error', description: 'Failed to rename', variant: 'destructive' });
-                                                                                    }
-                                                                                }} className="h-8 text-yellow-600 hover:text-yellow-700 hover:bg-yellow-50"><span className="text-xs font-bold">✎ Edit</span></Button>
-                                                                                <Button variant="ghost" size="sm" onClick={() => deleteConfig(cd.product.id)} className="h-8 text-red-500 hover:text-red-700 hover:bg-red-50"><span className="text-xs font-bold">🗑 Delete</span></Button>
+                                                                    <Button variant="ghost" size="sm" onClick={async () => {
+                                                                        const newName = prompt('Enter new configuration name:', cd.product.config_name || '');
+                                                                        if (newName === null) return;
+                                                                        const trimmed = newName.trim();
+                                                                        if (!trimmed) { alert('Name cannot be empty'); return; }
+                                                                        try {
+                                                                            const res = await apiFetch(`/api/step11-products/config/${cd.product.id}`, {
+                                                                                method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ config_name: trimmed })
+                                                                            });
+                                                                            if (res.ok) {
+                                                                                // update local list
+                                                                                setPreviousConfigs(prev => prev.map(p => p.product.id === cd.product.id ? { ...p, product: { ...p.product, config_name: trimmed } } : p));
+                                                                                setConfigName(trimmed);
+                                                                                toast({ title: 'Renamed', description: 'Configuration renamed successfully.' });
+                                                                            } else {
+                                                                                const data = await res.json().catch(() => ({}));
+                                                                                toast({ title: 'Error', description: data.message || 'Failed to rename', variant: 'destructive' });
+                                                                            }
+                                                                        } catch (e) {
+                                                                            console.error(e);
+                                                                            toast({ title: 'Error', description: 'Failed to rename', variant: 'destructive' });
+                                                                        }
+                                                                    }} className="h-8 text-yellow-600 hover:text-yellow-700 hover:bg-yellow-50"><span className="text-xs font-bold">✎ Edit</span></Button>
+                                                                    <Button variant="ghost" size="sm" onClick={() => deleteConfig(cd.product.id)} className="h-8 text-red-500 hover:text-red-700 hover:bg-red-50"><span className="text-xs font-bold">🗑 Delete</span></Button>
                                                                 </div>
                                                             </div>
                                                         ))}
@@ -749,10 +773,10 @@ export default function ManageProduct() {
                                     <div className="grid grid-cols-1 md:grid-cols-6 gap-4 p-6 bg-white rounded-xl border shadow-sm items-end">
                                         <div className="space-y-2">
                                             <label className="text-xs font-bold uppercase text-muted-foreground">Unit Type</label>
-                                            <Select value={requiredUnitType} onValueChange={(val: UnitType) => setRequiredUnitType(val)}>
+                                            <Select value={requiredUnitType} onValueChange={(val: string) => setRequiredUnitType(val)}>
                                                 <SelectTrigger className="font-bold"><SelectValue placeholder="Select unit" /></SelectTrigger>
-                                                <SelectContent>
-                                                    {["Sqft", "Sqmt", "Length", "LS", "RFT"].map(u => <SelectItem key={u} value={u}>{u}</SelectItem>)}
+                                                <SelectContent className="max-h-[300px] overflow-y-auto">
+                                                    {availableUnitTypes.map(u => <SelectItem key={u} value={u}>{u}</SelectItem>)}
                                                 </SelectContent>
                                             </Select>
                                         </div>
@@ -867,8 +891,8 @@ export default function ManageProduct() {
                                                     <TableHead className="w-[100px] font-bold">Shop</TableHead>
                                                     <TableHead className="w-[120px] font-bold">Item Description</TableHead>
                                                     <TableHead className="w-[60px] font-bold">Unit</TableHead>
-                                                    <TableHead className="w-[100px] font-bold">Qty</TableHead>
-                                                    <TableHead className="w-[100px] font-bold">Rate</TableHead>
+                                                    <TableHead className="w-[120px] font-bold text-center">Qty / {baseRequiredQty} {requiredUnitType}</TableHead>
+                                                    <TableHead className="w-[120px] font-bold">Rate / Material Unit</TableHead>
                                                     {!compactMode && (
                                                         <>
                                                             <TableHead className="w-[110px] font-bold">Base Amount</TableHead>
@@ -921,6 +945,13 @@ export default function ManageProduct() {
                                                 <TableRow className="bg-muted/20 font-black">
                                                     <TableCell colSpan={compactMode ? 8 : 13} className="text-right py-3 pr-4">Total (Incl. Wastage)</TableCell>
                                                     <TableCell className="text-[11px] text-primary">₹{totalCost.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</TableCell>
+                                                    {!compactMode && <TableCell></TableCell>}
+                                                </TableRow>
+                                                <TableRow className="bg-primary/5 font-black border-t-2 border-primary/20">
+                                                    <TableCell colSpan={compactMode ? 8 : 13} className="text-right py-4 pr-4 text-primary uppercase tracking-widest text-xs">Rate per {requiredUnitType}</TableCell>
+                                                    <TableCell className="text-sm text-primary font-black underline decoration-primary decoration-2 underline-offset-8">
+                                                        ₹{(totalCost / (baseRequiredQty || 1)).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                                                    </TableCell>
                                                     {!compactMode && <TableCell></TableCell>}
                                                 </TableRow>
                                             </TableBody>

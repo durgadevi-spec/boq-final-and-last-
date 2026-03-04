@@ -393,8 +393,13 @@ export default function ProductApprovals() {
                         <TableHead className="w-[40px]">
                           <div className="flex items-center justify-center">
                             <Checkbox
-                              checked={selectedIds.length > 0 && selectedIds.length === approvals.length}
-                              indeterminate={selectedIds.length > 0 && selectedIds.length < approvals.length}
+                              checked={
+                                selectedIds.length > 0 && selectedIds.length === approvals.length
+                                  ? true
+                                  : selectedIds.length > 0
+                                    ? "indeterminate"
+                                    : false
+                              }
                               onCheckedChange={(v) => toggleSelectAll(v as boolean)}
                               onClick={(e) => e.stopPropagation()}
                             />
@@ -471,27 +476,31 @@ export default function ProductApprovals() {
                               {!isViewOnly && (
                                 <>
                                   <div className="flex items-center justify-center gap-2">
-                                    <Button
-                                      size="sm"
-                                      onClick={() => handleApprove(approval.id)}
-                                      disabled={actionLoading === approval.id}
-                                      className="bg-green-600 hover:bg-green-700 text-white h-8 px-3"
-                                    >
-                                      {actionLoading === approval.id ? (
-                                        <Loader2 className="h-3 w-3 animate-spin" />
-                                      ) : (
-                                        <><CheckCircle2 className="h-3 w-3 mr-1" /> Approve</>
-                                      )}
-                                    </Button>
-                                    <Button
-                                      size="sm"
-                                      variant="destructive"
-                                      onClick={() => handleReject(approval.id)}
-                                      disabled={actionLoading === approval.id}
-                                      className="h-8 px-3"
-                                    >
-                                      <XCircle className="h-3 w-3 mr-1" /> Reject
-                                    </Button>
+                                    {approval.status === "pending" && (
+                                      <>
+                                        <Button
+                                          size="sm"
+                                          onClick={() => handleApprove(approval.id)}
+                                          disabled={actionLoading === approval.id}
+                                          className="bg-green-600 hover:bg-green-700 text-white h-8 px-3"
+                                        >
+                                          {actionLoading === approval.id ? (
+                                            <Loader2 className="h-3 w-3 animate-spin" />
+                                          ) : (
+                                            <><CheckCircle2 className="h-3 w-3 mr-1" /> Approve</>
+                                          )}
+                                        </Button>
+                                        <Button
+                                          size="sm"
+                                          variant="destructive"
+                                          onClick={() => handleReject(approval.id)}
+                                          disabled={actionLoading === approval.id}
+                                          className="h-8 px-3"
+                                        >
+                                          <XCircle className="h-3 w-3 mr-1" /> Reject
+                                        </Button>
+                                      </>
+                                    )}
                                   </div>
                                   {/* Delete always available (admin) */}
                                   <div className="mt-2">
@@ -658,8 +667,8 @@ export default function ProductApprovals() {
                                                 <TableHead className="w-[100px] font-bold">Shop</TableHead>
                                                 <TableHead className="w-[120px] font-bold">Description</TableHead>
                                                 <TableHead className="w-[60px] font-bold">Unit</TableHead>
-                                                <TableHead className="w-[100px] font-bold">Qty</TableHead>
-                                                <TableHead className="w-[100px] font-bold">Rate</TableHead>
+                                                <TableHead className="w-[120px] font-bold text-center">Qty / {basis.baseRequiredQty} {basis.requiredUnitType}</TableHead>
+                                                <TableHead className="w-[120px] font-bold">Rate / Material Unit</TableHead>
                                                 <TableHead className="w-[110px] font-bold">Base Amount</TableHead>
                                                 <TableHead className="w-[70px] font-bold text-center">
                                                   <div className="flex flex-col items-center gap-1">
@@ -677,7 +686,7 @@ export default function ProductApprovals() {
                                             </TableHeader>
                                             <TableBody>
                                               {boqRes.computed.map((m, idx) => {
-                                                const baseAmt = (m.baseQty || 0) * ((m.supplyRate || 0) + (m.installRate || 0));
+                                                const baseAmt = (m.baseQty || 0) * (Number(m.supplyRate || 0) + Number(m.installRate || 0));
                                                 const isEd = editingId === approval.id;
                                                 return (
                                                   <TableRow key={m.id} className={`hover:bg-muted/5 text-[11px] ${isEd ? 'bg-indigo-50/20' : ''}`}>
@@ -723,7 +732,7 @@ export default function ProductApprovals() {
                                                           />
                                                         </div>
                                                       ) : (
-                                                        `₹${((m.supplyRate || 0) + (m.installRate || 0)).toLocaleString()}`
+                                                        `₹${(Number(m.supplyRate || 0) + Number(m.installRate || 0)).toLocaleString()}`
                                                       )}
                                                     </TableCell>
                                                     <TableCell className="text-[10px] font-bold">₹{baseAmt.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</TableCell>
@@ -753,6 +762,13 @@ export default function ProductApprovals() {
                                               <TableRow className="bg-muted/20 font-black">
                                                 <TableCell colSpan={8} className="text-right py-3 pr-4">Total (Incl. Wastage)</TableCell>
                                                 <TableCell className="text-[11px] text-primary">₹{boqRes.grandTotal.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</TableCell>
+                                                <TableCell colSpan={5}></TableCell>
+                                              </TableRow>
+                                              <TableRow className="bg-primary/5 font-black border-t-2 border-primary/20">
+                                                <TableCell colSpan={8} className="text-right py-4 pr-4 text-primary uppercase tracking-widest text-xs">Rate per {basis.requiredUnitType}</TableCell>
+                                                <TableCell className="text-sm text-primary font-black underline decoration-primary decoration-2 underline-offset-8">
+                                                  ₹{(boqRes.grandTotal / (basis.baseRequiredQty || 1)).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                                                </TableCell>
                                                 <TableCell colSpan={5}></TableCell>
                                               </TableRow>
                                             </TableBody>

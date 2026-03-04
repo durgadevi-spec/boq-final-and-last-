@@ -6,7 +6,7 @@
  * Project (CreateBoq) scales to target quantity.
  */
 
-export type UnitType = "Sqft" | "Sqmt" | "Length" | "LS" | "RFT";
+export type UnitType = string;
 
 export type ConfigBasis = {
     requiredUnitType: UnitType;
