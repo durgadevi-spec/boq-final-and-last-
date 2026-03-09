@@ -29,6 +29,7 @@ import {
   Truck,
   FileText,
   ClipboardCheck,
+  BookOpen,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -853,6 +854,17 @@ export function Sidebar() {
                 <span className="flex items-center gap-3 rounded-md px-3 py-2 text-sm font-medium text-sidebar-foreground hover:bg-sidebar-accent cursor-pointer">
                   <Package className="h-4 w-4" />
                   Subscription
+                </span>
+              </Link>
+              <Link href="/user-manual">
+                <span className={cn(
+                  "flex items-center gap-3 rounded-md px-3 py-2 text-sm font-medium transition-colors cursor-pointer",
+                  location === "/user-manual"
+                    ? "bg-sidebar-primary text-sidebar-primary-foreground"
+                    : "text-sidebar-foreground hover:bg-sidebar-accent",
+                )}>
+                  <BookOpen className="h-4 w-4" />
+                  User Manual
                 </span>
               </Link>
             </>

@@ -5,6 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { useToast } from "@/hooks/use-toast";
 import {
   Building2,
@@ -34,6 +35,7 @@ export default function CreateProject() {
   const [selectedVersionId, setSelectedVersionId] = useState<string>("none");
   const [editingProjectId, setEditingProjectId] = useState<string | null>(null);
   const [editingProjectName, setEditingProjectName] = useState<string>("");
+  const [editingProjectData, setEditingProjectData] = useState<any | null>(null);
 
   const { toast } = useToast();
   const [projects, setProjects] = useState<any[]>([]);
@@ -194,6 +196,43 @@ export default function CreateProject() {
     }
   };
 
+  const saveFullProject = async () => {
+    if (!editingProjectData || !editingProjectData.name?.trim()) {
+      toast({ title: "Error", description: "Project name is required", variant: "destructive" });
+      return;
+    }
+    try {
+      const response = await apiFetch(`/api/boq-projects/${editingProjectData.id}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(editingProjectData),
+      });
+
+      if (response.ok) {
+        setProjects((p) =>
+          p.map((proj) =>
+            proj.id === editingProjectData.id ? { ...proj, ...editingProjectData } : proj
+          )
+        );
+        setEditingProjectData(null);
+        toast({ title: "Success", description: "Project updated" });
+      } else {
+        toast({
+          title: "Error",
+          description: "Failed to update project",
+          variant: "destructive",
+        });
+      }
+    } catch (err) {
+      console.error("Failed to update project:", err);
+      toast({
+        title: "Error",
+        description: "Failed to update project",
+        variant: "destructive",
+      });
+    }
+  };
+
   const saveProjectName = async (projectId: string) => {
     if (!editingProjectName.trim()) return;
     try {
@@ -290,15 +329,15 @@ export default function CreateProject() {
       <div className="space-y-6">
         <h1 className="text-2xl font-semibold">Create Project</h1>
 
-        <Card className="border-blue-100 shadow-xl overflow-hidden">
-          <div className="bg-gradient-to-r from-indigo-600 to-blue-600 px-6 py-4 flex items-center gap-3">
-            <Library className="w-5 h-5 text-white/90" />
+        <Card className="border-slate-200 shadow-sm overflow-hidden bg-white">
+          <div className="border-b border-slate-100 px-6 py-4 flex items-center gap-3">
+            <Library className="w-5 h-5 text-slate-500" />
             <div>
-              <h2 className="text-lg font-bold text-white">Create New Project</h2>
-              <p className="text-blue-100 text-[11px] opacity-80">Fill in the project details below. All fields will be saved to the database.</p>
+              <h2 className="text-lg font-bold text-slate-800">Create New Project</h2>
+              <p className="text-slate-500 text-[11px]">Fill in the project details below. All fields will be saved to the database.</p>
             </div>
           </div>
-          <CardContent className="space-y-6 pt-6">
+          <CardContent className="space-y-6 pt-6 bg-slate-50/50">
 
             <div className="grid grid-cols-1 md:grid-cols-3 gap-x-8 gap-y-5">
               <div className="space-y-1.5 group">
@@ -422,7 +461,7 @@ export default function CreateProject() {
             </div>
 
             <div className="flex justify-end pt-4 border-t border-slate-100">
-              <Button onClick={addProject} className="bg-indigo-600 hover:bg-indigo-700 text-white font-bold px-10 py-2.5 rounded-lg shadow-md hover:shadow-indigo-200 transition-all active:scale-95 flex items-center gap-2">
+              <Button onClick={addProject} className="bg-slate-800 hover:bg-slate-900 text-white font-medium px-8 py-2 rounded-md shadow-sm transition-all flex items-center gap-2 text-sm">
                 <Library className="w-4 h-4" /> Create Project
               </Button>
             </div>
@@ -495,6 +534,15 @@ export default function CreateProject() {
                         </div>
                       </div>
                       <div className="flex items-center gap-2 px-2">
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          className="h-8 w-8 p-0 text-slate-500 hover:bg-slate-100 hover:text-slate-800"
+                          onClick={() => setEditingProjectData(p)}
+                          title="Edit Project Details"
+                        >
+                          <Pencil size={16} />
+                        </Button>
                         <Button
                           variant="ghost"
                           size="sm"
@@ -595,6 +643,99 @@ export default function CreateProject() {
           </CardContent>
         </Card>
       </div>
+
+      <Dialog open={!!editingProjectData} onOpenChange={(open) => !open && setEditingProjectData(null)}>
+        <DialogContent className="max-w-2xl">
+          <DialogHeader>
+            <DialogTitle>Edit Project</DialogTitle>
+          </DialogHeader>
+          {editingProjectData && (
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 py-4">
+              <div className="space-y-1.5 group">
+                <Label className="text-xs font-semibold text-slate-500 uppercase flex items-center gap-1.5">
+                  <Briefcase className="w-3 h-3 text-slate-400" /> Project Name
+                </Label>
+                <Input
+                  value={editingProjectData.name}
+                  onChange={(e) => setEditingProjectData({ ...editingProjectData, name: e.target.value })}
+                  placeholder="Enter project name..."
+                  className="border-slate-200 focus:border-slate-400 transition-all rounded-md"
+                />
+              </div>
+              <div className="space-y-1.5 group">
+                <Label className="text-xs font-semibold text-slate-500 uppercase flex items-center gap-1.5">
+                  <User className="w-3 h-3 text-slate-400" /> Client Name
+                </Label>
+                <Input
+                  value={editingProjectData.client || ""}
+                  onChange={(e) => setEditingProjectData({ ...editingProjectData, client: e.target.value })}
+                  placeholder="Full name of the client"
+                  className="border-slate-200 focus:border-slate-400 transition-all rounded-md"
+                />
+              </div>
+              <div className="space-y-1.5 group">
+                <Label className="text-xs font-semibold text-slate-500 uppercase flex items-center gap-1.5">
+                  <Receipt className="w-3 h-3 text-slate-400" /> GST No.
+                </Label>
+                <Input
+                  value={editingProjectData.gst_no || ""}
+                  onChange={(e) => setEditingProjectData({ ...editingProjectData, gst_no: e.target.value })}
+                  placeholder="GSTIN (Optional)"
+                  className="border-slate-200 focus:border-slate-400 transition-all rounded-md"
+                />
+              </div>
+              <div className="space-y-1.5 group">
+                <Label className="text-xs font-semibold text-slate-500 uppercase flex items-center gap-1.5">
+                  <MapPin className="w-3 h-3 text-slate-400" /> Project Location
+                </Label>
+                <Input
+                  value={editingProjectData.location || ""}
+                  onChange={(e) => setEditingProjectData({ ...editingProjectData, location: e.target.value })}
+                  placeholder="City / Site Area"
+                  className="border-slate-200 focus:border-slate-400 transition-all rounded-md"
+                />
+              </div>
+              <div className="space-y-1.5 group md:col-span-2">
+                <Label className="text-xs font-semibold text-slate-500 uppercase flex items-center gap-1.5">
+                  <Building2 className="w-3 h-3 text-slate-400" /> Client Billing Address
+                </Label>
+                <Input
+                  value={editingProjectData.client_address || ""}
+                  onChange={(e) => setEditingProjectData({ ...editingProjectData, client_address: e.target.value })}
+                  placeholder="Detailed address for reports and invoices"
+                  className="border-slate-200 focus:border-slate-400 transition-all rounded-md"
+                />
+              </div>
+              <div className="space-y-1.5 group">
+                <Label className="text-xs font-semibold text-slate-500 uppercase flex items-center gap-1.5">
+                  <Calculator className="w-3 h-3 text-slate-400" /> Target Budget
+                </Label>
+                <Input
+                  value={editingProjectData.budget || ""}
+                  onChange={(e) => setEditingProjectData({ ...editingProjectData, budget: e.target.value })}
+                  placeholder="Allocated budget..."
+                  className="border-slate-200 focus:border-slate-400 transition-all rounded-md"
+                />
+              </div>
+              <div className="space-y-1.5 group">
+                <Label className="text-xs font-semibold text-slate-500 uppercase flex items-center gap-1.5">
+                  <Receipt className="w-3 h-3 text-slate-400" /> Project Value
+                </Label>
+                <Input
+                  value={editingProjectData.project_value || ""}
+                  onChange={(e) => setEditingProjectData({ ...editingProjectData, project_value: e.target.value })}
+                  placeholder="Final contract value..."
+                  className="border-slate-200 focus:border-slate-400 transition-all rounded-md"
+                />
+              </div>
+            </div>
+          )}
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setEditingProjectData(null)}>Cancel</Button>
+            <Button onClick={saveFullProject} className="bg-slate-800 hover:bg-slate-900 text-white">Save Changes</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </Layout>
   );
 }

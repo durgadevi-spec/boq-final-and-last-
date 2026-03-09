@@ -3755,33 +3755,72 @@ export async function registerRoutes(
     },
   );
 
-  // PUT /api/boq-projects/:projectId - Update project status
+  // PUT /api/boq-projects/:projectId - Update project
   app.put(
     "/api/boq-projects/:projectId",
     authMiddleware,
     async (req: Request, res: Response) => {
       try {
         const { projectId } = req.params;
-        const { status, name } = req.body;
+        const { status, name, client, budget, location, client_address, gst_no, project_value } = req.body;
+
+        const fields: string[] = [];
+        const vals: any[] = [];
+        let idx = 1;
 
         if (name !== undefined) {
           if (!name.trim()) {
             res.status(400).json({ message: "Project name cannot be empty" });
             return;
           }
-          await query(
-            `UPDATE boq_projects SET name = $1, updated_at = NOW() WHERE id = $2`,
-            [name.trim(), projectId],
-          );
-        } else if (status) {
+          fields.push(`name = $${idx++}`);
+          vals.push(name.trim());
+        }
+
+        if (status !== undefined) {
           if (!["draft", "submitted", "finalized"].includes(status)) {
             res.status(400).json({ message: "Invalid status" });
             return;
           }
-          await query(
-            `UPDATE boq_projects SET status = $1, updated_at = NOW() WHERE id = $2`,
-            [status, projectId],
-          );
+          fields.push(`status = $${idx++}`);
+          vals.push(status);
+        }
+
+        if (client !== undefined) {
+          fields.push(`client = $${idx++}`);
+          vals.push(client);
+        }
+
+        if (budget !== undefined) {
+          fields.push(`budget = $${idx++}`);
+          vals.push(budget);
+        }
+
+        if (location !== undefined) {
+          fields.push(`location = $${idx++}`);
+          vals.push(location);
+        }
+
+        if (client_address !== undefined) {
+          fields.push(`client_address = $${idx++}`);
+          vals.push(client_address);
+        }
+
+        if (gst_no !== undefined) {
+          fields.push(`gst_no = $${idx++}`);
+          vals.push(gst_no);
+        }
+
+        if (project_value !== undefined) {
+          fields.push(`project_value = $${idx++}`);
+          vals.push(project_value);
+        }
+
+        if (fields.length > 0) {
+          fields.push(`updated_at = NOW()`);
+          vals.push(projectId);
+          const q = `UPDATE boq_projects SET ${fields.join(", ")} WHERE id = $${idx}`;
+          await query(q, vals);
         }
 
         res.json({ message: "Project updated" });
@@ -3970,10 +4009,8 @@ export async function registerRoutes(
           const itemIdxStr = key.substring(lastDashIndex + 1);
           const itemIdx = parseInt(itemIdxStr, 10);
 
-          // If the key contains "-manual", strip it to find the real boqItemId
-          if (boqItemId.endsWith("-manual")) {
-            boqItemId = boqItemId.substring(0, boqItemId.length - 7);
-          }
+          // If the key contains suffixes like "-manual" or "-engine", strip them to find the real boqItemId
+          boqItemId = boqItemId.replace(/-manual$|-engine$/, "");
 
           if (!editsByItem[boqItemId]) editsByItem[boqItemId] = {};
           editsByItem[boqItemId][itemIdx] = fields;
@@ -4031,10 +4068,10 @@ export async function registerRoutes(
           }
 
           if (editsAppliedToThisItem > 0) {
-            // Update DB with modified table_data object directly
+            // Update DB with modified table_data object (stringified)
             const updateResult = await query(
               `UPDATE boq_items SET table_data = $1 WHERE id = $2`,
-              [tableData, boqItemId]
+              [JSON.stringify(tableData), boqItemId]
             );
             console.log(`[save-edits] DB UPDATE SUCCESS for ${boqItemId}. Rows affected: ${updateResult.rowCount}`);
 

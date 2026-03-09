@@ -19,6 +19,7 @@ import MaterialPicker from "@/components/MaterialPicker";
 import Step11Preview from "@/components/Step11Preview";
 import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
+import * as XLSX from 'xlsx';
 
 // ─── Types ─────────────────────────────────────────────────────────────────────
 
@@ -140,13 +141,14 @@ function VersionStatusBanner({ version }: { version: BOMVersion }) {
 // ─── BOQ Item Row ─────────────────────────────────────────────────────────────
 
 function BoqItemRow({ item, itemIdx, boqItem, tableData, isEngineBased, isVersionSubmitted,
-  getEditedValue, updateEditedField, handleDeleteRow, checkBudgetEarly,
+  getEditedValue, updateEditedField, handleDeleteRow, checkBudgetEarly, handleSaveProject,
   isDraggable, onDragStart, onDragOver, onDrop, isDragOver }: {
     item: any; itemIdx: number; boqItem: BOMItem; tableData: any; isEngineBased: boolean;
     isVersionSubmitted: boolean; getEditedValue: (k: string, f: string, v: any) => any;
     updateEditedField: (k: string, f: string, v: any) => void;
     handleDeleteRow: (id: string, td: any, idx: number, item?: any) => void;
     checkBudgetEarly: () => Promise<boolean>;
+    handleSaveProject: () => Promise<void>;
     isDraggable?: boolean; onDragStart?: () => void;
     onDragOver?: (e: React.DragEvent) => void; onDrop?: () => void;
     isDragOver?: boolean;
@@ -174,8 +176,16 @@ function BoqItemRow({ item, itemIdx, boqItem, tableData, isEngineBased, isVersio
   const rowClass = `border-b border-gray-100 hover:bg-blue-50/50 ${isDragOver ? "bg-blue-100/60 border-t-2 border-t-blue-400" : ""}`;
 
   if (perItemIsEngine) return (
-    <tr className={`${rowClass} text-xs`}>
-      <td className="border px-1 py-1 text-center text-gray-200 w-8"><GripVertical className="h-3.5 w-3.5 mx-auto opacity-20" /></td>
+    <tr
+      className={`${rowClass} text-xs`}
+      draggable={isDraggable && !isLocked}
+      onDragStart={isDraggable ? onDragStart : undefined}
+      onDragOver={isDraggable ? (e) => { e.preventDefault(); onDragOver?.(e); } : undefined}
+      onDrop={isDraggable ? onDrop : undefined}
+    >
+      <td className="border px-1 py-1 text-center bg-gray-50 w-8" style={{ cursor: isLocked ? "default" : "grab" }} title="Drag to reorder">
+        <GripVertical className={`h-3.5 w-3.5 mx-auto ${isLocked ? "text-gray-200" : "text-gray-400 hover:text-blue-500"}`} />
+      </td>
       <td className="border px-2 py-1 text-center">{itemIdx + 1}</td>
       <td className="border px-2 py-1 font-medium">{item.title}<ManualBadge /></td>
       <td className="border px-2 py-1 text-gray-600">{item.shop_name || "-"}</td>
@@ -207,15 +217,18 @@ function BoqItemRow({ item, itemIdx, boqItem, tableData, isEngineBased, isVersio
       <td className="border px-2 py-1">
         <textarea value={description} onChange={e => updateEditedField(itemKey, "description", e.target.value)} disabled={isLocked}
           onFocus={checkBudgetEarly}
+          onBlur={handleSaveProject}
           className="w-full border rounded px-1 py-0.5 text-xs min-h-[60px] resize-y focus:ring-1 ring-blue-500 outline-none" placeholder="Description" />
       </td>
       <td className="border px-2 py-1">
         <input type="text" value={unit} onChange={e => updateEditedField(itemKey, "unit", e.target.value)} disabled={isLocked}
+          onBlur={handleSaveProject}
           className="w-full border rounded px-1 py-0.5 text-xs text-center focus:ring-1 ring-blue-500 outline-none" />
       </td>
       <td className="border px-2 py-1 text-center">
         <input type="number" value={qty} onChange={e => updateEditedField(itemKey, "qty", parseFloat(e.target.value) || 0)} disabled={isLocked}
           onFocus={checkBudgetEarly}
+          onBlur={handleSaveProject}
           className="w-full border rounded px-1 py-0.5 text-xs text-center font-medium focus:ring-1 ring-blue-500 outline-none" />
       </td>
       <td className="border px-2 py-1 text-center text-blue-600">{(getEditedValue(itemKey, "qty", item.qty || 0) || 0).toFixed(2)}</td>
@@ -223,6 +236,7 @@ function BoqItemRow({ item, itemIdx, boqItem, tableData, isEngineBased, isVersio
       <td className="border px-1 py-1">
         <input type="number" value={rateVal} disabled={isLocked}
           onFocus={checkBudgetEarly}
+          onBlur={handleSaveProject}
           onChange={e => { const v = parseFloat(e.target.value) || 0; updateEditedField(itemKey, "rate", v); updateEditedField(itemKey, "supply_rate", v); updateEditedField(itemKey, "install_rate", 0); }}
           className="w-full border rounded px-1 py-0.5 text-xs text-right focus:ring-1 ring-blue-500 outline-none" placeholder="Rate" />
       </td>
@@ -235,7 +249,7 @@ function BoqItemRow({ item, itemIdx, boqItem, tableData, isEngineBased, isVersio
 
 // ─── BOQ Item Card ─────────────────────────────────────────────────────────────
 
-function BoqItemCard({ boqItem, boqIdx, isVersionSubmitted, expandedProductIds, setExpandedProductIds, getEditedValue, updateEditedField, handleDeleteRow, handleFinalizeProduct, handleAddItem, loadBoqItemsAndEdits, setBoqItems, checkBudgetEarly }: {
+function BoqItemCard({ boqItem, boqIdx, isVersionSubmitted, expandedProductIds, setExpandedProductIds, getEditedValue, updateEditedField, handleDeleteRow, handleFinalizeProduct, handleAddItem, loadBoqItemsAndEdits, setBoqItems, checkBudgetEarly, handleSaveProject }: {
   boqItem: BOMItem; boqIdx: number; isVersionSubmitted: boolean;
   expandedProductIds: Set<string>; setExpandedProductIds: (fn: (p: Set<string>) => Set<string>) => void;
   getEditedValue: (k: string, f: string, v: any) => any;
@@ -246,6 +260,7 @@ function BoqItemCard({ boqItem, boqIdx, isVersionSubmitted, expandedProductIds, 
   loadBoqItemsAndEdits: () => void;
   setBoqItems: React.Dispatch<React.SetStateAction<BOMItem[]>>;
   checkBudgetEarly: () => Promise<boolean>;
+  handleSaveProject: () => Promise<void>;
 }) {
   const tableData = parseTableData(boqItem.table_data);
   const step11Items = Array.isArray(tableData.step11_items) ? tableData.step11_items : [];
@@ -267,11 +282,21 @@ function BoqItemCard({ boqItem, boqIdx, isVersionSubmitted, expandedProductIds, 
   if (tableData.materialLines && tableData.targetRequiredQty !== undefined) {
     isEngineBased = true;
     const boqResult = computeBoq(tableData.configBasis, tableData.materialLines, tableData.targetRequiredQty);
-    const computedLines = boqResult.computed.map((line: any, idx: number) => ({
-      title: line.name, description: line.name, unit: line.unit, shop_name: line.shop_name,
-      qtyPerSqf: line.perUnitQty, requiredQty: line.scaledQty, roundOff: line.roundOffQty,
-      rateSqft: line.supplyRate + line.installRate, amount: line.lineTotal, s_no: idx + 1, manual: false,
-    }));
+    const computedLines = boqResult.computed.map((line: any, idx: number) => {
+      const itemKey = `${boqItem.id}-engine-${idx}`;
+      const qty = Number(getEditedValue(itemKey, "qty", line.perUnitQty));
+      const sRate = Number(getEditedValue(itemKey, "supply_rate", line.supplyRate));
+      const iRate = Number(getEditedValue(itemKey, "install_rate", line.installRate));
+      const rate = Number(getEditedValue(itemKey, "rate", sRate + iRate)) || (sRate + iRate);
+      const reqQty = Number((qty * (tableData.targetRequiredQty || 1)).toFixed(2));
+      const roundOff = Math.ceil(reqQty);
+      return {
+        title: line.name, description: line.name, unit: line.unit, shop_name: line.shop_name,
+        qtyPerSqf: qty, requiredQty: reqQty, roundOff: roundOff,
+        rateSqft: rate, amount: Number((roundOff * rate).toFixed(2)), s_no: idx + 1, manual: false,
+        _materialIdx: idx, itemKey
+      };
+    });
     const manualStep11 = step11Items.map((it: any, s11Idx: number) => {
       if (!it?.manual) return null;
       const itemKey = `${boqItem.id}-manual-${s11Idx}`;
@@ -289,32 +314,48 @@ function BoqItemCard({ boqItem, boqIdx, isVersionSubmitted, expandedProductIds, 
       const sRate = Number(getEditedValue(itemKey, "supply_rate", it.supply_rate ?? 0)) || 0;
       const iRate = Number(getEditedValue(itemKey, "install_rate", it.install_rate ?? 0)) || 0;
       const rate = Number(getEditedValue(itemKey, "rate", sRate + iRate)) || (sRate + iRate);
-      return { ...it, itemKey, _s11Idx: s11Idx, qty, amount: Number((qty * rate).toFixed(2)) };
+      return { ...it, itemKey, _s11Idx: s11Idx, qty, rateSqft: rate, amount: Number((qty * rate).toFixed(2)) };
     });
   }
 
-  // Sync localItems when displayLines change from outside (add/delete)
+  // Sync localItems when displayLines change from outside (add/delete/save)
   useEffect(() => {
-    if (!isEngineBased) {
-      setLocalItems(displayLines);
-      setReorderInit(true);
-    }
+    setLocalItems(displayLines);
+    setReorderInit(true);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [step11Items.length, isEngineBased, boqItem.id]);
+  }, [step11Items.length, isEngineBased, boqItem.id, tableData.materialLines?.length, boqItem.table_data]);
 
-  // use localItems for rendering non-engine rows (gives immediate reorder feedback)
-  const renderLines = isEngineBased ? displayLines : (reorderInit ? localItems : displayLines);
+  // use localItems for rendering always (gives immediate reorder feedback)
+  const renderLines = (reorderInit ? localItems : displayLines);
 
   const handleRowReorder = async (newOrder: any[]) => {
     setLocalItems(newOrder);
-    // persist the new step11_items order
-    const newStep11 = newOrder.map(item => {
-      // strip computed/display-only fields, keep originals from step11Items
-      const origIdx = item._s11Idx;
-      return origIdx !== undefined ? step11Items[origIdx] : item;
-    });
+
+    // Prepare updated data structures for persistence
+    let updatedTd = { ...tableData };
+
+    if (isEngineBased) {
+      // Reorder materialLines for engine products
+      const newMaterialLines = newOrder
+        .filter(item => item._materialIdx !== undefined)
+        .map(item => tableData.materialLines[item._materialIdx]);
+
+      // Reorder step11_items for manual products within engine project
+      const newStep11 = newOrder
+        .filter(item => item._s11Idx !== undefined)
+        .map(item => step11Items[item._s11Idx]);
+
+      updatedTd = { ...updatedTd, materialLines: newMaterialLines, step11_items: newStep11 };
+    } else {
+      // Reorder step11_items for non-engine products
+      const newStep11 = newOrder.map(item => {
+        const origIdx = item._s11Idx;
+        return origIdx !== undefined ? step11Items[origIdx] : item;
+      });
+      updatedTd = { ...updatedTd, step11_items: newStep11 };
+    }
+
     try {
-      const updatedTd = { ...tableData, step11_items: newStep11 };
       const resp = await apiFetch(`/api/boq-items/${boqItem.id}`, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
@@ -329,8 +370,8 @@ function BoqItemCard({ boqItem, boqIdx, isVersionSubmitted, expandedProductIds, 
   };
 
 
-  const totalAmount = renderLines.reduce((sum: number, it: any) => sum + (Number(it.amount) || 0), 0);
-  const ratePerUnit = totalAmount / (tableData.targetRequiredQty || Number(step11Items[0]?.qty) || 1);
+  const totalAmount = displayLines.reduce((sum: number, it: any) => sum + (Number(it.amount) || 0), 0);
+  const ratePerUnit = totalAmount / (tableData.targetRequiredQty || (Number(displayLines[0]?.qty) || Number(step11Items[0]?.qty) || 1));
 
   return (
     <div className="border rounded-lg overflow-hidden">
@@ -417,7 +458,8 @@ function BoqItemCard({ boqItem, boqIdx, isVersionSubmitted, expandedProductIds, 
                       tableData={tableData} isEngineBased={isEngineBased} isVersionSubmitted={isVersionSubmitted}
                       getEditedValue={getEditedValue} updateEditedField={updateEditedField}
                       handleDeleteRow={handleDeleteRow} checkBudgetEarly={checkBudgetEarly}
-                      isDraggable={!isEngineBased}
+                      handleSaveProject={handleSaveProject}
+                      isDraggable={!isVersionSubmitted && !tableData.is_finalized}
                       isDragOver={dragOverIdx === itemIdx}
                       onDragStart={() => { dragIdxRef.current = itemIdx; }}
                       onDragOver={() => setDragOverIdx(itemIdx)}
@@ -930,36 +972,38 @@ export default function CreateBom() {
 
   const handleSaveProject = async () => {
     if (!selectedVersionId) return;
+    const payload = editedFieldsRef.current || {};
+    if (Object.keys(payload).length === 0) return;
+
     try {
-      const payload = editedFieldsRef.current || {};
-      const res = await apiFetch(`/api/boq-versions/${encodeURIComponent(selectedVersionId)}/save-edits`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ editedFields: payload }) });
+      const res = await apiFetch(`/api/boq-versions/${encodeURIComponent(selectedVersionId)}/save-edits`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ editedFields: payload })
+      });
+
       if (!res.ok) throw new Error(await res.text().catch(() => ""));
-      let saveResp: any = null;
-      try { saveResp = await res.json(); } catch { /* non-JSON */ }
+
+      const saveResp = await res.json();
       if (saveResp?.updatedItems?.length) {
-        setBoqItems(prev => { const byId = new Map(prev.map(i => [i.id, i])); saveResp.updatedItems.forEach((up: any) => byId.set(up.id, { ...(byId.get(up.id) || {}), ...up, table_data: parseTableData(up.table_data) })); return prev.map(p => byId.get(p.id) ?? p); });
-        setEditedFields({}); editedFieldsRef.current = {};
-      } else {
-        setBoqItems(prev => prev.map(item => {
-          const keys = Object.keys(editedFields).filter(k => k.startsWith(`${item.id}-`));
-          if (!keys.length) return item;
-          const td = parseTableData(item.table_data);
-          const s11 = Array.isArray(td.step11_items) ? [...td.step11_items] : [];
-          for (const key of keys) {
-            const fields = editedFields[key];
-            const idx = parseInt(key.substring(key.lastIndexOf("-") + 1), 10);
-            if (td.materialLines && td.targetRequiredQty !== undefined) {
-              try { const r = computeBoq(td.configBasis, td.materialLines, td.targetRequiredQty); const cLen = Array.isArray(r.computed) ? r.computed.length : 0; if (key.includes("-manual-")) { const mi = parseInt(key.split("-manual-")[1], 10); if (s11[mi]) s11[mi] = { ...s11[mi], ...fields }; } else if (idx >= cLen) { const mi = idx - cLen; if (s11[mi]) s11[mi] = { ...s11[mi], ...fields }; } }
-              catch { if (s11[idx]) s11[idx] = { ...s11[idx], ...fields }; }
-            } else { if (s11[idx]) s11[idx] = { ...s11[idx], ...fields }; }
-          }
-          return { ...item, table_data: { ...td, step11_items: s11 } };
-        }));
-        try { const r = await apiFetch(`/api/boq-items/version/${encodeURIComponent(selectedVersionId)}`, { headers: {} }); if (r.ok) { const d = await r.json(); setBoqItems(d.items || []); setEditedFields({}); editedFieldsRef.current = {}; } } catch { /* keep optimistic */ }
+        setBoqItems(prev => {
+          const byId = new Map(prev.map(i => [i.id, i]));
+          saveResp.updatedItems.forEach((up: any) => {
+            const existing = byId.get(up.id) || {};
+            byId.set(up.id, { ...existing, ...up, table_data: parseTableData(up.table_data) });
+          });
+          return prev.map(p => byId.get(p.id) ?? p);
+        });
+        setEditedFields({});
+        editedFieldsRef.current = {};
       }
-      toast({ title: "Success", description: "Draft saved" });
+
+      toast({ title: "Success", description: "Draft saved automatically" });
       loadHistory();
-    } catch { toast({ title: "Error", description: "Failed to save BOQ", variant: "destructive" }); }
+    } catch (err) {
+      console.error("Failed to auto-save:", err);
+      toast({ title: "Error", description: "Failed to save draft", variant: "destructive" });
+    }
   };
 
   const handleSubmitVersion = async (status: "submitted" | "pending_approval" = "pending_approval") => {
@@ -1014,64 +1058,322 @@ export default function CreateBom() {
   };
 
   const handleDownloadExcel = () => {
-    if (!selectedProjectId || !boqItems.length) { toast({ title: "Info", description: "No BOQ items to download" }); return; }
+    if (!selectedProjectId || !boqItems.length) {
+      toast({ title: "Info", description: "No BOQ items to download" });
+      return;
+    }
     try {
-      let [hasUnit, hasQty, hasSupplyRate, hasInstallRate, hasSupplyAmount, hasInstallAmount] = [false, false, false, false, false, false];
-      const exportLines: any[] = [];
-      boqItems.forEach(bi => {
-        const td = parseTableData(bi.table_data);
-        buildDisplayLines(bi).forEach((item: any, idx: number) => {
-          exportLines.push({ productName: td.product_name || bi.estimator, item, isEngine: !!td.materialLines, boqItemId: bi.id, itemIdx: idx });
-          if (item.unit !== undefined) hasUnit = true; if (item.qty !== undefined) hasQty = true;
-          if (item.supply_rate !== undefined) hasSupplyRate = true; if (item.install_rate !== undefined) hasInstallRate = true;
-          if (item.supply_amount !== undefined) hasSupplyAmount = true; if (item.install_amount !== undefined) hasInstallAmount = true;
+      const workbook = XLSX.utils.book_new();
+      const exportData: any[] = [];
+
+      // Main Header
+      const mainHeaders = ["Sl", "Item", "Shop", "Description", "Unit", "Qty/Unit", "Required Qty", "Round off", "Rate/Unit", "Amount"];
+      exportData.push(["BILL OF QUANTITIES (BOQ)"]);
+      exportData.push([`Project: ${selectedProject?.name || "-"}`]);
+      exportData.push([`Client: ${selectedProject?.client || "-"}`]);
+      exportData.push([`Version: ${selectedVersion ? `V${selectedVersion.version_number} (${VERSION_LABEL[selectedVersion.status] || selectedVersion.status})` : "Draft"}`]);
+      exportData.push([]); // Spacing
+      exportData.push(mainHeaders);
+
+      let grandTotal = 0;
+
+      boqItems.forEach((boqItem, boqIdx) => {
+        const tableData = parseTableData(boqItem.table_data);
+        const step11Items = Array.isArray(tableData.step11_items) ? tableData.step11_items : [];
+        const productName = tableData.product_name || boqItem.estimator;
+        const hsnType = tableData.hsn_sac_type || tableData.tax_code_type || "";
+        const hsnCode = tableData.hsn_sac_code || tableData.tax_code_value || tableData.hsn_code || tableData.sac_code || "";
+        const hsnFull = hsnCode ? ` [${hsnType.toUpperCase()}: ${hsnCode}]` : "";
+
+        // Product header row
+        exportData.push([(boqIdx + 1).toString(), (productName + hsnFull).toUpperCase(), "", tableData.finalize_description || "", "", "", "", "", "", ""]);
+
+        let displayLines: any[] = [];
+        let isEngineBased = false;
+
+        if (tableData.materialLines && tableData.targetRequiredQty !== undefined) {
+          isEngineBased = true;
+          const boqResult = computeBoq(tableData.configBasis, tableData.materialLines, tableData.targetRequiredQty);
+          const computedLines = boqResult.computed.map((line: any, idx: number) => ({
+            title: line.name, description: line.name, unit: line.unit, shop_name: line.shop_name,
+            qtyPerSqf: line.perUnitQty, requiredQty: line.scaledQty, roundOff: line.roundOffQty,
+            rateSqft: line.supplyRate + line.installRate, amount: line.lineTotal, s_no: idx + 1, manual: false,
+          }));
+          const manualStep11 = step11Items.map((it: any, s11Idx: number) => {
+            if (!it?.manual) return null;
+            const itemKey = `${boqItem.id}-manual-${s11Idx}`;
+            const qty = Number(getEditedValue(itemKey, "qty", it.qty ?? 0)) || 0;
+            const sRate = Number(getEditedValue(itemKey, "supply_rate", it.supply_rate ?? 0)) || 0;
+            const iRate = Number(getEditedValue(itemKey, "install_rate", it.install_rate ?? 0)) || 0;
+            const rate = Number(getEditedValue(itemKey, "rate", sRate + iRate)) || (sRate + iRate);
+            const desc = getEditedValue(itemKey, "description", it.description || "");
+            const u = getEditedValue(itemKey, "unit", it.unit || "nos");
+            return {
+              ...it, manual: true, itemKey, _s11Idx: s11Idx, qtyPerSqf: it.qtyPerSqf ?? 0,
+              requiredQty: qty, roundOff: "-", description: desc, unit: u,
+              rateSqft: rate, amount: Number((qty * rate).toFixed(2))
+            };
+          }).filter(Boolean);
+          displayLines = [...computedLines, ...manualStep11];
+        } else {
+          displayLines = step11Items.map((it: any, s11Idx: number) => {
+            const itemKey = it.itemKey || `${boqItem.id}-${s11Idx}`;
+            const qty = Number(getEditedValue(itemKey, "qty", it.qty ?? 0)) || 0;
+            const sRate = Number(getEditedValue(itemKey, "supply_rate", it.supply_rate ?? 0)) || 0;
+            const iRate = Number(getEditedValue(itemKey, "install_rate", it.install_rate ?? 0)) || 0;
+            const rate = Number(getEditedValue(itemKey, "rate", sRate + iRate)) || (sRate + iRate);
+            const desc = getEditedValue(itemKey, "description", it.description || "");
+            const u = getEditedValue(itemKey, "unit", it.unit || "nos");
+            return {
+              ...it, itemKey, _s11Idx: s11Idx,
+              qtyPerSqf: qty, requiredQty: qty, roundOff: "-", description: desc, unit: u,
+              rateSqft: rate, amount: Number((qty * rate).toFixed(2))
+            };
+          });
+        }
+
+        let productTotal = 0;
+        displayLines.forEach((l: any, idx: number) => {
+          const rowData = [
+            `${boqIdx + 1}.${idx + 1}`,
+            l.title || "-",
+            l.shop_name || "-",
+            l.description || "-",
+            l.unit || "-",
+            l.qtyPerSqf !== undefined && l.qtyPerSqf !== "-" ? (typeof l.qtyPerSqf === 'number' ? l.qtyPerSqf.toFixed(3) : l.qtyPerSqf) : "-",
+            l.requiredQty !== undefined && l.requiredQty !== "-" ? (typeof l.requiredQty === 'number' ? l.requiredQty.toFixed(2) : l.requiredQty) : "-",
+            l.roundOff !== undefined ? l.roundOff.toString() : "-",
+            l.rateSqft !== undefined ? l.rateSqft : 0,
+            (l.amount || 0)
+          ];
+          exportData.push(rowData);
+          productTotal += (l.amount || 0);
         });
+
+        // Product total row
+        exportData.push(["", "Product Total", "", "", "", "", "", "", "", productTotal]);
+        exportData.push([]); // spacing
+        grandTotal += productTotal;
       });
-      const headers = ["S.No", "Item", "Shop", "Description", ...(hasUnit ? ["Unit"] : []), ...(hasQty ? ["Qty"] : []), ...(hasSupplyRate ? ["Supply Rate"] : []), ...(hasInstallRate ? ["Install Rate"] : []), ...(hasSupplyAmount ? ["Supply Amount"] : []), ...(hasInstallAmount ? ["Install Amount"] : [])];
-      let rowNum = 1, totalSupply = 0, totalInstall = 0;
-      const rows = exportLines.map(({ item, isEngine, boqItemId, itemIdx, productName }) => {
-        const key = `${boqItemId}-${itemIdx}`;
-        const qty = isEngine ? item.qty ?? 0 : getEditedValue(key, "qty", item.qty ?? 0);
-        const sr = isEngine ? item.supply_rate ?? 0 : getEditedValue(key, "supply_rate", item.supply_rate ?? 0);
-        const ir = isEngine ? item.install_rate ?? 0 : getEditedValue(key, "install_rate", item.install_rate ?? 0);
-        const desc = isEngine ? item.description ?? "" : getEditedValue(key, "description", item.description ?? "");
-        const unit = isEngine ? item.unit ?? "" : getEditedValue(key, "unit", item.unit ?? "");
-        const sa = item.supply_amount ?? (qty * sr); const ia = item.install_amount ?? (qty * ir);
-        totalSupply += Number(sa) || 0; totalInstall += Number(ia) || 0;
-        return [(rowNum++).toString(), item.title || productName || "", item.shop_name || "", desc, ...(hasUnit ? [unit] : []), ...(hasQty ? [String(qty)] : []), ...(hasSupplyRate ? [String(sr)] : []), ...(hasInstallRate ? [String(ir)] : []), ...(hasSupplyAmount ? [Number(sa).toFixed(2)] : []), ...(hasInstallAmount ? [Number(ia).toFixed(2)] : [])];
-      });
-      rows.push(["", "", "", "", ...(hasUnit ? [""] : []), ...(hasQty ? [""] : []), ...(hasSupplyRate ? [""] : []), ...(hasInstallRate ? ["Total"] : []), ...(hasSupplyAmount ? [totalSupply.toFixed(2)] : []), ...(hasInstallAmount ? [totalInstall.toFixed(2)] : [])]);
-      const esc = (c: any) => { const s = String(c ?? ""); return /[,"\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s; };
-      const csv = [headers.map(esc), ...rows.map(r => r.map(esc))].map(r => r.join(",")).join("\n");
-      const filename = `${selectedProject?.name || "BOQ"}_${selectedVersion ? `V${selectedVersion.version_number}` : "draft"}_BOQ.csv`;
-      const a = document.createElement("a"); a.href = URL.createObjectURL(new Blob([csv], { type: "text/csv;charset=utf-8;" })); a.download = filename; a.style.visibility = "hidden";
-      document.body.appendChild(a); a.click(); document.body.removeChild(a);
+
+      // Grand total row
+      exportData.push(["", "GRAND TOTAL", "", "", "", "", "", "", "", grandTotal]);
+
+      const worksheet = XLSX.utils.aoa_to_sheet(exportData);
+
+      // Add some basic styling/formatting
+      worksheet['!cols'] = [
+        { wch: 5 },  // Sl
+        { wch: 30 }, // Item
+        { wch: 15 }, // Shop
+        { wch: 50 }, // Description
+        { wch: 10 }, // Unit
+        { wch: 12 }, // Qty/Unit
+        { wch: 15 }, // Required Qty
+        { wch: 12 }, // Round off
+        { wch: 15 }, // Rate/Unit
+        { wch: 18 }, // Amount
+      ];
+
+      const range = XLSX.utils.decode_range(worksheet['!ref'] || 'A1');
+      for (let R = range.s.r; R <= range.e.r; ++R) {
+        for (let C = range.s.c; C <= range.e.c; ++C) {
+          const cell_ref = XLSX.utils.encode_cell({ r: R, c: C });
+          if (!worksheet[cell_ref]) continue;
+          if (C === 8 || C === 9) { // Rate and Amount columns
+            if (typeof worksheet[cell_ref].v === 'number') {
+              worksheet[cell_ref].z = '"₹"#,##0.00';
+            }
+          }
+        }
+      }
+
+      XLSX.utils.book_append_sheet(workbook, worksheet, "BOQ");
+      const filename = `${selectedProject?.name || "BOQ"}_${selectedVersion ? `V${selectedVersion.version_number}` : "draft"}_BOQ.xlsx`;
+
+      XLSX.writeFile(workbook, filename);
       toast({ title: "Success", description: `Downloaded ${filename}` });
-    } catch { toast({ title: "Error", description: "Failed to download", variant: "destructive" }); }
+    } catch (err) {
+      console.error(err);
+      toast({ title: "Error", description: "Failed to download Excel", variant: "destructive" });
+    }
   };
 
   const handleDownloadPdf = async () => {
-    if (!selectedProjectId || !boqItems.length) { toast({ title: "Info", description: "No BOQ items to download" }); return; }
+    if (!selectedProjectId || !boqItems.length) {
+      toast({ title: "Info", description: "No BOQ items to download" });
+      return;
+    }
     try {
-      const body: any[] = []; let idx = 1;
-      boqItems.forEach(bi => {
-        const td = parseTableData(bi.table_data);
-        buildDisplayLines(bi).forEach((l: any) => {
-          const lTot = (l.qty || 0) * (l.supply_rate || 0) + (l.qty || 0) * (l.install_rate || 0);
-          body.push([(idx++).toString(), td.product_name || bi.estimator || "—", l.shop_name || "—", l.title || "—", l.description || "—", l.unit || "—", (l.qty || 0).toString(), (l.supply_rate || 0).toFixed(2), (l.install_rate || 0).toFixed(2), lTot.toFixed(2)]);
-        });
-      });
+      const doc = new jsPDF({ orientation: "landscape", unit: 'mm', format: 'a4' });
+      const pageWidth = doc.internal.pageSize.getWidth();
+      const pageHeight = doc.internal.pageSize.getHeight();
+
+      // 1. Fetch Logo
       let logoDataUrl: string | null = null;
-      try { const r = await fetch("/image.png"); const b = await r.blob(); logoDataUrl = await new Promise(res => { const rd = new FileReader(); rd.onloadend = () => res(rd.result as string); rd.onerror = () => res(null); rd.readAsDataURL(b); }); } catch { /* no logo */ }
-      const doc = new jsPDF({ orientation: "landscape" }); const pw = doc.internal.pageSize.getWidth();
-      if (logoDataUrl) { const ip: any = doc.getImageProperties(logoDataUrl); const ih = 24; doc.addImage(logoDataUrl, "PNG", 10, 10, (ip.width / ip.height) * ih, ih); }
-      doc.setFontSize(10); doc.setFont("helvetica", "bold"); doc.text(selectedProject?.name || "BOQ", pw - 10, 16, { align: "right" });
-      doc.setFontSize(9); doc.setFont("helvetica", "normal"); doc.text(`Client: ${selectedProject?.client || "-"}`, pw - 10, 22, { align: "right" }); doc.text(`Budget: ${selectedProject?.budget || "-"}`, pw - 10, 28, { align: "right" });
+      try {
+        const r = await fetch("/image.png");
+        if (r.ok) {
+          const b = await r.blob();
+          logoDataUrl = await new Promise(res => {
+            const reader = new FileReader();
+            reader.onloadend = () => res(reader.result as string);
+            reader.onerror = () => res(null);
+            reader.readAsDataURL(b);
+          });
+        }
+      } catch (err) {
+        console.warn("Logo fetch failed", err);
+      }
+
+      // 2. Header Section
+      if (logoDataUrl) {
+        try {
+          const ip: any = doc.getImageProperties(logoDataUrl);
+          const ih = 20;
+          const iw = (ip.width / ip.height) * ih;
+          doc.addImage(logoDataUrl, "PNG", 10, 10, iw, ih);
+        } catch (e) { console.error("Logo error", e); }
+      }
+
+      doc.setFontSize(10);
+      doc.setFont("helvetica", "bold");
+      doc.text(selectedProject?.name || "BILL OF QUANTITIES", pageWidth - 10, 16, { align: "right" });
+      doc.setFont("helvetica", "normal");
+      doc.setFontSize(9);
+      doc.text(`Client: ${selectedProject?.client || "-"}`, pageWidth - 10, 22, { align: "right" });
+      doc.text(`Budget: ${selectedProject?.budget || "-"}`, pageWidth - 10, 28, { align: "right" });
+      doc.text(`Version: ${selectedVersion ? `V${selectedVersion.version_number}` : "Draft"}`, pageWidth - 10, 34, { align: "right" });
+
+      doc.setFontSize(14);
+      doc.setFont("helvetica", "bold");
+      doc.text("BILL OF QUANTITIES (BOQ)", pageWidth / 2, 25, { align: "center" });
+
+      // 3. Prepare Table columns and body
+      const tableHeaders = ["Sl", "Item / Component", "Shop", "Description", "Unit", "Qty/Unit", "Req Qty", "R.Off", "Rate", "Total (₹)"];
+      const tableBody: any[] = [];
+      let grandTotal = 0;
+
+      boqItems.forEach((boqItem, boqIdx) => {
+        const td = parseTableData(boqItem.table_data);
+        const step11Items = Array.isArray(td.step11_items) ? td.step11_items : [];
+        const productName = td.product_name || boqItem.estimator;
+        const hsnType = td.hsn_sac_type || td.tax_code_type || "";
+        const hsnCode = td.hsn_sac_code || td.tax_code_value || td.hsn_code || td.sac_code || "";
+        const hsnFull = hsnCode ? ` [${hsnType.toUpperCase()}: ${hsnCode}]` : "";
+
+        // Product Header Row (Gray background)
+        tableBody.push([
+          { content: (boqIdx + 1).toString(), styles: { fontStyle: 'bold', fillColor: [240, 240, 240] } },
+          { content: (productName + hsnFull).toUpperCase(), styles: { fontStyle: 'bold', fillColor: [240, 240, 240] } },
+          { content: td.finalize_description || "", colSpan: 8, styles: { fontStyle: 'italic', fillColor: [240, 240, 240] } }
+        ]);
+
+        let displayLines: any[] = [];
+        if (td.materialLines && td.targetRequiredQty !== undefined) {
+          const boqResult = computeBoq(td.configBasis, td.materialLines, td.targetRequiredQty);
+          const computedLines = boqResult.computed.map((line: any, idx: number) => ({
+            title: line.name, description: line.name, unit: line.unit, shop_name: line.shop_name,
+            qtyPerSqf: line.perUnitQty, requiredQty: line.scaledQty, roundOff: line.roundOffQty,
+            rate: line.supplyRate + line.installRate, amount: line.lineTotal
+          }));
+          const manualStep11 = step11Items.filter((i: any) => i?.manual).map((it: any, s11Idx: number) => {
+            const key = `${boqItem.id}-manual-${it._s11Idx ?? s11Idx}`;
+            const qty = Number(getEditedValue(key, "qty", it.qty ?? 0)) || 0;
+            const rate = Number(getEditedValue(key, "rate", (it.supply_rate ?? 0) + (it.install_rate ?? 0)));
+            return {
+              ...it, manual: true, title: it.title, description: getEditedValue(key, "description", it.description || ""),
+              unit: getEditedValue(key, "unit", it.unit || "nos"), qtyPerSqf: "-", requiredQty: qty, roundOff: "-",
+              rate, amount: qty * rate
+            };
+          }).filter(Boolean);
+          displayLines = [...computedLines, ...manualStep11];
+        } else {
+          displayLines = step11Items.map((it: any, idx: number) => {
+            const key = it.itemKey || `${boqItem.id}-${idx}`;
+            const qty = Number(getEditedValue(key, "qty", it.qty ?? 0)) || 0;
+            const rate = Number(getEditedValue(key, "rate", (it.supply_rate ?? 0) + (it.install_rate ?? 0)));
+            return {
+              ...it, title: it.title, description: getEditedValue(key, "description", it.description || ""),
+              unit: getEditedValue(key, "unit", it.unit || "nos"), qtyPerSqf: qty, requiredQty: qty, roundOff: "-",
+              rate, amount: qty * rate
+            };
+          });
+        }
+
+        let productTotal = 0;
+        displayLines.forEach((l, lIdx) => {
+          tableBody.push([
+            `${boqIdx + 1}.${lIdx + 1}`,
+            l.title || "-",
+            l.shop_name || "-",
+            l.description || "-",
+            l.unit || "-",
+            typeof l.qtyPerSqf === 'number' ? l.qtyPerSqf.toFixed(3) : l.qtyPerSqf,
+            typeof l.requiredQty === 'number' ? l.requiredQty.toFixed(2) : l.requiredQty,
+            l.roundOff || "-",
+            (l.rate || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }),
+            (l.amount || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+          ]);
+          productTotal += (l.amount || 0);
+        });
+
+        // Product Subtotal Row
+        tableBody.push([
+          { content: "", colSpan: 8, styles: { borderTop: [1, 0, 0, 0] } },
+          { content: "Product Total", styles: { fontStyle: 'bold', fillColor: [250, 250, 250] } },
+          { content: productTotal.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }), styles: { fontStyle: 'bold', fillColor: [250, 250, 250], halign: 'right' } }
+        ]);
+
+        grandTotal += productTotal;
+      });
+
+      // Grand Total Row (Dark accent)
+      tableBody.push([
+        { content: "GRAND TOTAL", colSpan: 9, styles: { fontStyle: 'bold', halign: 'right', fillColor: [41, 41, 41], textColor: [255, 255, 255] } },
+        { content: grandTotal.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }), styles: { fontStyle: 'bold', halign: 'right', fillColor: [41, 41, 41], textColor: [255, 255, 255] } }
+      ]);
+
+      // 4. Render Table
       // @ts-ignore
-      autoTable(doc, { head: [["S.No", "Product", "Shop", "Component", "Description", "Unit", "Qty", "Supply", "Install", "Total"]], body, startY: 40, styles: { fontSize: 8 }, headStyles: { fillColor: [64, 64, 64], textColor: [255, 255, 255], fontStyle: "bold" }, theme: "grid" });
-      doc.save(`${selectedProject?.name || "BOQ"}_${selectedVersion ? `V${selectedVersion.version_number}` : "draft"}_BOQ.pdf`);
-      toast({ title: "Success", description: "PDF downloaded" });
-    } catch { toast({ title: "Error", description: "Failed to download PDF", variant: "destructive" }); }
+      autoTable(doc, {
+        head: [tableHeaders],
+        body: tableBody,
+        startY: 42,
+        styles: { fontSize: 7, cellPadding: 1.5, lineColor: [220, 220, 220], lineWidth: 0.1 },
+        headStyles: { fillColor: [41, 41, 41], textColor: [255, 255, 255], fontStyle: "bold" },
+        theme: "grid",
+        columnStyles: {
+          0: { cellWidth: 10 },    // Sl
+          1: { cellWidth: 40 },    // Item
+          2: { cellWidth: 25 },    // Shop
+          4: { cellWidth: 12 },    // Unit
+          5: { cellWidth: 15 },    // Qty/Unit
+          6: { cellWidth: 15 },    // Req Qty
+          7: { cellWidth: 12 },    // R.Off
+          8: { cellWidth: 25, halign: 'right' },    // Rate
+          9: { cellWidth: 25, halign: 'right' },    // Amount
+        }
+      });
+
+      // 5. Terms & Conditions (as per image)
+      const finalY = (doc as any).lastAutoTable.finalY + 12;
+      if (finalY < pageHeight - 30) {
+        doc.setFontSize(10);
+        doc.setFont("helvetica", "bold");
+        doc.text("Terms & Conditions:", 10, finalY);
+        doc.setFontSize(9);
+        doc.setFont("helvetica", "normal");
+        doc.text("GST Extra", 10, finalY + 6);
+      }
+
+      const filename = `${selectedProject?.name || "BOQ"}_${selectedVersion ? `V${selectedVersion.version_number}` : "draft"}_BOQ.pdf`;
+      doc.save(filename);
+      toast({ title: "Success", description: `Downloaded ${filename}` });
+    } catch (err) {
+      console.error("PDF Export Error:", err);
+      toast({ title: "Error", description: "Failed to download PDF", variant: "destructive" });
+    }
   };
 
   // ── Derived ────────────────────────────────────────────────────────────────
@@ -1090,7 +1392,7 @@ export default function CreateBom() {
     <>
       <Layout>
         <div className="space-y-6">
-          <h1 className="text-2xl font-semibold"></h1>
+          <h1 className="text-2xl font-semibold">Generate BOM</h1>
 
           {/* Project Selector */}
           {/* Project & Version Selector (Compact & Professional) */}
@@ -1272,7 +1574,7 @@ export default function CreateBom() {
                         getEditedValue={getEditedValue} updateEditedField={updateEditedField}
                         handleDeleteRow={handleDeleteRow} handleFinalizeProduct={handleFinalizeProduct}
                         handleAddItem={handleAddItem} loadBoqItemsAndEdits={loadBoqItemsAndEdits} setBoqItems={setBoqItems}
-                        checkBudgetEarly={checkBudgetEarly} />
+                        checkBudgetEarly={checkBudgetEarly} handleSaveProject={handleSaveProject} />
                     ))}
                   </div>
                 }

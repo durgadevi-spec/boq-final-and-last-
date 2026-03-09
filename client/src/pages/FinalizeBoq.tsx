@@ -314,7 +314,7 @@ const DraggableHeaderCol = ({
               <span className="text-[6px] font-bold text-gray-400 shrink-0">B:</span>
               <select
                 className="bg-white/60 text-[8px] font-bold text-purple-700 uppercase px-0.5 py-0 rounded border border-purple-200/50 outline-none h-3.5 w-full truncate"
-                value={globalColSettings[col.name]?.baseSource || "manual"}
+                value={globalColSettings[col.name]?.baseSource || ((col as any).isPercentage ? "Total Value (₹)" : "manual")}
                 onChange={(e) => handleGlobalCalculation(col.name, globalColSettings[col.name]?.baseValue || 0, globalColSettings[col.name]?.percentageValue || 0, e.target.value, globalColSettings[col.name]?.operator || "%", globalColSettings[col.name]?.multiplierSource || "manual")}
               >
                 <option value="manual">Fixed</option>
@@ -332,7 +332,7 @@ const DraggableHeaderCol = ({
               <select
                 className="bg-white/60 text-[8px] font-bold text-purple-700 px-0.5 rounded border border-purple-200/50 outline-none h-3.5"
                 value={globalColSettings[col.name]?.operator || "%"}
-                onChange={(e) => handleGlobalCalculation(col.name, globalColSettings[col.name]?.baseValue || 0, globalColSettings[col.name]?.percentageValue || 0, globalColSettings[col.name]?.baseSource || "manual", e.target.value, globalColSettings[col.name]?.multiplierSource || "manual")}
+                onChange={(e) => handleGlobalCalculation(col.name, globalColSettings[col.name]?.baseValue || 0, globalColSettings[col.name]?.percentageValue || 0, globalColSettings[col.name]?.baseSource || ((col as any).isPercentage ? "Total Value (₹)" : "manual"), e.target.value, globalColSettings[col.name]?.multiplierSource || "manual")}
               >
                 <option value="%">%</option><option value="*">×</option><option value="/">÷</option><option value="+">+</option>
               </select>
@@ -341,7 +341,7 @@ const DraggableHeaderCol = ({
               <select
                 className="bg-white/60 text-[8px] font-bold text-purple-700 uppercase px-0.5 rounded border border-purple-200/50 outline-none h-3.5 w-full truncate"
                 value={globalColSettings[col.name]?.multiplierSource || "manual"}
-                onChange={(e) => handleGlobalCalculation(col.name, globalColSettings[col.name]?.baseValue || 0, globalColSettings[col.name]?.percentageValue || 0, globalColSettings[col.name]?.baseSource || "manual", globalColSettings[col.name]?.operator || "%", e.target.value)}
+                onChange={(e) => handleGlobalCalculation(col.name, globalColSettings[col.name]?.baseValue || 0, globalColSettings[col.name]?.percentageValue || 0, globalColSettings[col.name]?.baseSource || ((col as any).isPercentage ? "Total Value (₹)" : "manual"), globalColSettings[col.name]?.operator || "%", e.target.value)}
               >
                 <option value="manual">Val</option>
                 <option value="Rate / Unit">G: Rate</option>
@@ -361,7 +361,7 @@ const DraggableHeaderCol = ({
                     type="number"
                     className="w-8 bg-white text-[8px] font-bold text-gray-700 px-0.5 rounded border border-purple-200 h-3.5 text-right"
                     value={globalColSettings[col.name]?.percentageValue || 0}
-                    onChange={(e) => handleGlobalCalculation(col.name, globalColSettings[col.name]?.baseValue || 0, parseFloat(e.target.value) || 0, globalColSettings[col.name]?.baseSource || "manual", globalColSettings[col.name]?.operator || "%", "manual")}
+                    onChange={(e) => handleGlobalCalculation(col.name, globalColSettings[col.name]?.baseValue || 0, parseFloat(e.target.value) || 0, globalColSettings[col.name]?.baseSource || ((col as any).isPercentage ? "Total Value (₹)" : "manual"), globalColSettings[col.name]?.operator || "%", "manual")}
                   />
                 </div>
               ) : <div className="w-8 bg-gray-100 rounded border border-gray-200 h-3.5 shrink-0" />}
@@ -442,6 +442,7 @@ export default function FinalizeBoq() {
   const [selectedExportCols, setSelectedExportCols] = useState<string[]>([]);
   const [isPdfExportDialogOpen, setIsPdfExportDialogOpen] = useState(false);
   const [selectedPdfExportCols, setSelectedPdfExportCols] = useState<string[]>([]);
+  const [hiddenPredefinedCols, setHiddenPredefinedCols] = useState<Record<string, boolean>>({});
 
   const handleToggleColumnTotalVisibility = async (colName: string, hide: boolean) => {
     const updates = boqItems.map(item => {
@@ -486,6 +487,31 @@ export default function FinalizeBoq() {
   };
 
   const handleHideColumn = async (colName: string, hide: boolean) => {
+    const mapping: Record<string, string> = {
+      "S.No": "sno",
+      "Product / Material": "product",
+      "Description / Location": "description",
+      "HSN": "hsn",
+      "SAC": "sac",
+      "Rate": "rate",
+      "Unit": "unit",
+      "Qty": "qty",
+      "System Total (J)": "system_total",
+      "Rate (K)": "override_rate",
+      "Total (L)": "override_total"
+    };
+
+    if (mapping[colName]) {
+      const nextHidden = { ...hiddenPredefinedCols, [mapping[colName]]: hide };
+      setHiddenPredefinedCols(nextHidden);
+
+      const updates = boqItems.map(item => saveItemLayout(item.id, undefined, undefined, undefined, undefined, undefined, undefined, nextHidden));
+      await Promise.all(updates);
+
+      toast({ title: hide ? "Column Hidden" : "Column Restored", description: `Column "${colName}" visibility updated.` });
+      return;
+    }
+
     const updates = boqItems.map(item => {
       const nextCols = (customColumns[item.id] || []).map(c =>
         c.name === colName ? { ...c, hideColumn: hide } : c
@@ -521,7 +547,8 @@ export default function FinalizeBoq() {
     const cols: { name: string, isTotal: boolean, isPercentage?: boolean, percentageValue?: number, baseValue?: number, baseSource?: string, multiplierSource?: string, operator?: string, hideTotal?: boolean, hideColumn?: boolean }[] = [];
     boqItems.forEach(item => {
       (customColumns[item.id] || []).forEach(col => {
-        if (!cols.find(c => c.name === col.name)) cols.push(col);
+        const c = { ...col, isPercentage: col.isPercentage ?? (col.baseSource && col.baseSource !== "manual") };
+        if (!cols.find(cc => cc.name === c.name)) cols.push(c);
       });
     });
     return cols.filter(c => !c.hideColumn);
@@ -536,8 +563,28 @@ export default function FinalizeBoq() {
         }
       });
     });
+
+    const mapping: Record<string, string> = {
+      sno: "S.No",
+      product: "Product / Material",
+      description: "Description / Location",
+      hsn: "HSN",
+      sac: "SAC",
+      rate: "Rate",
+      unit: "Unit",
+      qty: "Qty",
+      system_total: "System Total (J)",
+      override_rate: "Rate (K)",
+      override_total: "Total (L)"
+    };
+    Object.entries(hiddenPredefinedCols).forEach(([id, isHidden]) => {
+      if (isHidden && mapping[id] && !hidden.includes(mapping[id])) {
+        hidden.push(mapping[id]);
+      }
+    });
+
     return hidden;
-  }, [boqItems, customColumns]);
+  }, [boqItems, customColumns, hiddenPredefinedCols]);
 
   const calculatedColumnTotals = React.useMemo(() => {
     let totals = allCols.map(() => 0);
@@ -565,7 +612,7 @@ export default function FinalizeBoq() {
       const overrideTotalVal = overrideRate * displayQty;
       overrideTotalSum += overrideTotalVal;
 
-      let currentItemRunningTotal = baseTotalValue;
+      let currentItemRunningTotal = overrideRate > 0 ? overrideTotalVal : baseTotalValue;
       let accumulator = 0;
       const rowCalculatedValues: { [colName: string]: number } = {};
 
@@ -732,6 +779,15 @@ export default function FinalizeBoq() {
       setVersions([]);
       setSelectedVersionId(null);
       setBoqItems([]);
+      setSelectedProductIds(new Set());
+      setIsFullscreen(false);
+      setCustomColumns({});
+      setCustomColumnValues({});
+      setProductDescriptions({});
+      setProductQuantities({});
+      setProductUnits({});
+      setOverrideRates({});
+      setGlobalColSettings({});
       return;
     }
 
@@ -781,6 +837,21 @@ export default function FinalizeBoq() {
   }, [selectedProjectId]);
 
   const loadBoqItemsAndEdits = useCallback(async () => {
+    // Always clear existing items and related states before (re)loading
+    setBoqItems([]);
+    setSelectedProductIds(new Set());
+    setIsFullscreen(false);
+    setCustomColumns({});
+    setCustomColumnValues({});
+    setProductDescriptions({});
+    setProductQuantities({});
+    setProductUnits({});
+    setOverrideRates({});
+    setGlobalColSettings({});
+    setHideSystemTotalFooter(false);
+    setGrandTotalColumn("Total Value (₹)");
+    setHiddenPredefinedCols({});
+
     if (!selectedVersionId) return;
     try {
       const safeParseJson = async (res: Response) => {
@@ -807,6 +878,7 @@ export default function FinalizeBoq() {
           const restoredOverrideRates: { [id: string]: string } = {};
           let sysTotalHidden = false;
           let restoredGrandTotalCol = "Total Value (₹)";
+          let restoredHiddenPredefined: Record<string, boolean> = {};
 
           for (const item of items) {
             let td = item.table_data || {};
@@ -814,6 +886,9 @@ export default function FinalizeBoq() {
 
             if (td.finalize_hide_system_total) sysTotalHidden = true;
             if (td.finalize_grand_total_column) restoredGrandTotalCol = td.finalize_grand_total_column;
+            if (td.finalize_hidden_predefined_cols) {
+              restoredHiddenPredefined = { ...restoredHiddenPredefined, ...td.finalize_hidden_predefined_cols };
+            }
 
             if (Array.isArray(td.finalize_columns) && td.finalize_columns.length > 0) {
               restoredCols[item.id] = td.finalize_columns.map((c: any) =>
@@ -887,6 +962,7 @@ export default function FinalizeBoq() {
           if (Object.keys(restoredOverrideRates).length > 0) setOverrideRates(restoredOverrideRates);
           setHideSystemTotalFooter(sysTotalHidden);
           setGrandTotalColumn(restoredGrandTotalCol);
+          setHiddenPredefinedCols(restoredHiddenPredefined);
         } catch (e) {
           toast({ title: "Error", description: "Failed to parse BOM items response", variant: "destructive" });
           console.error("BOM items parse error:", e);
@@ -1066,7 +1142,7 @@ export default function FinalizeBoq() {
     });
   };
 
-  const saveItemLayout = async (boqItemId: string, updatedCols?: any[], updatedVals?: any, updatedDesc?: string, updatedQty?: string, updatedOverrideRate?: string, updatedUnit?: string) => {
+  const saveItemLayout = async (boqItemId: string, updatedCols?: any[], updatedVals?: any, updatedDesc?: string, updatedQty?: string, updatedOverrideRate?: string, updatedUnit?: string, updatedHiddenPredefinedCols?: Record<string, boolean>) => {
     try {
       const boqItem = boqItems.find(i => i.id === boqItemId);
       if (!boqItem) return;
@@ -1086,6 +1162,7 @@ export default function FinalizeBoq() {
         finalize_override_rate: updatedOverrideRate !== undefined ? updatedOverrideRate : (overrideRates[boqItemId] ?? null),
         finalize_hide_system_total: hideSystemTotalFooter,
         finalize_grand_total_column: grandTotalColumn,
+        finalize_hidden_predefined_cols: updatedHiddenPredefinedCols !== undefined ? updatedHiddenPredefinedCols : hiddenPredefinedCols,
       };
 
       const resp = await apiFetch(`/api/boq-items/${boqItemId}`, {
@@ -1253,8 +1330,7 @@ export default function FinalizeBoq() {
           percentageValue: newRowMultiplier,
           baseSource,
           operator,
-          multiplierSource,
-          isPercentage: (baseSource !== "manual")
+          multiplierSource
         };
         const updatedCols = itemCols;
         nextColsMap[item.id] = updatedCols;
@@ -1312,8 +1388,7 @@ export default function FinalizeBoq() {
       baseSource,
       percentageValue: multiplier,
       operator,
-      multiplierSource,
-      isPercentage: (baseSource !== "manual")
+      multiplierSource
     };
     const updatedCols = itemCols;
 
@@ -2083,7 +2158,12 @@ export default function FinalizeBoq() {
 
   const generatedBudget = calculateGeneratedBudget();
   // Project Value is the total shown on this Finalize BOQ page
-  const currentProjectValue = calculatedColumnTotals.totalValueSum;
+  const currentProjectValue = (() => {
+    if (grandTotalColumn === "Total Value (₹)") return calculatedColumnTotals.totalValueSum;
+    if (grandTotalColumn === "Override Total") return calculatedColumnTotals.overrideTotalSum;
+    const idx = allCols.findIndex(c => c.name === grandTotalColumn);
+    return idx >= 0 ? calculatedColumnTotals.totals[idx] : 0;
+  })();
   const revenue = generatedBudget - currentProjectValue;
   const isExceeded = generatedBudget > 0 && currentProjectValue > generatedBudget;
 
@@ -2566,11 +2646,26 @@ export default function FinalizeBoq() {
                             name: colName.trim(),
                             isTotal: false,
                             isPercentage: isPct,
-                            percentageValue: 0
+                            percentageValue: 0,
+                            baseSource: isPct ? "Total Value (₹)" : "manual",
+                            operator: "%",
+                            multiplierSource: "manual"
                           }];
                           setCustomColumns(prev => ({ ...prev, [item.id]: nextCols }));
                           return saveItemLayout(item.id, nextCols);
                         });
+                        if (isPct) {
+                          setGlobalColSettings(prev => ({
+                            ...prev,
+                            [colName.trim()]: {
+                              baseValue: 0,
+                              percentageValue: 0,
+                              baseSource: "Total Value (₹)",
+                              operator: "%",
+                              multiplierSource: "manual"
+                            }
+                          }));
+                        }
                         await Promise.all(updates);
                         toast({ title: "Global Column Added", description: `"${colName}" added.` });
                       }}
@@ -2618,10 +2713,11 @@ export default function FinalizeBoq() {
                       onClick={async () => {
                         if (!confirm("Restoring all hidden totals and columns for all lines?")) return;
                         setHideSystemTotalFooter(false);
+                        setHiddenPredefinedCols({});
                         const updates = boqItems.map(item => {
                           const nextCols = (customColumns[item.id] || []).map(c => ({ ...c, hideTotal: false, hideColumn: false }));
                           setCustomColumns(prev => ({ ...prev, [item.id]: nextCols }));
-                          return saveItemLayout(item.id, nextCols);
+                          return saveItemLayout(item.id, nextCols, undefined, undefined, undefined, undefined, undefined, {});
                         });
                         await Promise.all(updates);
                         toast({ title: "Visibility Restored", description: "All hidden columns and totals are now visible." });
@@ -2686,18 +2782,18 @@ export default function FinalizeBoq() {
                     <thead>
                       {/* Excel-style Column Labels */}
                       <tr className="bg-gray-100 border-b border-gray-200 text-[11px] font-semibold text-gray-700">
-                        <th className="border-r border-gray-200 py-1.5 w-10 text-center">A</th>
-                        <th className="border-r border-gray-200 py-1.5 w-12 text-center text-gray-700">B</th>
-                        <th className="border-r border-gray-200 py-1.5 text-center w-64">C</th>
-                        <th className="border-r border-gray-200 py-1.5 text-center w-72">D</th>
-                        <th className="border-r border-gray-200 py-1.5 text-center w-24">E</th>
-                        <th className="border-r border-gray-200 py-1.5 text-center w-24">F</th>
-                        <th className="border-r border-gray-200 py-1.5 text-center w-32">G</th>
-                        <th className="border-r border-gray-200 py-1.5 text-center w-24">H</th>
-                        <th className="border-r border-gray-200 py-1.5 text-center w-28">I</th>
-                        <th className="border-r border-gray-200 py-1.5 text-center text-gray-700 w-32">J</th>
-                        <th className="border-r border-gray-200 py-1.5 text-center text-gray-700 w-32">K</th>
-                        <th className="border-r border-gray-200 py-1.5 text-center text-gray-700 w-32">L</th>
+                        {!hiddenPredefinedCols.sno && <th className="border-r border-gray-200 py-1.5 w-10 text-center">A</th>}
+                        {!hiddenPredefinedCols.sno && <th className="border-r border-gray-200 py-1.5 w-12 text-center text-gray-700">B</th>}
+                        {!hiddenPredefinedCols.product && <th className="border-r border-gray-200 py-1.5 text-center w-64">C</th>}
+                        {!hiddenPredefinedCols.description && <th className="border-r border-gray-200 py-1.5 text-center w-72">D</th>}
+                        {!hiddenPredefinedCols.hsn && <th className="border-r border-gray-200 py-1.5 text-center w-24">E</th>}
+                        {!hiddenPredefinedCols.sac && <th className="border-r border-gray-200 py-1.5 text-center w-24">F</th>}
+                        {!hiddenPredefinedCols.rate && <th className="border-r border-gray-200 py-1.5 text-center w-32">G</th>}
+                        {!hiddenPredefinedCols.unit && <th className="border-r border-gray-200 py-1.5 text-center w-24">H</th>}
+                        {!hiddenPredefinedCols.qty && <th className="border-r border-gray-200 py-1.5 text-center w-28">I</th>}
+                        {!hiddenPredefinedCols.system_total && <th className="border-r border-gray-200 py-1.5 text-center text-gray-700 w-32">J</th>}
+                        {!hiddenPredefinedCols.override_rate && <th className="border-r border-gray-200 py-1.5 text-center text-gray-700 w-32">K</th>}
+                        {!hiddenPredefinedCols.override_total && <th className="border-r border-gray-200 py-1.5 text-center text-gray-700 w-32">L</th>}
                         {allCols.map((_, idx) => (
                           <th key={idx} className="border-r border-gray-200 py-1.5 text-center text-slate-900 text-[11px] font-semibold bg-gray-50">
                             {getExcelColumnName(idx + 12)}
@@ -2706,8 +2802,10 @@ export default function FinalizeBoq() {
                       </tr>
                       {/* Grouping Header Row */}
                       <tr className="bg-gray-100 text-slate-900 text-[13px] font-semibold uppercase tracking-widest border-b border-gray-200">
-                        <th colSpan={10} className="py-2.5 border-r border-gray-200 bg-gray-50/40">Item Details</th>
-                        <th colSpan={2} className="py-2.5 border-r border-gray-200 bg-gray-50 text-gray-700">OVERRIDE</th>
+                        <th colSpan={10 - (hiddenPredefinedCols.sno ? 2 : 0) - (hiddenPredefinedCols.product ? 1 : 0) - (hiddenPredefinedCols.description ? 1 : 0) - (hiddenPredefinedCols.hsn ? 1 : 0) - (hiddenPredefinedCols.sac ? 1 : 0) - (hiddenPredefinedCols.rate ? 1 : 0) - (hiddenPredefinedCols.unit ? 1 : 0) - (hiddenPredefinedCols.qty ? 1 : 0) - (hiddenPredefinedCols.system_total ? 1 : 0)} className="py-2.5 border-r border-gray-200 bg-gray-50/40">Item Details</th>
+                        {(!hiddenPredefinedCols.override_rate || !hiddenPredefinedCols.override_total) && (
+                          <th colSpan={2 - (hiddenPredefinedCols.override_rate ? 1 : 0) - (hiddenPredefinedCols.override_total ? 1 : 0)} className="py-2.5 border-r border-gray-200 bg-gray-50 text-gray-700">OVERRIDE</th>
+                        )}
                         <th colSpan={allCols.length} className="py-2.5 bg-gray-50 text-gray-700">Custom Filters & Totals</th>
                       </tr>
                       <Reorder.Group
@@ -2720,17 +2818,116 @@ export default function FinalizeBoq() {
                         <th className="border-r border-gray-300 px-2 py-2.5 text-center w-10">
                           <GripVertical size={18} className="mx-auto text-gray-500" />
                         </th>
-                        <th className="border-r border-gray-300 px-1 py-2.5 text-left min-w-[30px] w-12 text-[11px]">S.No</th>
-                        <th className="border-r border-gray-300 px-3 py-2.5 text-left min-w-[250px] text-[11px]">Product / Material</th>
-                        <th className="border-r border-gray-300 px-3 py-2.5 text-left min-w-[250px] text-[11px]">Description / Location</th>
-                        <th className="border-r border-gray-300 px-1 py-2.5 text-center w-24 text-[11px]">HSN</th>
-                        <th className="border-r border-gray-300 px-1 py-2.5 text-center w-24 text-[11px]">SAC</th>
-                        <th className="border-r border-gray-300 px-1 py-2.5 text-right w-32 text-[11px]">Rate</th>
-                        <th className="border-r border-gray-300 px-1 py-2.5 text-center w-24 text-[11px]">Unit</th>
-                        <th className="border-r border-gray-300 px-1 py-2.5 text-center w-28 text-[11px]">Qty</th>
-                        <th className="border-r border-gray-300 px-1 py-1.5 text-right w-32 text-gray-800 bg-gray-50/20 text-[11px]">System Total (J)</th>
-                        <th className="border-r border-gray-300 px-1 py-1.5 text-right w-32 text-gray-800 bg-gray-50/20 text-[11px]">Rate (K)</th>
-                        <th className="border-r border-gray-300 px-1 py-1.5 text-right w-32 text-gray-800 bg-gray-50/20 text-[11px]">Total (L)</th>
+                        {!hiddenPredefinedCols.sno && (
+                          <th className="border-r border-gray-300 px-1 py-2.5 text-left min-w-[30px] w-12 text-[11px] group relative">
+                            <div className="flex items-center justify-between gap-1">
+                              <span>S.No</span>
+                              {!isVersionSubmitted && (
+                                <button onClick={() => handleHideColumn("S.No", true)} className="text-gray-400 hover:text-orange-500 opacity-0 group-hover:opacity-100 transition-opacity" title="Hide Column"><EyeOff size={10} /></button>
+                              )}
+                            </div>
+                          </th>
+                        )}
+                        {!hiddenPredefinedCols.product && (
+                          <th className="border-r border-gray-300 px-3 py-2.5 text-left min-w-[250px] text-[11px] group relative">
+                            <div className="flex items-center justify-between gap-1">
+                              <span>Product / Material</span>
+                              {!isVersionSubmitted && (
+                                <button onClick={() => handleHideColumn("Product / Material", true)} className="text-gray-400 hover:text-orange-500 opacity-0 group-hover:opacity-100 transition-opacity" title="Hide Column"><EyeOff size={10} /></button>
+                              )}
+                            </div>
+                          </th>
+                        )}
+                        {!hiddenPredefinedCols.description && (
+                          <th className="border-r border-gray-300 px-3 py-2.5 text-left min-w-[250px] text-[11px] group relative">
+                            <div className="flex items-center justify-between gap-1">
+                              <span>Description / Location</span>
+                              {!isVersionSubmitted && (
+                                <button onClick={() => handleHideColumn("Description / Location", true)} className="text-gray-400 hover:text-orange-500 opacity-0 group-hover:opacity-100 transition-opacity" title="Hide Column"><EyeOff size={10} /></button>
+                              )}
+                            </div>
+                          </th>
+                        )}
+                        {!hiddenPredefinedCols.hsn && (
+                          <th className="border-r border-gray-300 px-1 py-2.5 text-center w-24 text-[11px] group relative">
+                            <div className="flex items-center justify-between gap-1 px-1">
+                              <span className="w-full text-center">HSN</span>
+                              {!isVersionSubmitted && (
+                                <button onClick={() => handleHideColumn("HSN", true)} className="text-gray-400 hover:text-orange-500 opacity-0 group-hover:opacity-100 transition-opacity" title="Hide Column"><EyeOff size={10} /></button>
+                              )}
+                            </div>
+                          </th>
+                        )}
+                        {!hiddenPredefinedCols.sac && (
+                          <th className="border-r border-gray-300 px-1 py-2.5 text-center w-24 text-[11px] group relative">
+                            <div className="flex items-center justify-between gap-1 px-1">
+                              <span className="w-full text-center">SAC</span>
+                              {!isVersionSubmitted && (
+                                <button onClick={() => handleHideColumn("SAC", true)} className="text-gray-400 hover:text-orange-500 opacity-0 group-hover:opacity-100 transition-opacity" title="Hide Column"><EyeOff size={10} /></button>
+                              )}
+                            </div>
+                          </th>
+                        )}
+                        {!hiddenPredefinedCols.rate && (
+                          <th className="border-r border-gray-300 px-1 py-2.5 text-right w-32 text-[11px] group relative">
+                            <div className="flex items-center justify-between gap-1">
+                              <span className="w-full text-right">Rate</span>
+                              {!isVersionSubmitted && (
+                                <button onClick={() => handleHideColumn("Rate", true)} className="text-gray-400 hover:text-orange-500 opacity-0 group-hover:opacity-100 transition-opacity" title="Hide Column"><EyeOff size={10} /></button>
+                              )}
+                            </div>
+                          </th>
+                        )}
+                        {!hiddenPredefinedCols.unit && (
+                          <th className="border-r border-gray-300 px-1 py-2.5 text-center w-24 text-[11px] group relative">
+                            <div className="flex items-center justify-between gap-1 px-1">
+                              <span className="w-full text-center">Unit</span>
+                              {!isVersionSubmitted && (
+                                <button onClick={() => handleHideColumn("Unit", true)} className="text-gray-400 hover:text-orange-500 opacity-0 group-hover:opacity-100 transition-opacity" title="Hide Column"><EyeOff size={10} /></button>
+                              )}
+                            </div>
+                          </th>
+                        )}
+                        {!hiddenPredefinedCols.qty && (
+                          <th className="border-r border-gray-300 px-1 py-2.5 text-center w-28 text-[11px] group relative">
+                            <div className="flex items-center justify-between gap-1 px-1">
+                              <span className="w-full text-center">Qty</span>
+                              {!isVersionSubmitted && (
+                                <button onClick={() => handleHideColumn("Qty", true)} className="text-gray-400 hover:text-orange-500 opacity-0 group-hover:opacity-100 transition-opacity" title="Hide Column"><EyeOff size={10} /></button>
+                              )}
+                            </div>
+                          </th>
+                        )}
+                        {!hiddenPredefinedCols.system_total && (
+                          <th className="border-r border-gray-300 px-1 py-1.5 text-right w-32 text-gray-800 bg-gray-50/20 text-[11px] group relative">
+                            <div className="flex items-center justify-between gap-1">
+                              <span className="w-full text-right">System Total (J)</span>
+                              {!isVersionSubmitted && (
+                                <button onClick={() => handleHideColumn("System Total (J)", true)} className="text-gray-400 hover:text-orange-500 opacity-0 group-hover:opacity-100 transition-opacity" title="Hide Column"><EyeOff size={10} /></button>
+                              )}
+                            </div>
+                          </th>
+                        )}
+                        {!hiddenPredefinedCols.override_rate && (
+                          <th className="border-r border-gray-300 px-1 py-1.5 text-right w-32 text-gray-800 bg-gray-50/20 text-[11px] group relative">
+                            <div className="flex items-center justify-between gap-1">
+                              <span className="w-full text-right">Rate (K)</span>
+                              {!isVersionSubmitted && (
+                                <button onClick={() => handleHideColumn("Rate (K)", true)} className="text-gray-400 hover:text-orange-500 opacity-0 group-hover:opacity-100 transition-opacity" title="Hide Column"><EyeOff size={10} /></button>
+                              )}
+                            </div>
+                          </th>
+                        )}
+                        {!hiddenPredefinedCols.override_total && (
+                          <th className="border-r border-gray-300 px-1 py-1.5 text-right w-32 text-gray-800 bg-gray-50/20 text-[11px] group relative">
+                            <div className="flex items-center justify-between gap-1">
+                              <span className="w-full text-right">Total (L)</span>
+                              {!isVersionSubmitted && (
+                                <button onClick={() => handleHideColumn("Total (L)", true)} className="text-gray-400 hover:text-orange-500 opacity-0 group-hover:opacity-100 transition-opacity" title="Hide Column"><EyeOff size={10} /></button>
+                              )}
+                            </div>
+                          </th>
+                        )}
                         {allCols.map((col, idx) => (
                           <DraggableHeaderCol
                             key={col.name}
@@ -2826,107 +3023,133 @@ export default function FinalizeBoq() {
                             as="tr"
                             className={`hover:bg-blue-50/40 cursor-default transition-colors border-b border-gray-100 ${isSelected ? "bg-blue-50/60" : "bg-white"}`}
                           >
-                            <td className="border-r px-2 py-1.5 text-center bg-gray-50/50 align-middle" style={{ cursor: "grab" }}>
-                              <div className="flex flex-col items-center gap-1">
-                                <span className="text-[10px] font-bold text-gray-500">{boqIdx + 1}</span>
-                                <div className="text-gray-300 hover:text-blue-400 transition-colors flex items-center justify-center">
-                                  <GripVertical size={14} className="mx-auto" />
+                            {!hiddenPredefinedCols.sno && (
+                              <td className="border-r px-2 py-1.5 text-center bg-gray-50/50 align-middle" style={{ cursor: "grab" }}>
+                                <div className="flex flex-col items-center gap-1">
+                                  <span className="text-[10px] font-bold text-gray-500">{boqIdx + 1}</span>
+                                  <div className="text-gray-300 hover:text-blue-400 transition-colors flex items-center justify-center">
+                                    <GripVertical size={14} className="mx-auto" />
+                                  </div>
                                 </div>
-                              </div>
-                            </td>
-                            <td className="border-r px-2 py-1.5 text-center align-middle">
-                              <div className="flex flex-col items-center gap-2">
-                                <input
-                                  type="checkbox"
-                                  checked={isSelected}
+                              </td>
+                            )}
+                            {!hiddenPredefinedCols.sno && (
+                              <td className="border-r px-2 py-1.5 text-center align-middle">
+                                <div className="flex flex-col items-center gap-2">
+                                  <input
+                                    type="checkbox"
+                                    checked={isSelected}
+                                    disabled={isVersionSubmitted}
+                                    onChange={e => {
+                                      setSelectedProductIds(prev => {
+                                        const next = new Set(prev);
+                                        e.target.checked ? next.add(boqItem.id) : next.delete(boqItem.id);
+                                        return next;
+                                      });
+                                    }}
+                                    className="w-4 h-4 rounded accent-blue-600 cursor-pointer"
+                                  />
+                                </div>
+                              </td>
+                            )}
+                            {!hiddenPredefinedCols.product && (
+                              <td className="border-r px-1.5 py-1 font-medium text-gray-800 text-[10px] align-middle">
+                                <div className="flex flex-col gap-0.5">
+                                  <div className="font-bold leading-tight line-clamp-2">{productName}</div>
+                                  {category && <div className="text-[8px] text-blue-500 font-extrabold uppercase tracking-tighter">{category}</div>}
+                                </div>
+                              </td>
+                            )}
+                            {!hiddenPredefinedCols.description && (
+                              <td className="border-r px-1.5 py-1 align-middle">
+                                <textarea
+                                  value={manualDesc || tableData.finalize_description || ""}
                                   disabled={isVersionSubmitted}
-                                  onChange={e => {
-                                    setSelectedProductIds(prev => {
-                                      const next = new Set(prev);
-                                      e.target.checked ? next.add(boqItem.id) : next.delete(boqItem.id);
-                                      return next;
-                                    });
-                                  }}
-                                  className="w-4 h-4 rounded accent-blue-600 cursor-pointer"
+                                  onFocus={checkBudgetEarly}
+                                  onChange={e => setProductDescriptions(prev => ({ ...prev, [boqItem.id]: e.target.value }))}
+                                  onBlur={() => saveItemLayout(boqItem.id, undefined, undefined, productDescriptions[boqItem.id])}
+                                  rows={2}
+                                  className="w-full border-none rounded p-1 text-[10px] focus:ring-1 ring-blue-300 outline-none bg-transparent resize-y min-h-[35px] leading-tight"
+                                  placeholder="Description..."
                                 />
-                              </div>
-                            </td>
-                            <td className="border-r px-1.5 py-1 font-medium text-gray-800 text-[10px] align-middle">
-                              <div className="flex flex-col gap-0.5">
-                                <div className="font-bold leading-tight line-clamp-2">{productName}</div>
-                                {category && <div className="text-[8px] text-blue-500 font-extrabold uppercase tracking-tighter">{category}</div>}
-                              </div>
-                            </td>
-                            <td className="border-r px-1.5 py-1 align-middle">
-                              <textarea
-                                value={manualDesc || tableData.finalize_description || ""}
-                                disabled={isVersionSubmitted}
-                                onFocus={checkBudgetEarly}
-                                onChange={e => setProductDescriptions(prev => ({ ...prev, [boqItem.id]: e.target.value }))}
-                                onBlur={() => saveItemLayout(boqItem.id, undefined, undefined, productDescriptions[boqItem.id])}
-                                rows={2}
-                                className="w-full border-none rounded p-1 text-[10px] focus:ring-1 ring-blue-300 outline-none bg-transparent resize-y min-h-[35px] leading-tight"
-                                placeholder="Description..."
-                              />
-                            </td>
-                            <td className="border-r px-2 py-1 text-center font-semibold text-gray-700 text-[10px] align-middle bg-gray-50/30">
-                              {tableData.hsn_code || (tableData.hsn_sac_type === 'hsn' ? tableData.hsn_sac_code : "") || "—"}
-                            </td>
-                            <td className="border-r px-2 py-1 text-center font-semibold text-gray-700 text-[10px] align-middle bg-gray-50/30">
-                              {tableData.sac_code || (tableData.hsn_sac_type === 'sac' ? tableData.hsn_sac_code : "") || "—"}
-                            </td>
-                            <td className="border-r px-2 py-1.5 text-right font-semibold text-gray-500 text-[10px] align-middle">
-                              ₹{rateSqft.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                            </td>
-                            <td className="border-r px-2 py-1 text-center font-medium text-gray-800 align-middle w-24 min-w-[80px]">
-                              <input
-                                type="text"
-                                value={productUnits[boqItem.id] ?? (currentStep11Items[0]?.unit || tableData.unit || "")}
-                                disabled={isVersionSubmitted}
-                                onFocus={checkBudgetEarly}
-                                onChange={e => setProductUnits(prev => ({ ...prev, [boqItem.id]: e.target.value }))}
-                                onBlur={() => saveItemLayout(boqItem.id, undefined, undefined, undefined, undefined, undefined, productUnits[boqItem.id])}
-                                className="w-full border-none rounded p-0.5 text-[10px] focus:ring-1 ring-blue-300 outline-none bg-transparent text-center font-semibold h-7"
-                                placeholder="Unit"
-                              />
-                            </td>
-                            <td className="border-r px-2 py-1 text-center font-semibold text-gray-800 align-middle w-32 min-w-[100px]">
-                              <input
-                                type="number"
-                                value={productQuantities[boqItem.id] ?? (tableData.materialLines && tableData.targetRequiredQty !== undefined ? tableData.targetRequiredQty : (currentStep11Items[0]?.qty || 0))}
-                                disabled={isVersionSubmitted}
-                                onFocus={checkBudgetEarly}
-                                onChange={e => setProductQuantities(prev => ({ ...prev, [boqItem.id]: e.target.value }))}
-                                onBlur={withBudgetCheck(() => currentProjectValue, async () => { await saveItemLayout(boqItem.id, undefined, undefined, undefined, productQuantities[boqItem.id]); })}
-                                className="w-full border-none rounded p-0.5 text-[10px] focus:ring-1 ring-blue-300 outline-none bg-blue-100/50 text-center font-semibold h-7"
-                                placeholder="Qty"
-                              />
-                            </td>
-                            <td className="border-r px-2 py-1.5 text-right font-semibold text-gray-800 bg-gray-50 align-middle text-[10px] w-32">
-                              ₹{(rateSqft * (productQuantities[boqItem.id] !== undefined ? parseFloat(productQuantities[boqItem.id]) || 0 : (tableData.materialLines && tableData.targetRequiredQty !== undefined ? Number(tableData.targetRequiredQty) : Number(currentStep11Items[0]?.qty || 0)))).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                            </td>
-                            <td className="border-r px-2 py-1 text-center font-semibold text-gray-800 align-middle w-32 min-w-[100px]">
-                              <input
-                                type="number"
-                                value={overrideRates[boqItem.id] ?? ""}
-                                disabled={isVersionSubmitted}
-                                onFocus={checkBudgetEarly}
-                                onChange={e => setOverrideRates(prev => ({ ...prev, [boqItem.id]: e.target.value }))}
-                                onBlur={withBudgetCheck(() => currentProjectValue, async () => { await saveItemLayout(boqItem.id, undefined, undefined, undefined, undefined, overrideRates[boqItem.id]); })}
-                                className="w-full border-none rounded p-0.5 text-[10px] focus:ring-1 ring-gray-300 outline-none bg-gray-50 text-right font-semibold h-7 px-2"
-                                placeholder="0.00"
-                              />
-                            </td>
-                            <td className="border-r px-2 py-1.5 text-right font-semibold text-gray-800 bg-gray-50 align-middle text-[10px] w-32">
-                              ₹{((parseFloat(overrideRates[boqItem.id] || "0") || 0) * (productQuantities[boqItem.id] !== undefined ? parseFloat(productQuantities[boqItem.id]) || 0 : (tableData.materialLines && tableData.targetRequiredQty !== undefined ? Number(tableData.targetRequiredQty) : Number(currentStep11Items[0]?.qty || 0)))).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                            </td>
+                              </td>
+                            )}
+                            {!hiddenPredefinedCols.hsn && (
+                              <td className="border-r px-2 py-1 text-center font-semibold text-gray-700 text-[10px] align-middle bg-gray-50/30">
+                                {tableData.hsn_code || (tableData.hsn_sac_type === 'hsn' ? tableData.hsn_sac_code : "") || "—"}
+                              </td>
+                            )}
+                            {!hiddenPredefinedCols.sac && (
+                              <td className="border-r px-2 py-1 text-center font-semibold text-gray-700 text-[10px] align-middle bg-gray-50/30">
+                                {tableData.sac_code || (tableData.hsn_sac_type === 'sac' ? tableData.hsn_sac_code : "") || "—"}
+                              </td>
+                            )}
+                            {!hiddenPredefinedCols.rate && (
+                              <td className="border-r px-2 py-1.5 text-right font-semibold text-gray-500 text-[10px] align-middle">
+                                ₹{rateSqft.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                              </td>
+                            )}
+                            {!hiddenPredefinedCols.unit && (
+                              <td className="border-r px-2 py-1 text-center font-medium text-gray-800 align-middle w-24 min-w-[80px]">
+                                <input
+                                  type="text"
+                                  value={productUnits[boqItem.id] ?? (currentStep11Items[0]?.unit || tableData.unit || "")}
+                                  disabled={isVersionSubmitted}
+                                  onFocus={checkBudgetEarly}
+                                  onChange={e => setProductUnits(prev => ({ ...prev, [boqItem.id]: e.target.value }))}
+                                  onBlur={() => saveItemLayout(boqItem.id, undefined, undefined, undefined, undefined, undefined, productUnits[boqItem.id])}
+                                  className="w-full border-none rounded p-0.5 text-[10px] focus:ring-1 ring-blue-300 outline-none bg-transparent text-center font-semibold h-7"
+                                  placeholder="Unit"
+                                />
+                              </td>
+                            )}
+                            {!hiddenPredefinedCols.qty && (
+                              <td className="border-r px-2 py-1 text-center font-semibold text-gray-800 align-middle w-32 min-w-[100px]">
+                                <input
+                                  type="number"
+                                  value={productQuantities[boqItem.id] ?? (tableData.materialLines && tableData.targetRequiredQty !== undefined ? tableData.targetRequiredQty : (currentStep11Items[0]?.qty || 0))}
+                                  disabled={isVersionSubmitted}
+                                  onFocus={checkBudgetEarly}
+                                  onChange={e => setProductQuantities(prev => ({ ...prev, [boqItem.id]: e.target.value }))}
+                                  onBlur={withBudgetCheck(() => currentProjectValue, async () => { await saveItemLayout(boqItem.id, undefined, undefined, undefined, productQuantities[boqItem.id]); })}
+                                  className="w-full border-none rounded p-0.5 text-[10px] focus:ring-1 ring-blue-300 outline-none bg-blue-100/50 text-center font-semibold h-7"
+                                  placeholder="Qty"
+                                />
+                              </td>
+                            )}
+                            {!hiddenPredefinedCols.system_total && (
+                              <td className="border-r px-2 py-1.5 text-right font-semibold text-gray-800 bg-gray-50 align-middle text-[10px] w-32">
+                                ₹{(rateSqft * (productQuantities[boqItem.id] !== undefined ? parseFloat(productQuantities[boqItem.id]) || 0 : (tableData.materialLines && tableData.targetRequiredQty !== undefined ? Number(tableData.targetRequiredQty) : Number(currentStep11Items[0]?.qty || 0)))).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                              </td>
+                            )}
+                            {!hiddenPredefinedCols.override_rate && (
+                              <td className="border-r px-2 py-1 text-center font-semibold text-gray-800 align-middle w-32 min-w-[100px]">
+                                <input
+                                  type="number"
+                                  value={overrideRates[boqItem.id] ?? ""}
+                                  disabled={isVersionSubmitted}
+                                  onFocus={checkBudgetEarly}
+                                  onChange={e => setOverrideRates(prev => ({ ...prev, [boqItem.id]: e.target.value }))}
+                                  onBlur={withBudgetCheck(() => currentProjectValue, async () => { await saveItemLayout(boqItem.id, undefined, undefined, undefined, undefined, overrideRates[boqItem.id]); })}
+                                  className="w-full border-none rounded p-0.5 text-[10px] focus:ring-1 ring-gray-300 outline-none bg-gray-50 text-right font-semibold h-7 px-2"
+                                  placeholder="0.00"
+                                />
+                              </td>
+                            )}
+                            {!hiddenPredefinedCols.override_total && (
+                              <td className="border-r px-2 py-1.5 text-right font-semibold text-gray-800 bg-gray-50 align-middle text-[10px] w-32">
+                                ₹{((parseFloat(overrideRates[boqItem.id] || "0") || 0) * (productQuantities[boqItem.id] !== undefined ? parseFloat(productQuantities[boqItem.id]) || 0 : (tableData.materialLines && tableData.targetRequiredQty !== undefined ? Number(tableData.targetRequiredQty) : Number(currentStep11Items[0]?.qty || 0)))).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                              </td>
+                            )}
                             {/* Custom columns */}
                             {(() => {
                               const manualQtyStr = productQuantities[boqItem.id];
                               const displayQty = manualQtyStr !== undefined ? (parseFloat(manualQtyStr) || 0) : (tableData.targetRequiredQty || currentStep11Items[0]?.qty || 0);
                               const baseTotalValue = rateSqft * displayQty;
 
-                              let itemTotal = baseTotalValue;
+                              let itemTotal = (parseFloat(overrideRates[boqItem.id] || "0") || 0) > 0
+                                ? ((parseFloat(overrideRates[boqItem.id] || "0") || 0) * displayQty)
+                                : baseTotalValue;
                               let accumulator = 0;
                               const rowCalculatedValues: { [colName: string]: number } = {};
 
@@ -3092,63 +3315,83 @@ export default function FinalizeBoq() {
                     {showColumnTotals && (
                       <tfoot>
                         <tr className="bg-gray-50 border-t-2 border-gray-300 font-bold group">
-                          <td className="border-r bg-gray-100/50"></td>
-                          <td className="border-r text-center text-xs text-gray-400 bg-gray-100/50">∑</td>
-                          <td className="border-r px-2 py-1.5 font-bold text-gray-800 relative text-[11px]">
-                            COLUMN TOTALS
-                            <button
-                              onClick={() => setShowColumnTotals(false)}
-                              className="absolute left-1 top-1/2 -translate-y-1/2 opacity-0 group-hover:opacity-100 transition-opacity text-red-400 hover:text-red-600"
-                              title="Hide Column Totals"
-                            >
-                              <Trash2 size={12} />
-                            </button>
-                          </td>
-                          <td className="border-r px-4 py-3 text-right font-semibold text-gray-600 bg-gray-50/50">
-                            {/* Description total - empty */}
-                          </td>
-                          <td className="border-r px-2 py-1.5 text-right font-semibold text-gray-600 bg-gray-50/50 text-[11px] w-24">
-                            {/* HSN Total - empty */}
-                          </td>
-                          <td className="border-r px-2 py-1.5 text-right font-semibold text-gray-600 bg-gray-50/50 text-[11px] w-24">
-                            {/* SAC Total - empty */}
-                          </td>
-                          <td className="border-r px-2 py-1.5 text-right font-semibold text-gray-600 bg-gray-50/50 text-[11px] w-32">
-                            ₹{calculatedColumnTotals.totalRateSum.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                          </td>
-                          <td className="border-r px-4 py-3 text-right font-semibold text-gray-600 bg-gray-50/50">
-                            {/* Unit Total - empty */}
-                          </td>
-                          <td className="border-r px-4 py-3 text-right font-semibold text-gray-600 bg-gray-50/50">
-                            {/* Qty Total intentionally left empty per user request */}
-                          </td>
-                          <td className="border-r px-2 py-1.5 text-right font-semibold text-gray-800 bg-gray-50 group/total relative text-[11px] w-32">
-                            {!hideSystemTotalFooter ? (
-                              <>
-                                ₹{calculatedColumnTotals.totalValueSum.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                                <button
-                                  onClick={() => handleSetSystemTotalVisibility(false)}
-                                  className="absolute left-1 top-1/2 -translate-y-1/2 opacity-0 group-hover/total:opacity-100 transition-opacity text-red-400 hover:text-red-600"
-                                  title="Hide System Total"
-                                >
-                                  <Trash2 size={12} />
-                                </button>
-                              </>
-                            ) : (
+                          {!hiddenPredefinedCols.sno && <td className="border-r bg-gray-100/50"></td>}
+                          {!hiddenPredefinedCols.sno && <td className="border-r text-center text-xs text-gray-400 bg-gray-100/50">∑</td>}
+                          {!hiddenPredefinedCols.product && (
+                            <td className="border-r px-2 py-1.5 font-bold text-gray-800 relative text-[11px]">
+                              COLUMN TOTALS
                               <button
-                                onClick={() => handleSetSystemTotalVisibility(true)}
-                                className="text-gray-700 hover:text-gray-900 text-[10px] font-bold uppercase transition-colors"
+                                onClick={() => setShowColumnTotals(false)}
+                                className="absolute left-1 top-1/2 -translate-y-1/2 opacity-0 group-hover:opacity-100 transition-opacity text-red-400 hover:text-red-600"
+                                title="Hide Column Totals"
                               >
-                                + Restore Total
+                                <Trash2 size={12} />
                               </button>
-                            )}
-                          </td>
-                          <td className="border-r px-2 py-1.5 text-right font-semibold text-gray-600 bg-gray-50 text-[11px] w-32">
-                            {/* Override Rate total - empty */}
-                          </td>
-                          <td className="border-r px-2 py-1.5 text-right font-semibold text-gray-800 bg-gray-50 text-[11px] w-32">
-                            ₹{calculatedColumnTotals.overrideTotalSum.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                          </td>
+                            </td>
+                          )}
+                          {!hiddenPredefinedCols.description && (
+                            <td className="border-r px-4 py-3 text-right font-semibold text-gray-600 bg-gray-50/50">
+                              {/* Description total - empty */}
+                            </td>
+                          )}
+                          {!hiddenPredefinedCols.hsn && (
+                            <td className="border-r px-2 py-1.5 text-right font-semibold text-gray-600 bg-gray-50/50 text-[11px] w-24">
+                              {/* HSN Total - empty */}
+                            </td>
+                          )}
+                          {!hiddenPredefinedCols.sac && (
+                            <td className="border-r px-2 py-1.5 text-right font-semibold text-gray-600 bg-gray-50/50 text-[11px] w-24">
+                              {/* SAC Total - empty */}
+                            </td>
+                          )}
+                          {!hiddenPredefinedCols.rate && (
+                            <td className="border-r px-2 py-1.5 text-right font-semibold text-gray-600 bg-gray-50/50 text-[11px] w-32">
+                              ₹{calculatedColumnTotals.totalRateSum.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                            </td>
+                          )}
+                          {!hiddenPredefinedCols.unit && (
+                            <td className="border-r px-4 py-3 text-right font-semibold text-gray-600 bg-gray-50/50">
+                              {/* Unit Total - empty */}
+                            </td>
+                          )}
+                          {!hiddenPredefinedCols.qty && (
+                            <td className="border-r px-4 py-3 text-right font-semibold text-gray-600 bg-gray-50/50">
+                              {/* Qty Total intentionally left empty per user request */}
+                            </td>
+                          )}
+                          {!hiddenPredefinedCols.system_total && (
+                            <td className="border-r px-2 py-1.5 text-right font-semibold text-gray-800 bg-gray-50 group/total relative text-[11px] w-32">
+                              {!hideSystemTotalFooter ? (
+                                <>
+                                  ₹{calculatedColumnTotals.totalValueSum.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                                  <button
+                                    onClick={() => handleSetSystemTotalVisibility(false)}
+                                    className="absolute left-1 top-1/2 -translate-y-1/2 opacity-0 group-hover/total:opacity-100 transition-opacity text-red-400 hover:text-red-600"
+                                    title="Hide System Total"
+                                  >
+                                    <Trash2 size={12} />
+                                  </button>
+                                </>
+                              ) : (
+                                <button
+                                  onClick={() => handleSetSystemTotalVisibility(true)}
+                                  className="text-gray-700 hover:text-gray-900 text-[10px] font-bold uppercase transition-colors"
+                                >
+                                  + Restore Total
+                                </button>
+                              )}
+                            </td>
+                          )}
+                          {!hiddenPredefinedCols.override_rate && (
+                            <td className="border-r px-2 py-1.5 text-right font-semibold text-gray-600 bg-gray-50 text-[11px] w-32">
+                              {/* Override Rate total - empty */}
+                            </td>
+                          )}
+                          {!hiddenPredefinedCols.override_total && (
+                            <td className="border-r px-2 py-1.5 text-right font-semibold text-gray-800 bg-gray-50 text-[11px] w-32">
+                              ₹{calculatedColumnTotals.overrideTotalSum.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                            </td>
+                          )}
                           {allCols.map((col, idx) => (
                             <td
                               key={`total-${idx}`}
@@ -3241,12 +3484,7 @@ export default function FinalizeBoq() {
                             `${grandTotalColumn} Total`}
                       </span>
                       <span className="text-2xl font-black text-green-400 font-mono tracking-tighter">
-                        ₹{(() => {
-                          if (grandTotalColumn === "Total Value (₹)") return calculatedColumnTotals.totalValueSum;
-                          if (grandTotalColumn === "Override Total") return calculatedColumnTotals.overrideTotalSum;
-                          const idx = allCols.findIndex(c => c.name === grandTotalColumn);
-                          return idx >= 0 ? calculatedColumnTotals.totals[idx] : 0;
-                        })().toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                        ₹{currentProjectValue.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                       </span>
                     </div>
                   </div>

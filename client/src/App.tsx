@@ -52,6 +52,7 @@ import RaisePORequest from "@/pages/RaisePORequest";
 import MyPORequests from "@/pages/MyPORequests";
 import PORequestApprovals from "@/pages/admin/PORequestApprovals";
 import ApprovedPORequests from "@/pages/admin/ApprovedPORequests";
+import UserManual from "@/pages/UserManual";
 
 function Router() {
   return (
@@ -81,6 +82,7 @@ function Router() {
       <Route path="/finalize-bom" component={FinalizeBoq} />
       <Route path="/project-dashboard" component={ProjectDashboard} />
       <Route path="/bom-review" component={BoqReview} />
+      <Route path="/user-manual" component={UserManual} />
 
       {/* ================= PROCUREMENT ================= */}
       <Route path="/purchase-orders" component={PurchaseOrders} />
