@@ -28,6 +28,7 @@ import ManageCategories from "@/pages/admin/ManageCategories";
 import BulkMaterialUpload from "@/pages/admin/BulkMaterialUpload";
 import ProductApprovals from "@/pages/admin/ProductApprovals";
 import BomApprovals from "@/pages/admin/BomApprovals";
+import GeneratePO from "@/pages/GeneratePO";
 
 
 
@@ -105,6 +106,7 @@ function Router() {
       <Route path="/admin/vendor-categories" component={VendorCategories} />
       <Route path="/admin/product-approvals" component={ProductApprovals} />
       <Route path="/admin/bom-approvals" component={BomApprovals} />
+      <Route path="/generate-po" component={GeneratePO} />
 
       {/* ✅ Supplier Approval (MAIN) */}
       <Route path="/admin/supplier-approval" component={SupplierApproval} />

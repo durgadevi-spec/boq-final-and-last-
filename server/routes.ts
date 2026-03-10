@@ -5451,6 +5451,10 @@ export async function registerRoutes(
           await query("ALTER TABLE step11_products ADD COLUMN IF NOT EXISTS dim_c DECIMAL(10,4)");
           await query("ALTER TABLE step11_products ADD COLUMN IF NOT EXISTS description TEXT");
 
+          // Expand text column limits to prevent saving errors on long names/descriptions
+          await query("ALTER TABLE step11_products ALTER COLUMN product_name TYPE TEXT");
+          await query("ALTER TABLE step11_products ALTER COLUMN config_name TYPE TEXT");
+
           // 2. Insert into step11_products
           console.log(`[POST /api/step11-products] Inserting new product config for productId: ${productId}`);
           const productResult = await query(
@@ -5485,8 +5489,14 @@ export async function registerRoutes(
               console.log(`[POST /api/step11-products] Inserting item ${i + 1}/${items.length}:`, JSON.stringify(item));
               // ensure column exists
               await query("ALTER TABLE step11_product_items ADD COLUMN IF NOT EXISTS apply_wastage BOOLEAN DEFAULT TRUE");
-              await query("ALTER TABLE step11_product_items ADD COLUMN IF NOT EXISTS shop_name VARCHAR(255)");
+              await query("ALTER TABLE step11_product_items ADD COLUMN IF NOT EXISTS shop_name TEXT");
               await query("ALTER TABLE step11_product_items ADD COLUMN IF NOT EXISTS base_qty DECIMAL(10,4)");
+
+              // Expand text column limits
+              await query("ALTER TABLE step11_product_items ALTER COLUMN material_id TYPE TEXT");
+              await query("ALTER TABLE step11_product_items ALTER COLUMN material_name TYPE TEXT");
+              await query("ALTER TABLE step11_product_items ALTER COLUMN location TYPE TEXT");
+              await query("ALTER TABLE step11_product_items ALTER COLUMN shop_name TYPE TEXT");
 
               await query(
                 `INSERT INTO step11_product_items 
@@ -5568,6 +5578,9 @@ export async function registerRoutes(
           await query("ALTER TABLE product_step3_config ADD COLUMN IF NOT EXISTS dim_c DECIMAL(10,4)");
           await query("ALTER TABLE product_step3_config ADD COLUMN IF NOT EXISTS description TEXT");
 
+          await query("ALTER TABLE product_step3_config ALTER COLUMN product_name TYPE TEXT");
+          await query("ALTER TABLE product_step3_config ALTER COLUMN config_name TYPE TEXT");
+
           // Insert new Step 3 config header
           const configResult = await query(
             `INSERT INTO product_step3_config (
@@ -5602,7 +5615,12 @@ export async function registerRoutes(
             await query("ALTER TABLE product_step3_config_items ADD COLUMN IF NOT EXISTS apply_wastage BOOLEAN DEFAULT TRUE");
 
             // Add shop_name to config items
-            await query("ALTER TABLE product_step3_config_items ADD COLUMN IF NOT EXISTS shop_name VARCHAR(255)");
+            await query("ALTER TABLE product_step3_config_items ADD COLUMN IF NOT EXISTS shop_name TEXT");
+
+            await query("ALTER TABLE product_step3_config_items ALTER COLUMN material_id TYPE TEXT");
+            await query("ALTER TABLE product_step3_config_items ALTER COLUMN material_name TYPE TEXT");
+            await query("ALTER TABLE product_step3_config_items ALTER COLUMN location TYPE TEXT");
+            await query("ALTER TABLE product_step3_config_items ALTER COLUMN shop_name TYPE TEXT");
 
             for (const item of items) {
               await query(
@@ -5996,11 +6014,16 @@ export async function registerRoutes(
     async (_req: Request, res: Response) => {
       try {
         const result = await query(
-          `SELECT p.*, 
-            (SELECT COUNT(*) FROM product_approvals p2 
-             WHERE p2.product_id = p.product_id 
-             AND p2.config_name = p.config_name) as submission_count
-           FROM product_approvals p 
+          `WITH latest_submissions AS (
+             SELECT DISTINCT ON (product_id, config_name) *
+             FROM product_approvals
+             ORDER BY product_id, config_name, created_at DESC
+           )
+           SELECT p.*, 
+             (SELECT COUNT(*) FROM product_approvals p2 
+              WHERE p2.product_id = p.product_id 
+              AND p2.config_name = p.config_name) as submission_count
+           FROM latest_submissions p 
            ORDER BY p.created_at DESC`
         );
         res.json({ approvals: result.rows });
@@ -6349,19 +6372,68 @@ export async function registerRoutes(
           const tableData = parseSafeTableData(boqItem.table_data);
 
           let lines: any[] = [];
-          // For engine-based products (with materialLines + targetRequiredQty),
-          // prioritize materialLines because they contain shop_name.
-          // step11_items in engine-based products are raw recipe items without shop_name.
-          if (Array.isArray(tableData.materialLines) && tableData.targetRequiredQty !== undefined) {
-            lines = flattenItems(tableData.materialLines);
-          } else if (Array.isArray(tableData.step11_items)) {
-            lines = flattenItems(tableData.step11_items);
-          } else if (Array.isArray(tableData.materialLines)) {
-            lines = flattenItems(tableData.materialLines);
-          } else if (Array.isArray(tableData.rows)) {
-            lines = flattenItems(tableData.rows);
-          } else if (Array.isArray(tableData.items)) {
-            lines = flattenItems(tableData.items);
+
+          if (tableData.materialLines && tableData.targetRequiredQty !== undefined) {
+            // Engine-based product: must scale quantities
+            const base = Number(tableData.baseRequiredQty || tableData.configBasis?.baseRequiredQty || 1);
+            const target = Number(tableData.targetRequiredQty) || 0;
+
+            // 1. Process engine lines (materialLines)
+            if (Array.isArray(tableData.materialLines)) {
+              const engineLines = tableData.materialLines.map((l: any) => {
+                const baseQty = Number(l.baseQty || l.qty || 0);
+                // Excel/BOQ Logic: Round up at basis, then scale, then round off for PO
+                // Per instructions, exclude wastage for PO (use baseQty directly)
+                const roundedQtyAtBasis = Math.ceil(baseQty);
+                const perUnitQty = roundedQtyAtBasis / base;
+                const scaledQty = perUnitQty * target;
+                const roundOffQty = Math.ceil(scaledQty);
+
+                const sRate = Number(l.supply_rate || l.supplyRate || 0);
+                const iRate = Number(l.install_rate || l.installRate || 0);
+                const rate = sRate + iRate;
+                const amount = roundOffQty * rate;
+
+                return {
+                  ...l,
+                  qty: roundOffQty,
+                  rate: rate,
+                  amount: amount,
+                  item: l.name || l.material_name || "Unknown Item"
+                };
+              });
+              lines.push(...engineLines);
+            }
+
+            // 2. Process manual items in engine-based product (if any)
+            if (Array.isArray(tableData.step11_items)) {
+              const manualLines = tableData.step11_items.filter((it: any) => it.manual).map((it: any) => {
+                const qty = Number(it.qty || 0);
+                const sRate = Number(it.supply_rate || it.supplyRate || 0);
+                const iRate = Number(it.install_rate || it.installRate || 0);
+                const rate = sRate + iRate;
+                const amount = qty * rate;
+                return {
+                  ...it,
+                  qty,
+                  rate,
+                  amount,
+                  item: it.title || it.name || "Unknown Item"
+                };
+              });
+              lines.push(...manualLines);
+            }
+          } else {
+            // Non-engine product: use step11_items, materialLines or rows directly
+            if (Array.isArray(tableData.step11_items)) {
+              lines = flattenItems(tableData.step11_items);
+            } else if (Array.isArray(tableData.materialLines)) {
+              lines = flattenItems(tableData.materialLines);
+            } else if (Array.isArray(tableData.rows)) {
+              lines = flattenItems(tableData.rows);
+            } else if (Array.isArray(tableData.items)) {
+              lines = flattenItems(tableData.items);
+            }
           }
 
           for (const line of lines) {

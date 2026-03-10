@@ -1,6 +1,6 @@
 import { useEffect, useState, useRef, useCallback } from "react";
 import { Reorder, useDragControls } from "framer-motion";
-import { ChevronUp, ChevronDown, Loader2, CheckCircle2, XCircle, Lock, History, Clock, Briefcase, MapPin, IndianRupee, GripVertical } from "lucide-react";
+import { ChevronUp, ChevronDown, Loader2, CheckCircle2, XCircle, Lock, History, Clock, Briefcase, MapPin, IndianRupee, AlertCircle, FileText, GripVertical } from "lucide-react";
 import { Layout } from "@/components/layout/Layout";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -95,7 +95,7 @@ function VersionStatusBanner({ version }: { version: BOMVersion }) {
       <div className="bg-green-50 border border-green-200 rounded p-4 text-sm text-green-800 flex items-center justify-between gap-2">
         <div className="flex items-center gap-2">
           <CheckCircle2 className="h-4 w-4" />
-          <div><strong>Approved!</strong> This version has been approved. You can now use the "Generate PO" page to create purchase orders.</div>
+          <div><strong>Approved!</strong> This version has been approved. You can now generate Purchase Orders.</div>
         </div>
         <Button
           variant="outline"
@@ -281,7 +281,7 @@ function BoqItemCard({ boqItem, boqIdx, isVersionSubmitted, expandedProductIds, 
 
   if (tableData.materialLines && tableData.targetRequiredQty !== undefined) {
     isEngineBased = true;
-    const boqResult = computeBoq(tableData.configBasis, tableData.materialLines, tableData.targetRequiredQty);
+    const boqResult = computeBoq({ ...tableData.configBasis, wastagePctDefault: 0 }, tableData.materialLines.map((l: any) => ({ ...l, applyWastage: false })), tableData.targetRequiredQty);
     const computedLines = boqResult.computed.map((line: any, idx: number) => {
       const itemKey = `${boqItem.id}-engine-${idx}`;
       const qty = Number(getEditedValue(itemKey, "qty", line.perUnitQty));
@@ -530,7 +530,7 @@ function HistorySection({ history }: { history: BOMHistory[] }) {
                 </span>
               </div>
               <div className="text-gray-800">
-                <span className="font-bold">{h.user_full_name}</span> {h.action === 'edited' ? 'saved a draft' : `${h.action} this BOM`}
+                <span className="font-bold">{h.user_full_name}</span> {h.action === 'edited' ? 'saved a draft' : `${h.action} this PO`}
                 {h.reason && (
                   <div className="mt-1 p-2 bg-gray-50 rounded border border-gray-100 italic text-gray-600">
                     Reason: {h.reason}
@@ -547,7 +547,7 @@ function HistorySection({ history }: { history: BOMHistory[] }) {
 
 // ─── Main Component ────────────────────────────────────────────────────────────
 
-export default function CreateBom() {
+export default function GeneratePo() {
   const [projects, setProjects] = useState<Project[]>([]);
   const [boqItems, setBoqItems] = useState<BOMItem[]>([]);
   const [versions, setVersions] = useState<BOMVersion[]>([]);
@@ -565,12 +565,54 @@ export default function CreateBom() {
   const [targetBoqItemId, setTargetBoqItemId] = useState<string | null>(null);
   const [showHistoryModal, setShowHistoryModal] = useState(false);
   const [editedFields, setEditedFields] = useState<Record<string, any>>({});
+  const [isGeneratingPO, setIsGeneratingPO] = useState(false);
+  const [isPOModalOpen, setIsPOModalOpen] = useState(false);
+  const [previewVendors, setPreviewVendors] = useState<any[]>([]);
+  const [isLoadingVendors, setIsLoadingVendors] = useState(false);
   const [loading, setLoading] = useState(true);
   // Budget warning/modals removed for Generate BOM page per request
   const editedFieldsRef = useRef(editedFields);
   const [location, setLocation] = useLocation();
   const { toast } = useToast();
 
+  const handleOpenPOModal = async () => {
+    if (!selectedVersionId) return;
+    setIsPOModalOpen(true);
+    setIsLoadingVendors(true);
+    try {
+      const res = await apiFetch(`/api/purchase-orders/preview-vendors?versionId=${selectedVersionId}`);
+      if (res.ok) {
+        const data = await res.json();
+        setPreviewVendors(data.vendors || []);
+      }
+    } catch (err) {
+      console.error("Failed to fetch preview vendors", err);
+    } finally {
+      setIsLoadingVendors(false);
+    }
+  };
+
+  const handleGeneratePO = async () => {
+    if (!selectedVersionId || isGeneratingPO) return;
+    setIsGeneratingPO(true);
+    try {
+      const res = await apiFetch("/api/purchase-orders/generate", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ projectId: selectedProjectId, versionId: selectedVersionId }),
+      });
+      if (res.ok) {
+        toast({ title: "Success", description: "Purchase Orders generated successfully!" });
+      } else {
+        const err = await res.json();
+        toast({ title: "Error", description: err.message || "Failed to generate POs", variant: "destructive" });
+      }
+    } catch (err) {
+      toast({ title: "Error", description: "Failed to generate POs", variant: "destructive" });
+    } finally {
+      setIsGeneratingPO(false);
+    }
+  };
 
   useEffect(() => { editedFieldsRef.current = editedFields; }, [editedFields]);
 
@@ -688,7 +730,7 @@ export default function CreateBom() {
 
       if (td.materialLines && td.targetRequiredQty !== undefined) {
         try {
-          const res = computeBoq(td.configBasis, td.materialLines, td.targetRequiredQty);
+          const res = computeBoq({ ...td.configBasis, wastagePctDefault: 0 }, td.materialLines.map((l: any) => ({ ...l, applyWastage: false })), td.targetRequiredQty);
           if (Array.isArray(res.computed)) {
             res.computed.forEach((l: any) => {
               const lineAmount = Number(l.lineTotal ?? ((Number(l.scaledQty) || 0) * (Number(l.supplyRate) + Number(l.installRate)))) || 0;
@@ -725,7 +767,7 @@ export default function CreateBom() {
 
   const projectBudget = parseFloat(selectedProject?.budget || "0");
   const currentProjectValue = calculateCurrentProjectValue();
-  // Simplify budget checks on Generate BOM page: always allow actions (no warnings)
+  // Simplify budget checks on Generate PO page: always allow actions (no warnings)
   const isExceeded = false;
   const withBudgetCheck = (_getFutureValue: () => number, action: () => Promise<void>) => {
     return async () => { await action(); };
@@ -815,7 +857,7 @@ export default function CreateBom() {
           })
         });
         if (!res.ok) throw new Error(`${res.status}`);
-        toast({ title: "Success", description: `Added ${template.name} to BOM` });
+        toast({ title: "Success", description: `Added ${template.name} to PO` });
         loadBoqItemsAndEdits();
       } catch { toast({ title: "Error", description: "Failed to add material", variant: "destructive" }); }
     })();
@@ -878,7 +920,7 @@ export default function CreateBom() {
     try {
       let computedLen = 0;
       if (tableData?.materialLines && tableData.targetRequiredQty !== undefined) {
-        try { const r = computeBoq(tableData.configBasis, tableData.materialLines, tableData.targetRequiredQty); computedLen = Array.isArray(r.computed) ? r.computed.length : 0; }
+        try { const r = computeBoq({ ...tableData.configBasis, wastagePctDefault: 0 }, tableData.materialLines.map((l: any) => ({ ...l, applyWastage: false })), tableData.targetRequiredQty); computedLen = Array.isArray(r.computed) ? r.computed.length : 0; }
         catch { computedLen = Array.isArray(tableData.materialLines) ? tableData.materialLines.length : 0; }
       }
       let newTd = { ...tableData };
@@ -895,12 +937,12 @@ export default function CreateBom() {
     } catch { toast({ title: "Error", description: "Failed to delete item", variant: "destructive" }); }
   };
 
-  const handleAddToBom = (selectedItems: Step11Item[]) => {
+  const handleAddToPo = (selectedItems: Step11Item[]) => {
     if (!selectedProjectId || !selectedProduct || !selectedVersionId) { toast({ title: "Error", description: "Select a project, version, and product", variant: "destructive" }); return; }
     setTargetRequiredQty(100); setPendingItems(selectedItems); setTargetQtyModalOpen(true);
   };
 
-  const confirmAddToBom = withBudgetCheck(() => currentProjectValue, async () => {
+  const confirmAddToPo = withBudgetCheck(() => currentProjectValue, async () => {
     if (!selectedProduct || !selectedProjectId || !selectedVersionId) return;
     setTargetQtyModalOpen(false);
     try {
@@ -1007,7 +1049,7 @@ export default function CreateBom() {
     const td = parseTableData(boqItem.table_data);
     const step11 = Array.isArray(td.step11_items) ? td.step11_items : [];
     if (td.materialLines && td.targetRequiredQty !== undefined) {
-      return computeBoq(td.configBasis, td.materialLines, td.targetRequiredQty).computed.map((l: any) => ({ title: l.name, description: l.name, unit: l.unit, qty: l.scaledQty, supply_rate: l.supplyRate, install_rate: l.installRate, supply_amount: l.supplyAmount, install_amount: l.installAmount, shop_name: l.shop_name }));
+      return computeBoq({ ...td.configBasis, wastagePctDefault: 0 }, td.materialLines.map((l: any) => ({ ...l, applyWastage: false })), td.targetRequiredQty).computed.map((l: any) => ({ title: l.name, description: l.name, unit: l.unit, qty: l.scaledQty, supply_rate: l.supplyRate, install_rate: l.installRate, supply_amount: l.supplyAmount, install_amount: l.installAmount, shop_name: l.shop_name }));
     }
     return step11.map((it: any, idx: number) => {
       const key = `${boqItem.id}-${idx}`;
@@ -1026,7 +1068,7 @@ export default function CreateBom() {
 
       // Main Header
       const mainHeaders = ["Sl", "Item", "Shop", "Description", "Unit", "Qty/Unit", "Required Qty", "Round off", "Rate/Unit", "Amount"];
-      exportData.push(["BILL OF QUANTITIES (BOQ)"]);
+      exportData.push(["PURCHASE ORDER (PO)"]);
       exportData.push([`Project: ${selectedProject?.name || "-"}`]);
       exportData.push([`Client: ${selectedProject?.client || "-"}`]);
       exportData.push([`Version: ${selectedVersion ? `V${selectedVersion.version_number} (${VERSION_LABEL[selectedVersion.status] || selectedVersion.status})` : "Draft"}`]);
@@ -1051,7 +1093,7 @@ export default function CreateBom() {
 
         if (tableData.materialLines && tableData.targetRequiredQty !== undefined) {
           isEngineBased = true;
-          const boqResult = computeBoq(tableData.configBasis, tableData.materialLines, tableData.targetRequiredQty);
+          const boqResult = computeBoq({ ...tableData.configBasis, wastagePctDefault: 0 }, tableData.materialLines.map((l: any) => ({ ...l, applyWastage: false })), tableData.targetRequiredQty);
           const computedLines = boqResult.computed.map((line: any, idx: number) => ({
             title: line.name, description: line.name, unit: line.unit, shop_name: line.shop_name,
             qtyPerSqf: line.perUnitQty, requiredQty: line.scaledQty, roundOff: line.roundOffQty,
@@ -1146,8 +1188,8 @@ export default function CreateBom() {
         }
       }
 
-      XLSX.utils.book_append_sheet(workbook, worksheet, "BOQ");
-      const filename = `${selectedProject?.name || "BOQ"}_${selectedVersion ? `V${selectedVersion.version_number}` : "draft"}_BOQ.xlsx`;
+      XLSX.utils.book_append_sheet(workbook, worksheet, "PO");
+      const filename = `${selectedProject?.name || "PO"}_${selectedVersion ? `V${selectedVersion.version_number}` : "draft"}_PO.xlsx`;
 
       XLSX.writeFile(workbook, filename);
       toast({ title: "Success", description: `Downloaded ${filename}` });
@@ -1205,7 +1247,7 @@ export default function CreateBom() {
 
       doc.setFontSize(14);
       doc.setFont("helvetica", "bold");
-      doc.text("BILL OF QUANTITIES (BOQ)", pageWidth / 2, 25, { align: "center" });
+      doc.text("PURCHASE ORDER (PO)", pageWidth / 2, 25, { align: "center" });
 
       // 3. Prepare Table columns and body
       const tableHeaders = ["Sl", "Item / Component", "Shop", "Description", "Unit", "Qty/Unit", "Req Qty", "R.Off", "Rate", "Total (₹)"];
@@ -1229,7 +1271,7 @@ export default function CreateBom() {
 
         let displayLines: any[] = [];
         if (td.materialLines && td.targetRequiredQty !== undefined) {
-          const boqResult = computeBoq(td.configBasis, td.materialLines, td.targetRequiredQty);
+          const boqResult = computeBoq({ ...td.configBasis, wastagePctDefault: 0 }, td.materialLines.map((l: any) => ({ ...l, applyWastage: false })), td.targetRequiredQty);
           const computedLines = boqResult.computed.map((line: any, idx: number) => ({
             title: line.name, description: line.name, unit: line.unit, shop_name: line.shop_name,
             qtyPerSqf: line.perUnitQty, requiredQty: line.scaledQty, roundOff: line.roundOffQty,
@@ -1325,7 +1367,7 @@ export default function CreateBom() {
         doc.text("GST Extra", 10, finalY + 6);
       }
 
-      const filename = `${selectedProject?.name || "BOQ"}_${selectedVersion ? `V${selectedVersion.version_number}` : "draft"}_BOQ.pdf`;
+      const filename = `${selectedProject?.name || "PO"}_${selectedVersion ? `V${selectedVersion.version_number}` : "draft"}_PO.pdf`;
       doc.save(filename);
       toast({ title: "Success", description: `Downloaded ${filename}` });
     } catch (err) {
@@ -1340,7 +1382,7 @@ export default function CreateBom() {
 
 
 
-  // Budget reason logging removed for Generate BOM page
+  // Budget reason logging removed for Generate PO page
 
   // ── Render ─────────────────────────────────────────────────────────────────
 
@@ -1350,7 +1392,7 @@ export default function CreateBom() {
     <>
       <Layout>
         <div className="space-y-6">
-          <h1 className="text-2xl font-semibold">Generate BOM</h1>
+          <h1 className="text-2xl font-semibold">Generate PO</h1>
 
           {/* Project Selector */}
           {/* Project & Version Selector (Compact & Professional) */}
@@ -1514,7 +1556,7 @@ export default function CreateBom() {
             <MaterialPicker open={showMaterialPicker} onOpenChange={setShowMaterialPicker} onSelectTemplate={handleSelectMaterialTemplate} />
 
             {selectedProduct && (
-              <Step11Preview product={selectedProduct} open={showStep11Preview} onClose={() => { setShowStep11Preview(false); setTimeout(() => setSelectedProduct(null), 300); }} onAddToBoq={handleAddToBom} />
+              <Step11Preview product={selectedProduct} open={showStep11Preview} onClose={() => { setShowStep11Preview(false); setTimeout(() => setSelectedProduct(null), 300); }} onAddToBoq={handleAddToPo} />
             )}
           </Card>
 
@@ -1522,7 +1564,7 @@ export default function CreateBom() {
           {selectedProjectId && (
             <Card>
               <CardContent className="space-y-4 pt-6">
-                <h2 className="text-lg font-semibold">BOQ Items</h2>
+                <h2 className="text-lg font-semibold">PO Items</h2>
                 {boqItems.length === 0
                   ? <div className="text-gray-500 text-center py-4">No products added yet. Click Add Product +</div>
                   : <div className="space-y-8">
@@ -1548,7 +1590,14 @@ export default function CreateBom() {
                 <div className="grid grid-cols-1 md:grid-cols-6 gap-3">
                   <Button onClick={withBudgetCheck(() => currentProjectValue, handleSaveProject)} variant="outline" disabled={isVersionSubmitted || Object.keys(editedFields).length === 0}>Save Draft</Button>
                   <Button onClick={() => handleSubmitVersion("submitted")} variant="outline" className="border-primary text-primary hover:bg-primary/5 font-bold" disabled={isVersionSubmitted || boqItems.length === 0}>Lock Version</Button>
-                  <Button onClick={() => handleSubmitVersion("pending_approval")} variant="default" className="bg-primary hover:bg-primary/90 font-bold" disabled={isVersionSubmitted || boqItems.length === 0}>Submit for Approval</Button>
+                  <Button
+                    onClick={handleOpenPOModal}
+                    disabled={isGeneratingPO || boqItems.length === 0}
+                    className="bg-green-600 hover:bg-green-700 text-white font-bold"
+                  >
+                    {isGeneratingPO ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <FileText className="h-4 w-4 mr-2" />}
+                    Generate PO
+                  </Button>
                   <Button onClick={handleDownloadExcel} variant="outline" disabled={boqItems.length === 0}>Download Excel</Button>
                   <Button onClick={handleDownloadPdf} variant="outline" disabled={boqItems.length === 0}>Download PDF</Button>
                 </div>
@@ -1581,11 +1630,67 @@ export default function CreateBom() {
                 addon += (Number(i.qty) || 1) * ((Number(i.supply_rate) || 0) + (Number(i.install_rate) || 0));
               });
               return currentProjectValue + (addon * targetRequiredQty);
-            }, confirmAddToBom)} className="bg-primary text-white font-bold">Add to BOM</Button>
+            }, confirmAddToPo)} className="bg-primary text-white font-bold">Add to PO</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
 
+      {/* PO Confirmation Modal */}
+      <Dialog open={isPOModalOpen} onOpenChange={setIsPOModalOpen}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>Generate Purchase Orders</DialogTitle>
+            <DialogDescription>
+              We found the following vendors for this PO. Individual POs will be created for each vendor.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="py-4">
+            {isLoadingVendors ? (
+              <div className="flex justify-center py-6">
+                <Loader2 className="h-6 w-6 animate-spin text-primary" />
+              </div>
+            ) : previewVendors.length === 0 ? (
+              <div className="bg-amber-50 border border-amber-200 rounded p-4 text-sm text-amber-800 flex items-center gap-2">
+                <AlertCircle className="h-4 w-4" />
+                <div><strong>No Vendors Found.</strong> Please ensure you have selected vendors for your items before generating POs.</div>
+              </div>
+            ) : (
+              <div className="space-y-2 max-h-[300px] overflow-y-auto pr-2">
+                <p className="text-xs font-bold text-gray-500 uppercase">Found {previewVendors.length} Vendors:</p>
+                {previewVendors.map((vendor, idx) => (
+                  <div key={vendor.id} className="flex items-center gap-3 p-2 rounded border bg-gray-50">
+                    <div className="h-8 w-8 rounded-full bg-blue-100 flex items-center justify-center text-blue-700 font-bold text-xs">
+                      {idx + 1}
+                    </div>
+                    <div>
+                      <div className="text-sm font-semibold text-gray-800">{vendor.name}</div>
+                      <div className="text-[10px] text-gray-500">{vendor.location || "No location set"}</div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setIsPOModalOpen(false)} disabled={isGeneratingPO}>
+              Cancel
+            </Button>
+            <Button
+              className="bg-green-600 hover:bg-green-700 text-white"
+              onClick={() => {
+                setIsPOModalOpen(false);
+                handleGeneratePO();
+              }}
+              disabled={isGeneratingPO || previewVendors.length === 0}
+            >
+              {isGeneratingPO ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : null}
+              Confirm & Generate
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
       {/* Budget warning dialogs removed for Generate BOM page */}
     </>
   );
