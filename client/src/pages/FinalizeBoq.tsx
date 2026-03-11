@@ -35,7 +35,7 @@ import { computeBoq } from "@/lib/boqCalc";
 
 import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
-import { Trash2, Copy, GripVertical, GripHorizontal, Eye, EyeOff, Edit2, ChevronDown, Briefcase, MapPin, IndianRupee, Lock, Edit3, Plus, CheckCircle2, AlertCircle, Clock } from "lucide-react";
+import { Trash2, Copy, GripVertical, GripHorizontal, Eye, EyeOff, Edit2, ChevronDown, Briefcase, MapPin, IndianRupee, Lock, Edit3, CheckCircle2, Clock } from "lucide-react";
 
 /** Helper to generate Excel-style column names (A, B, C... Z, AA, AB...) */
 const getExcelColumnName = (n: number) => {
@@ -391,11 +391,6 @@ export default function FinalizeBoq() {
   const [showFinalizedPicker, setShowFinalizedPicker] = useState(false);
   const [finalizedItems, setFinalizedItems] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
-  const [budgetWarningOpen, setBudgetWarningOpen] = useState(false);
-  const [budgetReasonOpen, setBudgetReasonOpen] = useState(false);
-  const [budgetExceedReason, setBudgetExceedReason] = useState("");
-  const [pendingAction, setPendingAction] = useState<(() => Promise<void>) | null>(null);
-  const [exceedData, setExceedData] = useState({ budget: 0, valAtExceed: 0, amount: 0 });
   const [location, setLocation] = useLocation();
   const { toast } = useToast();
   const dragControls = useDragControls();
@@ -1050,7 +1045,6 @@ export default function FinalizeBoq() {
 
   const handleAddFinalized = async () => {
     if (!selectedProjectId) return;
-    if (await checkBudgetEarly()) return;
     try {
       const response = await apiFetch("/api/boq-items/finalized", { headers: {} });
       if (response.ok) {
@@ -1124,8 +1118,7 @@ export default function FinalizeBoq() {
 
   const handleSelectFinalizedItemWrapper = async (originalItem: any) => {
     const td = typeof originalItem.table_data === 'string' ? JSON.parse(originalItem.table_data) : originalItem.table_data;
-    const { itemTotal } = getItemMetrics(td);
-    await withBudgetCheck(() => currentProjectValue + itemTotal, () => handleSelectFinalizedItem(originalItem))();
+    await handleSelectFinalizedItem(originalItem);
   };
 
   const updateEditedField = (itemKey: string, field: string, value: any) => {
@@ -1226,13 +1219,11 @@ export default function FinalizeBoq() {
     // Since cloning just copies a column, it might increase the project value if the column is part of the total.
     // However, usually cloning doesn't immediately change the 'totalValueSum' unless it's a total column (which we don't allow cloning easily).
     // But to be safe, we wrap it.
-    await withBudgetCheck(() => currentProjectValue, async () => {
-      setCustomColumns((prev) => ({ ...prev, [boqItemId]: nextCols }));
-      setCustomColumnValues((prev) => ({ ...prev, [boqItemId]: itemValues }));
+    setCustomColumns((prev) => ({ ...prev, [boqItemId]: nextCols }));
+    setCustomColumnValues((prev) => ({ ...prev, [boqItemId]: itemValues }));
 
-      await saveItemLayout(boqItemId, nextCols, itemValues);
-      toast({ title: "Column Cloned", description: `Column "${originalCol.name}" cloned to "${newColName}" and saved.` });
-    })();
+    await saveItemLayout(boqItemId, nextCols, itemValues);
+    toast({ title: "Column Cloned", description: `Column "${originalCol.name}" cloned to "${newColName}" and saved.` });
   };
 
   const handleGlobalCalculation = async (colName: string, base: number, multiplier: number, baseSource: string = "manual", operator: string = "%", multiplierSource: string = "manual") => {
@@ -1283,73 +1274,67 @@ export default function FinalizeBoq() {
     // but withBudgetCheck needs to know the FUTURE value before we update state.
     // We'll use a pragmatic approach: if the multiplier/item changes, we check if it increases.
 
-    await withBudgetCheck(() => {
-      // Optimistic future value calculation for the whole project
-      return currentProjectValue; // We'll just use current until we update state, then check.
-      // Actually, for global calc, we should probably just wrap the execution.
-    }, async () => {
-      setGlobalColSettings(prev => ({
-        ...prev,
-        [colName]: { baseValue: base, percentageValue: multiplier, baseSource, operator, multiplierSource }
-      }));
+    setGlobalColSettings(prev => ({
+      ...prev,
+      [colName]: { baseValue: base, percentageValue: multiplier, baseSource, operator, multiplierSource }
+    }));
 
-      const nextColsMap: any = {};
-      const nextValsMap: any = {};
+    const nextColsMap: any = {};
+    const nextValsMap: any = {};
 
-      boqItems.forEach(item => {
-        let itemCols = [...(customColumns[item.id] || [])];
-        let colIdx = itemCols.findIndex(c => c.name === colName);
+    boqItems.forEach(item => {
+      let itemCols = [...(customColumns[item.id] || [])];
+      let colIdx = itemCols.findIndex(c => c.name === colName);
 
-        if (colIdx === -1) {
-          const globalCol = allCols.find(c => c.name === colName);
-          if (globalCol) itemCols.push({ ...globalCol });
-          else itemCols.push({ name: colName, isTotal: false });
-          colIdx = itemCols.length - 1;
-        }
+      if (colIdx === -1) {
+        const globalCol = allCols.find(c => c.name === colName);
+        if (globalCol) itemCols.push({ ...globalCol });
+        else itemCols.push({ name: colName, isTotal: false });
+        colIdx = itemCols.length - 1;
+      }
 
-        const itemCol = itemCols[colIdx];
-        const currentRowMultiplier = itemCol?.percentageValue || oldMultiplier;
-        const newRowMultiplier = currentRowMultiplier + deltaMultiplier;
+      const itemCol = itemCols[colIdx];
+      const currentRowMultiplier = itemCol?.percentageValue || oldMultiplier;
+      const newRowMultiplier = currentRowMultiplier + deltaMultiplier;
 
-        let td = item.table_data || {};
-        if (typeof td === "string") try { td = JSON.parse(td); } catch { td = {}; }
-        const { itemRate, itemQty } = getItemMetrics(td);
-        const displayQty = productQuantities[item.id] !== undefined ? (parseFloat(productQuantities[item.id]) || 0) : itemQty;
+      let td = item.table_data || {};
+      if (typeof td === "string") try { td = JSON.parse(td); } catch { td = {}; }
+      const { itemRate, itemQty } = getItemMetrics(td);
+      const displayQty = productQuantities[item.id] !== undefined ? (parseFloat(productQuantities[item.id]) || 0) : itemQty;
 
-        const overrideRate = parseFloat(overrideRates[item.id] || "0") || 0;
-        const srcCtx: SrcCtx = {
-          totalVal: itemRate * displayQty, rate: itemRate, qty: displayQty,
-          overrideRate, overrideTotal: overrideRate * displayQty,
-          rowCalc: {}, customVals: customColumnValues[item.id]?.[0] || {},
-        };
-        const rowBase = baseSource === "manual" ? base : resolveSource(baseSource, srcCtx);
+      const overrideRate = parseFloat(overrideRates[item.id] || "0") || 0;
+      const srcCtx: SrcCtx = {
+        totalVal: itemRate * displayQty, rate: itemRate, qty: displayQty,
+        overrideRate, overrideTotal: overrideRate * displayQty,
+        rowCalc: {}, customVals: customColumnValues[item.id]?.[0] || {},
+      };
+      const rowBase = baseSource === "manual" ? base : resolveSource(baseSource, srcCtx);
 
-        itemCols[colIdx] = {
-          ...itemCols[colIdx],
-          baseValue: base,
-          percentageValue: newRowMultiplier,
-          baseSource,
-          operator,
-          multiplierSource
-        };
-        const updatedCols = itemCols;
-        nextColsMap[item.id] = updatedCols;
+      itemCols[colIdx] = {
+        ...itemCols[colIdx],
+        baseValue: base,
+        percentageValue: newRowMultiplier,
+        baseSource,
+        operator,
+        multiplierSource
+      };
+      const updatedCols = itemCols;
+      nextColsMap[item.id] = updatedCols;
 
-        const rowMultiplierVal = multiplierSource === "manual" ? newRowMultiplier : resolveSource(multiplierSource, srcCtx);
-        const calculated = applyOperator(rowBase, rowMultiplierVal, operator);
+      const rowMultiplierVal = multiplierSource === "manual" ? newRowMultiplier : resolveSource(multiplierSource, srcCtx);
+      const calculated = applyOperator(rowBase, rowMultiplierVal, operator);
 
-        const itemVals = { ...(customColumnValues[item.id] || {}) };
-        itemVals[0] = { ...(itemVals[0] || {}), [colName]: calculated.toFixed(2) };
-        nextValsMap[item.id] = itemVals;
-      });
+      const itemVals = { ...(customColumnValues[item.id] || {}) };
+      itemVals[0] = { ...(itemVals[0] || {}), [colName]: calculated.toFixed(2) };
+      nextValsMap[item.id] = itemVals;
+    });
 
-      setCustomColumns(prev => ({ ...prev, ...nextColsMap }));
-      setCustomColumnValues(prev => ({ ...prev, ...nextValsMap }));
+    setCustomColumns(prev => ({ ...prev, ...nextColsMap }));
+    setCustomColumnValues(prev => ({ ...prev, ...nextValsMap }));
 
-      await Promise.all(boqItems.map(item =>
-        saveItemLayout(item.id, nextColsMap[item.id], nextValsMap[item.id])
-      ));
-    })();
+    await Promise.all(boqItems.map(item =>
+      saveItemLayout(item.id, nextColsMap[item.id], nextValsMap[item.id])
+    ));
   };
 
   const handleItemCalculation = async (boqItemId: string, colName: string, multiplier: number, operator: string = "%", multiplierSource: string = "manual", baseSourceOverride?: string) => {
@@ -1395,12 +1380,10 @@ export default function FinalizeBoq() {
     const itemVals = { ...(customColumnValues[item.id] || {}) };
     itemVals[0] = { ...(itemVals[0] || {}), [colName]: calculated.toFixed(2) };
 
-    await withBudgetCheck(() => currentProjectValue, async () => {
-      setCustomColumns(prev => ({ ...prev, [item.id]: updatedCols }));
-      setCustomColumnValues(prev => ({ ...prev, [item.id]: itemVals }));
+    setCustomColumns(prev => ({ ...prev, [item.id]: updatedCols }));
+    setCustomColumnValues(prev => ({ ...prev, [item.id]: itemVals }));
 
-      await saveItemLayout(item.id, updatedCols, itemVals);
-    })();
+    await saveItemLayout(item.id, updatedCols, itemVals);
   };
 
   const getEditedValue = (
@@ -1417,107 +1400,105 @@ export default function FinalizeBoq() {
 
   const handleSaveProject = async () => {
     if (!selectedVersionId) return;
-    await withBudgetCheck(() => currentProjectValue, async () => {
-      try {
-        // Permanently save the current edited fields to the database (use ref to avoid race)
-        const payload = editedFieldsRef.current || {};
-        const response = await apiFetch(
-          `/api/boq-versions/${encodeURIComponent(selectedVersionId)}/save-edits`,
-          {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ editedFields: payload }),
-          },
-        );
+    try {
+      // Permanently save the current edited fields to the database (use ref to avoid race)
+      const payload = editedFieldsRef.current || {};
+      const response = await apiFetch(
+        `/api/boq-versions/${encodeURIComponent(selectedVersionId)}/save-edits`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ editedFields: payload }),
+        },
+      );
 
-        if (response.ok) {
-          // Prefer authoritative data from server when available (server will return
-          // `updatedItems`). If not present, fall back to optimistic merge + reload.
-          let saveResp: any = null;
-          try {
-            saveResp = await response.json();
-          } catch (e) {
-            // ignore non-JSON
-          }
+      if (response.ok) {
+        // Prefer authoritative data from server when available (server will return
+        // `updatedItems`). If not present, fall back to optimistic merge + reload.
+        let saveResp: any = null;
+        try {
+          saveResp = await response.json();
+        } catch (e) {
+          // ignore non-JSON
+        }
 
-          if (saveResp?.updatedItems && saveResp.updatedItems.length > 0) {
-            setBoqItems((prev) => {
-              const byId = new Map(prev.map((i) => [i.id, i]));
-              for (const up of saveResp.updatedItems) {
-                const td = typeof up.table_data === "string" ? JSON.parse(up.table_data) : up.table_data;
-                const existing = byId.get(up.id) || {};
-                byId.set(up.id, { ...existing, ...up, table_data: td });
-              }
-              return prev.map((p) => {
-                const updated = byId.get(p.id);
-                return updated ? updated : p;
-              });
+        if (saveResp?.updatedItems && saveResp.updatedItems.length > 0) {
+          setBoqItems((prev) => {
+            const byId = new Map(prev.map((i) => [i.id, i]));
+            for (const up of saveResp.updatedItems) {
+              const td = typeof up.table_data === "string" ? JSON.parse(up.table_data) : up.table_data;
+              const existing = byId.get(up.id) || {};
+              byId.set(up.id, { ...existing, ...up, table_data: td });
+            }
+            return prev.map((p) => {
+              const updated = byId.get(p.id);
+              return updated ? updated : p;
             });
-            setEditedFields({});
-            editedFieldsRef.current = {};
-          } else {
-            setBoqItems((prev) =>
-              prev.map((item) => {
-                const keys = Object.keys(editedFields).filter((k) => k.startsWith(`${item.id}-`));
-                if (keys.length === 0) return item;
+          });
+          setEditedFields({});
+          editedFieldsRef.current = {};
+        } else {
+          setBoqItems((prev) =>
+            prev.map((item) => {
+              const keys = Object.keys(editedFields).filter((k) => k.startsWith(`${item.id}-`));
+              if (keys.length === 0) return item;
 
-                const tableData =
-                  typeof item.table_data === "string"
-                    ? JSON.parse(item.table_data)
-                    : { ...(item.table_data || {}) };
-                const step11_items = Array.isArray(tableData.step11_items)
-                  ? [...tableData.step11_items]
-                  : [];
+              const tableData =
+                typeof item.table_data === "string"
+                  ? JSON.parse(item.table_data)
+                  : { ...(item.table_data || {}) };
+              const step11_items = Array.isArray(tableData.step11_items)
+                ? [...tableData.step11_items]
+                : [];
 
-                for (const key of keys) {
-                  const idxStr = key.substring(key.lastIndexOf("-") + 1);
-                  const idx = parseInt(idxStr, 10);
-                  const fields = editedFields[key] || {};
-                  if (step11_items[idx]) {
-                    step11_items[idx] = { ...step11_items[idx], ...fields };
-                  }
+              for (const key of keys) {
+                const idxStr = key.substring(key.lastIndexOf("-") + 1);
+                const idx = parseInt(idxStr, 10);
+                const fields = editedFields[key] || {};
+                if (step11_items[idx]) {
+                  step11_items[idx] = { ...step11_items[idx], ...fields };
                 }
+              }
 
-                return { ...item, table_data: { ...tableData, step11_items } };
-              }),
+              return { ...item, table_data: { ...tableData, step11_items } };
+            }),
+          );
+
+          try {
+            const loadResponse = await apiFetch(
+              `/api/boq-items/version/${encodeURIComponent(selectedVersionId)}`,
+              { headers: {} },
             );
 
-            try {
-              const loadResponse = await apiFetch(
-                `/api/boq-items/version/${encodeURIComponent(selectedVersionId)}`,
-                { headers: {} },
-              );
-
-              if (loadResponse.ok) {
-                const data = await loadResponse.json();
-                setBoqItems(data.items || []);
-                setEditedFields({});
-                editedFieldsRef.current = {};
-              } else {
-                console.warn("[FinalizeBoq] Failed to reload BOM items after save; keeping optimistic local state");
-              }
-            } catch (loadErr) {
-              console.error("[FinalizeBoq] Failed to reload BOM items after save:", loadErr);
+            if (loadResponse.ok) {
+              const data = await loadResponse.json();
+              setBoqItems(data.items || []);
+              setEditedFields({});
+              editedFieldsRef.current = {};
+            } else {
+              console.warn("[FinalizeBoq] Failed to reload BOM items after save; keeping optimistic local state");
             }
+          } catch (loadErr) {
+            console.error("[FinalizeBoq] Failed to reload BOM items after save:", loadErr);
           }
-
-          toast({
-            title: "Success",
-            description: "Draft saved",
-          });
-        } else {
-          const errText = await response.text().catch(() => null);
-          throw new Error("Failed to save edits" + (errText ? `: ${errText}` : ""));
         }
-      } catch (err) {
-        console.error("Failed to save project:", err);
+
         toast({
-          title: "Error",
-          description: "Failed to save BOM version",
-          variant: "destructive",
+          title: "Success",
+          description: "Draft saved",
         });
+      } else {
+        const errText = await response.text().catch(() => null);
+        throw new Error("Failed to save edits" + (errText ? `: ${errText}` : ""));
       }
-    })();
+    } catch (err) {
+      console.error("Failed to save project:", err);
+      toast({
+        title: "Error",
+        description: "Failed to save BOM version",
+        variant: "destructive",
+      });
+    }
   };
 
   const handleSubmitVersion = async () => {
@@ -1552,40 +1533,6 @@ export default function FinalizeBoq() {
     }
   };
 
-  const handleCreateNewVersion = async (copyFromPrevious: boolean) => {
-    if (!selectedProjectId) return;
-
-    try {
-      const previousVersion = versions.length > 0 ? versions[0].id : null;
-
-      const response = await apiFetch("/api/boq-versions", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          project_id: selectedProjectId,
-          copy_from_version: copyFromPrevious ? previousVersion : null,
-        }),
-      });
-
-      if (response.ok) {
-        const newVersion = await response.json();
-        setVersions((prev) => [newVersion, ...prev]);
-        setSelectedVersionId(newVersion.id);
-
-        toast({
-          title: "Success",
-          description: `Created Version ${newVersion.version_number}`,
-        });
-      }
-    } catch (err) {
-      console.error("Failed to create version:", err);
-      toast({
-        title: "Error",
-        description: "Failed to create version",
-        variant: "destructive",
-      });
-    }
-  };
 
   const handleSaveAsTemplate = async () => {
     if (!newTemplateName.trim()) {
@@ -1764,9 +1711,9 @@ export default function FinalizeBoq() {
           "Description / Location",
           "HSN",
           "SAC",
-          "Rate / Unit",
           "Unit",
           "Qty",
+          "Rate / Unit",
           "Total Value (₹)",
           "Override Rate",
           "Override Total",
@@ -1999,9 +1946,9 @@ export default function FinalizeBoq() {
         if (selectedPdfExportCols.includes("Description")) row.push(manualDesc);
         if (selectedPdfExportCols.includes("HSN")) row.push(tableData.hsn_code || (tableData.hsn_sac_type === 'hsn' ? tableData.hsn_sac_code : "") || "—");
         if (selectedPdfExportCols.includes("SAC")) row.push(tableData.sac_code || (tableData.hsn_sac_type === 'sac' ? tableData.hsn_sac_code : "") || "—");
-        if (selectedPdfExportCols.includes("Rate")) row.push(rateSqft.toFixed(2));
         if (selectedPdfExportCols.includes("Unit")) row.push(currentStep11Items[0]?.unit || tableData.unit || "");
         if (selectedPdfExportCols.includes("Qty")) row.push(displayQty.toFixed(2));
+        if (selectedPdfExportCols.includes("Rate")) row.push(rateSqft.toFixed(2));
         if (selectedPdfExportCols.includes("Total")) row.push(totalVal.toFixed(2));
         if (selectedPdfExportCols.includes("Override Rate")) row.push((parseFloat(overrideRates[boqItem.id] || "0") || 0).toFixed(2));
         if (selectedPdfExportCols.includes("Override Total")) row.push(((parseFloat(overrideRates[boqItem.id] || "0") || 0) * displayQty).toFixed(2));
@@ -2021,9 +1968,9 @@ export default function FinalizeBoq() {
       if (selectedPdfExportCols.includes("Description")) footerRow.push("");
       if (selectedPdfExportCols.includes("HSN")) footerRow.push("");
       if (selectedPdfExportCols.includes("SAC")) footerRow.push("");
-      if (selectedPdfExportCols.includes("Rate")) footerRow.push("₹" + calculatedColumnTotals.totalRateSum.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }));
       if (selectedPdfExportCols.includes("Unit")) footerRow.push("");
       if (selectedPdfExportCols.includes("Qty")) footerRow.push("");
+      if (selectedPdfExportCols.includes("Rate")) footerRow.push("₹" + calculatedColumnTotals.totalRateSum.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }));
       if (selectedPdfExportCols.includes("Total")) footerRow.push(hideSystemTotalFooter ? "" : "₹" + calculatedColumnTotals.totalValueSum.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }));
       if (selectedPdfExportCols.includes("Override Rate")) footerRow.push("");
       if (selectedPdfExportCols.includes("Override Total")) footerRow.push("₹" + calculatedColumnTotals.overrideTotalSum.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }));
@@ -2165,66 +2112,7 @@ export default function FinalizeBoq() {
     return idx >= 0 ? calculatedColumnTotals.totals[idx] : 0;
   })();
   const revenue = currentProjectValue - generatedBudget;
-  const isExceeded = generatedBudget > 0 && currentProjectValue > generatedBudget;
 
-  const checkBudgetEarly = async () => {
-    const isAlreadyExceeded = generatedBudget > 0 && currentProjectValue > generatedBudget;
-    if (isAlreadyExceeded) {
-      setExceedData({ budget: generatedBudget, valAtExceed: currentProjectValue, amount: 0 });
-      setPendingAction(() => Promise.resolve());
-      setBudgetWarningOpen(true);
-      return true;
-    }
-    return false;
-  };
-
-  const withBudgetCheck = (getFutureValue: () => number, action: () => Promise<void>) => {
-    return async () => {
-      const futureVal = getFutureValue();
-      const isAlreadyExceeded = generatedBudget > 0 && currentProjectValue > generatedBudget;
-      const willBeExceeded = generatedBudget > 0 && futureVal > generatedBudget;
-
-      if (isAlreadyExceeded || (willBeExceeded && futureVal > currentProjectValue)) {
-        setExceedData({
-          budget: generatedBudget,
-          valAtExceed: currentProjectValue,
-          amount: Math.max(0, futureVal - currentProjectValue)
-        });
-        setPendingAction(() => action);
-        setBudgetWarningOpen(true);
-      } else {
-        await action();
-      }
-    };
-  };
-
-  const handleBudgetProceed = () => {
-    setBudgetWarningOpen(false);
-    setBudgetReasonOpen(true);
-  };
-
-  const handleBudgetSubmitReason = async () => {
-    if (!budgetExceedReason.trim()) { toast({ title: "Error", description: "Reason is required", variant: "destructive" }); return; }
-    try {
-      await apiFetch("/api/budget-exceed-logs", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          projectId: selectedProjectId,
-          projectBudget: generatedBudget,
-          projectValueAtExceed: currentProjectValue,
-          exceededAmount: exceedData.amount,
-          reason: budgetExceedReason
-        })
-      });
-      setBudgetReasonOpen(false);
-      setBudgetExceedReason("");
-      if (pendingAction) {
-        await pendingAction();
-        setPendingAction(null);
-      }
-    } catch { toast({ title: "Error", description: "Failed to save reason", variant: "destructive" }); }
-  };
 
   if (loading) {
     return (
@@ -2316,18 +2204,6 @@ export default function FinalizeBoq() {
                           <Trash2 className="h-4 w-4" />
                         </Button>
                       )}
-                      <Button
-                        variant="outline"
-                        size="icon"
-                        className="h-9 w-9 bg-white border-slate-200 hover:bg-slate-50"
-                        onClick={() => {
-                          const lastVersion = versions[0];
-                          if (lastVersion && confirm(`Copy from V${lastVersion.version_number}?`)) handleCreateNewVersion(true);
-                          else handleCreateNewVersion(false);
-                        }}
-                      >
-                        <Plus className="h-4 w-4" />
-                      </Button>
                     </div>
                   </div>
                 </div>
@@ -2439,11 +2315,6 @@ export default function FinalizeBoq() {
                 </div>
 
                 <div className="ml-auto flex items-center gap-3">
-                  {isExceeded && (
-                    <Badge variant="outline" className="bg-red-100 text-red-700 border-red-200 text-[10px] font-bold px-2 py-0 h-6">
-                      BUDGET EXCEEDED
-                    </Badge>
-                  )}
                   {selectedVersion?.status === "approved" ? (
                     <Badge variant="outline" className="bg-emerald-100 text-emerald-700 border-emerald-200 text-[10px] font-bold px-2 py-0 h-6">
                       <CheckCircle2 className="h-2.5 w-2.5 mr-1" /> APPROVED
@@ -2500,7 +2371,7 @@ export default function FinalizeBoq() {
                           // maintain table order
                           const order = [
                             "S.No", "Product / Material", "Description / Location",
-                            "Rate / Unit", "Unit", "Qty", "Total Value (₹)",
+                            "Unit", "Qty", "Rate / Unit", "Total Value (₹)",
                             "Override Rate", "Override Total",
                             ...allCols.map(c => c.name)
                           ];
@@ -2561,7 +2432,7 @@ export default function FinalizeBoq() {
                           const next = [...prev, col.name];
                           const order = [
                             "S.No", "Product / Material", "Description", "HSN", "SAC",
-                            "Rate", "Unit", "Qty", "Total",
+                            "Unit", "Qty", "Rate", "Total",
                             "Override Rate", "Override Total",
                             ...allCols.map(c => c.name)
                           ];
@@ -2788,9 +2659,9 @@ export default function FinalizeBoq() {
                         {!hiddenPredefinedCols.description && <th className="border-r border-gray-200 py-1.5 text-center w-72">D</th>}
                         {!hiddenPredefinedCols.hsn && <th className="border-r border-gray-200 py-1.5 text-center w-24">E</th>}
                         {!hiddenPredefinedCols.sac && <th className="border-r border-gray-200 py-1.5 text-center w-24">F</th>}
-                        {!hiddenPredefinedCols.rate && <th className="border-r border-gray-200 py-1.5 text-center w-32">G</th>}
-                        {!hiddenPredefinedCols.unit && <th className="border-r border-gray-200 py-1.5 text-center w-24">H</th>}
-                        {!hiddenPredefinedCols.qty && <th className="border-r border-gray-200 py-1.5 text-center w-28">I</th>}
+                        {!hiddenPredefinedCols.unit && <th className="border-r border-gray-200 py-1.5 text-center w-24">G</th>}
+                        {!hiddenPredefinedCols.qty && <th className="border-r border-gray-200 py-1.5 text-center w-28">H</th>}
+                        {!hiddenPredefinedCols.rate && <th className="border-r border-gray-200 py-1.5 text-center w-32">I</th>}
                         {!hiddenPredefinedCols.system_total && <th className="border-r border-gray-200 py-1.5 text-center text-gray-700 w-32">J</th>}
                         {!hiddenPredefinedCols.override_rate && <th className="border-r border-gray-200 py-1.5 text-center text-gray-700 w-32">K</th>}
                         {!hiddenPredefinedCols.override_total && <th className="border-r border-gray-200 py-1.5 text-center text-gray-700 w-32">L</th>}
@@ -2868,16 +2739,6 @@ export default function FinalizeBoq() {
                             </div>
                           </th>
                         )}
-                        {!hiddenPredefinedCols.rate && (
-                          <th className="border-r border-gray-300 px-1 py-2.5 text-right w-32 text-[11px] group relative">
-                            <div className="flex items-center justify-between gap-1">
-                              <span className="w-full text-right">Rate</span>
-                              {!isVersionSubmitted && (
-                                <button onClick={() => handleHideColumn("Rate", true)} className="text-gray-400 hover:text-orange-500 opacity-0 group-hover:opacity-100 transition-opacity" title="Hide Column"><EyeOff size={10} /></button>
-                              )}
-                            </div>
-                          </th>
-                        )}
                         {!hiddenPredefinedCols.unit && (
                           <th className="border-r border-gray-300 px-1 py-2.5 text-center w-24 text-[11px] group relative">
                             <div className="flex items-center justify-between gap-1 px-1">
@@ -2894,6 +2755,16 @@ export default function FinalizeBoq() {
                               <span className="w-full text-center">Qty</span>
                               {!isVersionSubmitted && (
                                 <button onClick={() => handleHideColumn("Qty", true)} className="text-gray-400 hover:text-orange-500 opacity-0 group-hover:opacity-100 transition-opacity" title="Hide Column"><EyeOff size={10} /></button>
+                              )}
+                            </div>
+                          </th>
+                        )}
+                        {!hiddenPredefinedCols.rate && (
+                          <th className="border-r border-gray-300 px-1 py-2.5 text-right w-32 text-[11px] group relative">
+                            <div className="flex items-center justify-between gap-1">
+                              <span className="w-full text-right">Rate</span>
+                              {!isVersionSubmitted && (
+                                <button onClick={() => handleHideColumn("Rate", true)} className="text-gray-400 hover:text-orange-500 opacity-0 group-hover:opacity-100 transition-opacity" title="Hide Column"><EyeOff size={10} /></button>
                               )}
                             </div>
                           </th>
@@ -3065,7 +2936,6 @@ export default function FinalizeBoq() {
                                 <textarea
                                   value={manualDesc || tableData.finalize_description || ""}
                                   disabled={isVersionSubmitted}
-                                  onFocus={checkBudgetEarly}
                                   onChange={e => setProductDescriptions(prev => ({ ...prev, [boqItem.id]: e.target.value }))}
                                   onBlur={() => saveItemLayout(boqItem.id, undefined, undefined, productDescriptions[boqItem.id])}
                                   rows={2}
@@ -3084,18 +2954,12 @@ export default function FinalizeBoq() {
                                 {tableData.sac_code || (tableData.hsn_sac_type === 'sac' ? tableData.hsn_sac_code : "") || "—"}
                               </td>
                             )}
-                            {!hiddenPredefinedCols.rate && (
-                              <td className="border-r px-2 py-1.5 text-right font-semibold text-gray-500 text-[10px] align-middle">
-                                ₹{rateSqft.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                              </td>
-                            )}
                             {!hiddenPredefinedCols.unit && (
                               <td className="border-r px-2 py-1 text-center font-medium text-gray-800 align-middle w-24 min-w-[80px]">
                                 <input
                                   type="text"
                                   value={productUnits[boqItem.id] ?? (currentStep11Items[0]?.unit || tableData.unit || "")}
                                   disabled={isVersionSubmitted}
-                                  onFocus={checkBudgetEarly}
                                   onChange={e => setProductUnits(prev => ({ ...prev, [boqItem.id]: e.target.value }))}
                                   onBlur={() => saveItemLayout(boqItem.id, undefined, undefined, undefined, undefined, undefined, productUnits[boqItem.id])}
                                   className="w-full border-none rounded p-0.5 text-[10px] focus:ring-1 ring-blue-300 outline-none bg-transparent text-center font-semibold h-7"
@@ -3108,13 +2972,16 @@ export default function FinalizeBoq() {
                                 <input
                                   type="number"
                                   value={productQuantities[boqItem.id] ?? (tableData.materialLines && tableData.targetRequiredQty !== undefined ? tableData.targetRequiredQty : (currentStep11Items[0]?.qty || 0))}
-                                  disabled={isVersionSubmitted}
-                                  onFocus={checkBudgetEarly}
                                   onChange={e => setProductQuantities(prev => ({ ...prev, [boqItem.id]: e.target.value }))}
-                                  onBlur={withBudgetCheck(() => currentProjectValue, async () => { await saveItemLayout(boqItem.id, undefined, undefined, undefined, productQuantities[boqItem.id]); })}
+                                  onBlur={async () => { await saveItemLayout(boqItem.id, undefined, undefined, undefined, productQuantities[boqItem.id]); }}
                                   className="w-full border-none rounded p-0.5 text-[10px] focus:ring-1 ring-blue-300 outline-none bg-blue-100/50 text-center font-semibold h-7"
                                   placeholder="Qty"
                                 />
+                              </td>
+                            )}
+                            {!hiddenPredefinedCols.rate && (
+                              <td className="border-r px-2 py-1.5 text-right font-semibold text-gray-500 text-[10px] align-middle">
+                                ₹{rateSqft.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                               </td>
                             )}
                             {!hiddenPredefinedCols.system_total && (
@@ -3128,9 +2995,8 @@ export default function FinalizeBoq() {
                                   type="number"
                                   value={overrideRates[boqItem.id] ?? ""}
                                   disabled={isVersionSubmitted}
-                                  onFocus={checkBudgetEarly}
                                   onChange={e => setOverrideRates(prev => ({ ...prev, [boqItem.id]: e.target.value }))}
-                                  onBlur={withBudgetCheck(() => currentProjectValue, async () => { await saveItemLayout(boqItem.id, undefined, undefined, undefined, undefined, overrideRates[boqItem.id]); })}
+                                  onBlur={async () => { await saveItemLayout(boqItem.id, undefined, undefined, undefined, undefined, overrideRates[boqItem.id]); }}
                                   className="w-full border-none rounded p-0.5 text-[10px] focus:ring-1 ring-gray-300 outline-none bg-gray-50 text-right font-semibold h-7 px-2"
                                   placeholder="0.00"
                                 />
@@ -3288,7 +3154,6 @@ export default function FinalizeBoq() {
                                           type="number"
                                           disabled={isVersionSubmitted || isCalculated}
                                           value={displayVal}
-                                          onFocus={checkBudgetEarly}
                                           onChange={e => setCustomColumnValues(prev => ({
                                             ...prev,
                                             [boqItem.id]: {
@@ -3570,65 +3435,6 @@ export default function FinalizeBoq() {
           </DialogContent>
         </Dialog>
       </div>
-      {/* Budget Warning Modal */}
-      <Dialog open={budgetWarningOpen} onOpenChange={setBudgetWarningOpen}>
-        <DialogContent className="sm:max-w-md">
-          <DialogHeader>
-            <DialogTitle className="text-red-600 flex items-center gap-2">
-              <AlertCircle className="h-5 w-5" />
-              Budget Exceeded
-            </DialogTitle>
-            <DialogDescription>
-              This action will cause the Project Value to exceed the allocated Project Budget.
-            </DialogDescription>
-          </DialogHeader>
-          <div className="py-4 space-y-2 text-sm">
-            <div className="flex justify-between border-b pb-2">
-              <span className="text-gray-500">Project Budget:</span>
-              <span className="font-semibold">₹{exceedData.budget.toLocaleString()}</span>
-            </div>
-            <div className="flex justify-between border-b pb-2">
-              <span className="text-gray-500">Current Value:</span>
-              <span className="font-semibold">₹{exceedData.valAtExceed.toLocaleString()}</span>
-            </div>
-            <div className="flex justify-between font-bold text-red-600">
-              <span>New Estimated Value:</span>
-              <span>₹{(exceedData.valAtExceed + exceedData.amount).toLocaleString()}</span>
-            </div>
-          </div>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => { setBudgetWarningOpen(false); setPendingAction(null); }}>Cancel</Button>
-            <Button variant="destructive" onClick={handleBudgetProceed}>Proceed Anyway</Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-
-      {/* Budget Reason Modal */}
-      <Dialog open={budgetReasonOpen} onOpenChange={setBudgetReasonOpen}>
-        <DialogContent className="sm:max-w-md">
-          <DialogHeader>
-            <DialogTitle>Reason for Exceeding Budget</DialogTitle>
-            <DialogDescription>
-              Please provide a justification for exceeding the project budget. This will be logged for auditing purposes.
-            </DialogDescription>
-          </DialogHeader>
-          <div className="py-4">
-            <Label htmlFor="reason">Justification</Label>
-            <textarea
-              id="reason"
-              value={budgetExceedReason}
-              onChange={(e) => setBudgetExceedReason(e.target.value)}
-              className="w-full mt-2 border rounded-md p-2 text-sm min-h-[100px] outline-none focus:ring-1 ring-blue-500 bg-white"
-              placeholder="Enter detailed reason here..."
-            />
-          </div>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => { setBudgetReasonOpen(false); setPendingAction(null); setBudgetExceedReason(""); }}>Cancel</Button>
-            <Button onClick={handleBudgetSubmitReason} disabled={!budgetExceedReason.trim()} className="bg-primary text-white">Submit & Continue</Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
     </Layout>
   );
 }
-   

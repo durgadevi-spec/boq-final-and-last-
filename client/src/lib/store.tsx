@@ -25,7 +25,7 @@ export interface User {
   email?: string;
 }
 export interface Shop { id: string; name: string; location?: string; phoneCountryCode?: string; contactNumber?: string; city?: string; state?: string; country?: string; pincode?: string; image?: string; rating?: number; categories?: string[]; gstNo?: string; vendorCategory?: string; ownerId?: string; disabled?: boolean }
-export interface Material { id: string; name: string; code: string; rate: number; shopId?: string; unit?: string; category?: string; brandName?: string; modelNumber?: string; subCategory?: string; product?: string; technicalSpecification?: string; dimensions?: string; finish?: string; metalType?: string; image?: string; attributes?: any; masterMaterialId?: string; disabled?: boolean; vendorCategory?: string; taxCodeType?: 'hsn' | 'sac'; taxCodeValue?: string; }
+export interface Material { id: string; name: string; code: string; rate: number; shopId?: string; unit?: string; category?: string; brandName?: string; modelNumber?: string; subCategory?: string; product?: string; technicalSpecification?: string; dimensions?: string; finish?: string; metalType?: string; image?: string; attributes?: any; masterMaterialId?: string; disabled?: boolean; vendorCategory?: string; taxCodeType?: 'hsn' | 'sac'; taxCodeValue?: string; created_at?: string; }
 export interface Product { id: string; name: string; subcategory?: string; category?: string; subcategory_name?: string; category_name?: string; created_at?: string; created_by?: string }
 
 interface DataContextType {
@@ -109,6 +109,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
     vendorCategory: mat.vendor_category || mat.vendorCategory || "",
     taxCodeType: mat.tax_code_type || mat.taxCodeType || null,
     taxCodeValue: mat.tax_code_value || mat.taxCodeValue || "",
+    created_at: mat.created_at || mat.submitted_at || null,
   } as Material);
 
   const refreshMaterials = async () => {

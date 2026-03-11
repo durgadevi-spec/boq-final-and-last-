@@ -206,12 +206,21 @@ export default function MaterialSubmissionApproval() {
                       </p>
                     </div>
 
-                    {/* Submitted Date */}
+                    {/* Submitted Date + Price Age */}
                     <div>
-                      <p className="text-sm text-gray-600">Submitted</p>
+                      <p className="text-sm text-gray-600">Price Added On</p>
                       <p className="font-semibold">
                         {new Date(submission.created_at).toLocaleDateString()}
                       </p>
+                      {(() => {
+                        const daysOld = Math.floor((Date.now() - new Date(submission.created_at).getTime()) / (1000 * 60 * 60 * 24));
+                        if (daysOld > 90) return (
+                          <p className="text-xs text-amber-600 font-semibold mt-1 flex items-center gap-1">
+                            ⚠️ {daysOld} days old — Reconfirm price with vendor
+                          </p>
+                        );
+                        return <p className="text-xs text-green-600 mt-1">{daysOld} day{daysOld !== 1 ? "s" : ""} ago — Recent</p>;
+                      })()}
                     </div>
                   </div>
 

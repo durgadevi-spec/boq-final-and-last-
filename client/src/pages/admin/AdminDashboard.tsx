@@ -1,4 +1,5 @@
 import { useState, useEffect } from "react";
+import { format, differenceInDays } from "date-fns";
 import { Layout } from "@/components/layout/Layout";
 import {
   Card,
@@ -1770,6 +1771,19 @@ export default function AdminDashboard() {
                                     <div className="text-xs text-muted-foreground">{mat.code} • ₹{mat.rate}/{mat.unit}</div>
                                     <div className="text-[10px] text-muted-foreground italic">
                                       Shop: {localShops.find(s => s.id === (mat.shopId || mat.shop_id))?.name || 'Unassigned'}
+                                    </div>
+                                    <div className={`text-[10px] flex items-center gap-1 mt-1 font-medium ${!mat.created_at ? 'text-muted-foreground' :
+                                      differenceInDays(new Date(), new Date(mat.created_at)) > 90 ? 'text-amber-600 bg-amber-50 px-1.5 py-0.5 rounded-sm inline-flex w-fit border border-amber-200' : 'text-green-600'
+                                      }`}>
+                                      {mat.created_at ? (
+                                        <>
+                                          {differenceInDays(new Date(), new Date(mat.created_at)) > 90 ? '⚠️' : '🗓️'}
+                                          Price Added On {format(new Date(mat.created_at), 'dd/MM/yyyy')}
+                                          ({differenceInDays(new Date(), new Date(mat.created_at))} days ago)
+                                        </>
+                                      ) : (
+                                        'No date recorded'
+                                      )}
                                     </div>
                                     {(mat.technicalSpecification || mat.technicalspecification) && (
                                       <div className="text-[10px] text-blue-600 mt-1 line-clamp-2 max-w-md">

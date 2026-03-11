@@ -1483,7 +1483,7 @@ export async function registerRoutes(
 
       // First try to fetch from approved materials
       const materialResult = await query(
-        `SELECT rate, unit, brandname, modelnumber, category, subcategory, product, technicalspecification, dimensions, finishtype, metaltype 
+        `SELECT rate, unit, brandname, modelnumber, category, subcategory, product, technicalspecification, dimensions, finishtype, metaltype, created_at 
          FROM materials 
          WHERE template_id = $1 AND shop_id = $2 AND approved IS TRUE 
          LIMIT 1`,
@@ -1501,7 +1501,7 @@ export async function registerRoutes(
 
       // If no approved material found, try to fetch from material submissions
       const submissionResult = await query(
-        `SELECT rate, unit, brandname, modelnumber, category, subcategory, product, technicalspecification, dimensions, finishtype, metaltype 
+        `SELECT rate, unit, brandname, modelnumber, category, subcategory, product, technicalspecification, dimensions, finishtype, metaltype, submitted_at as created_at 
          FROM material_submissions 
          WHERE template_id = $1 AND shop_id = $2 
          ORDER BY submitted_at DESC 

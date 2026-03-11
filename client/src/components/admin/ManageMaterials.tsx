@@ -73,12 +73,12 @@ export default function ManageMaterials() {
 
   const [entriesList, setEntriesList] = useState<any[]>([]);
 
-  // Rate loading state
   const [rateMessage, setRateMessage] = useState<{
     type: "success" | "info" | "none";
     text: string;
   }>({ type: "none", text: "" });
   const [loadingRate, setLoadingRate] = useState(false);
+  const [rateDate, setRateDate] = useState<string | null>(null);
 
   // Edit entry state
   const [editingEntryIndex, setEditingEntryIndex] = useState<number | null>(null);
@@ -234,7 +234,9 @@ export default function ManageMaterials() {
       finishtype: "",
       materialtype: "",
     });
-    // Don't clear selectedShop - keep it selected so prefill can work immediately
+    // Always reset shop and date when switching templates so stale data doesn't carry over
+    setSelectedShop("");
+    setRateDate(null);
 
     if (template.category) {
       loadSubcategories(template.category);
@@ -247,9 +249,8 @@ export default function ManageMaterials() {
       }
     }, 100);
 
-    // If no shop selected, actively probe each known shop for a saved rate
-    // for this template and choose the shop with the lowest rate found.
-    if (!selectedShop && shops && shops.length > 0) {
+    // Actively probe each known shop for a saved rate for this template and choose the one with the lowest rate.
+    if (shops && shops.length > 0) {
       (async () => {
         try {
           const checks = await Promise.all(
@@ -323,6 +324,7 @@ export default function ManageMaterials() {
             materialtype: best.material.materialtype || best.material.metaltype || prev.materialtype || "",
           }));
           setRateMessage({ type: "success", text: `✓ Existing Rate Loaded (${best.source === "approved" ? "Approved" : "Pending"})` });
+          setRateDate(best.material.created_at || best.material.submitted_at || null);
           if (best.material.category) await loadSubcategories(best.material.category);
         } catch (err) {
           console.warn('[ManageMaterials] Failed to auto-select cheapest shop', err);
@@ -371,6 +373,7 @@ export default function ManageMaterials() {
             finishtype: data.material.finishtype || "",
             materialtype: data.material.materialtype || data.material.metaltype || "",
           }));
+          setRateDate(data.material.created_at || null);
 
           // Load subcategories if category is present
           if (data.material.category) {
@@ -384,6 +387,7 @@ export default function ManageMaterials() {
           });
         } else {
           // No rate found: clear rate field but keep other template-specific data
+          setRateDate(null);
           setFormData((prev) => ({
             ...prev,
             rate: "",
@@ -775,6 +779,14 @@ export default function ManageMaterials() {
                       {rateMessage.type === "info" && (
                         <p className="text-sm text-amber-600 mt-1">{rateMessage.text}</p>
                       )}
+                      {rateDate && (() => {
+                        const daysOld = Math.floor((Date.now() - new Date(rateDate).getTime()) / (1000 * 60 * 60 * 24));
+                        return (
+                          <p className={`text-xs mt-1 font-medium ${daysOld > 90 ? "text-amber-600" : "text-slate-500"}`}>
+                            {daysOld > 90 ? "⚠️" : "🗓️"} Price added on {new Date(rateDate).toLocaleDateString()} ({daysOld} day{daysOld !== 1 ? "s" : ""} ago){daysOld > 90 ? " — Reconfirm with vendor" : ""}
+                          </p>
+                        );
+                      })()}
                     </div>
                   </div>
 

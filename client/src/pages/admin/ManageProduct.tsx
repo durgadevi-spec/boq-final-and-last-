@@ -1,4 +1,5 @@
 import { useEffect, useState, useMemo } from "react";
+import { format, differenceInDays } from "date-fns";
 import { useQuery } from "@tanstack/react-query";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Button } from "@/components/ui/button";
@@ -16,7 +17,7 @@ import { computeBoq, UnitType } from "@/lib/boqCalc";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 
 type Product = { id: string; name: string; subcategory: string; created_at: string; created_by?: string };
-type Material = { id: string; name: string; unit: string; rate: number; category: string; subcategory: string; description?: string; shop_name?: string; shop_id?: string; shopId?: string; code?: string; technicalspecification?: string };
+type Material = { id: string; name: string; unit: string; rate: number; category: string; subcategory: string; description?: string; shop_name?: string; shop_id?: string; shopId?: string; code?: string; technicalspecification?: string; created_at?: string };
 type SelectedMaterial = Material & { qty: number; baseQty: number; wastagePct?: number; amount: number; rate: number; supplyRate: number; installRate: number; location: string; applyWastage: boolean };
 
 const ALL = "__ALL__";
@@ -102,6 +103,22 @@ export default function ManageProduct() {
             return ((d.products || []) as Product[]).sort((a, b) => (a.name || "").localeCompare(b.name || ""));
         },
     });
+
+    const { data: allApprovals } = useQuery({
+        queryKey: ["/api/product-approvals-all"],
+        queryFn: async () => {
+            const res = await apiFetch("/api/product-approvals");
+            if (!res.ok) return [];
+            const d = await res.json();
+            return d.approvals || [];
+        }
+    });
+
+    const approvedProductIds = useMemo(() => {
+        if (!allApprovals) return new Set();
+        return new Set((allApprovals as any[]).filter(a => a.status === "approved").map(a => a.product_id));
+    }, [allApprovals]);
+
 
     const filteredProducts = useMemo(() => {
         if (!productsData) return [];
@@ -394,20 +411,29 @@ export default function ManageProduct() {
                                                     <TableHead className="w-[60px]"></TableHead>
                                                     <TableHead className="font-bold">Product Name</TableHead>
                                                     <TableHead className="font-bold">Created Date</TableHead>
+                                                    <TableHead className="font-bold text-center w-[120px]">Status</TableHead>
                                                 </TableRow>
                                             </TableHeader>
                                             <TableBody>
                                                 {filteredProducts.length === 0 ? (
-                                                    <TableRow><TableCell colSpan={3} className="text-center py-10 text-muted-foreground">No products found matching "{productSearch}"</TableCell></TableRow>
-                                                ) : filteredProducts.map(product => (
-                                                    <TableRow key={product.id} className={`hover:bg-muted/20 transition-colors cursor-pointer ${selectedProduct?.id === product.id ? "bg-primary/5 hover:bg-primary/10" : ""}`} onClick={() => selectProduct(product)}>
-                                                        <TableCell onClick={e => e.stopPropagation()}>
-                                                            <Checkbox checked={selectedProduct?.id === product.id} onCheckedChange={checked => checked ? selectProduct(product) : setSelectedProduct(null)} />
-                                                        </TableCell>
-                                                        <TableCell className="font-semibold text-base">{product.name}</TableCell>
-                                                        <TableCell className="text-muted-foreground">{product.created_at ? new Date(product.created_at).toLocaleDateString() : "N/A"}</TableCell>
-                                                    </TableRow>
-                                                ))}
+                                                    <TableRow><TableCell colSpan={4} className="text-center py-10 text-muted-foreground">No products found matching "{productSearch}"</TableCell></TableRow>
+                                                ) : filteredProducts.map(product => {
+                                                    const isApproved = approvedProductIds.has(product.id);
+                                                    return (
+                                                        <TableRow key={product.id} className={`hover:bg-muted/20 transition-colors cursor-pointer ${selectedProduct?.id === product.id ? "bg-primary/5 hover:bg-primary/10" : ""} ${isApproved ? "bg-green-50/50" : ""}`} onClick={() => selectProduct(product)}>
+                                                            <TableCell onClick={e => e.stopPropagation()}>
+                                                                <Checkbox checked={selectedProduct?.id === product.id} onCheckedChange={checked => checked ? selectProduct(product) : setSelectedProduct(null)} />
+                                                            </TableCell>
+                                                            <TableCell className="font-semibold text-base">
+                                                                {product.name}
+                                                            </TableCell>
+                                                            <TableCell className="text-muted-foreground">{product.created_at ? new Date(product.created_at).toLocaleDateString() : "N/A"}</TableCell>
+                                                            <TableCell className="text-center">
+                                                                {isApproved ? <Badge variant="outline" className="bg-green-100 text-green-700 border-green-200 text-[10px] h-5 px-1.5 font-bold uppercase tracking-tight whitespace-nowrap flex items-center gap-1 justify-center w-fit mx-auto"><Check className="h-3 w-3" /> Approved</Badge> : <span className="text-[10px] font-medium text-muted-foreground border border-dashed border-muted/50 px-2 py-0.5 rounded-sm whitespace-nowrap">Needs Work</span>}
+                                                            </TableCell>
+                                                        </TableRow>
+                                                    )
+                                                })}
                                             </TableBody>
                                         </Table>
                                     </div>
@@ -588,6 +614,19 @@ export default function ManageProduct() {
                                                                         <span className="truncate max-w-[120px]">{material.shop_name || "Multiple Vendors"}</span><span>•</span>
                                                                         <span className="text-slate-400 font-mono tracking-tighter">Code: {material.code || material.id?.slice(0, 8)}</span>
                                                                     </div>
+                                                                    <div className={`text-[10px] flex items-center gap-1 font-medium mt-1 ${!material.created_at ? 'text-muted-foreground' :
+                                                                        differenceInDays(new Date(), new Date(material.created_at)) > 90 ? 'text-amber-600 bg-amber-50 px-1 py-0.5 rounded-sm inline-flex w-fit border border-amber-200' : 'text-green-600'
+                                                                        }`}>
+                                                                        {material.created_at ? (
+                                                                            <>
+                                                                                {differenceInDays(new Date(), new Date(material.created_at)) > 90 ? '⚠️' : '🗓️'}
+                                                                                Price Added On {format(new Date(material.created_at), 'dd/MM/yyyy')}
+                                                                                ({differenceInDays(new Date(), new Date(material.created_at))} days ago)
+                                                                            </>
+                                                                        ) : (
+                                                                            'No date recorded'
+                                                                        )}
+                                                                    </div>
                                                                 </div>
                                                                 <div className="text-right shrink-0">
                                                                     <div className="text-xs font-black text-slate-800">₹{material.rate?.toLocaleString()}</div>
@@ -623,6 +662,18 @@ export default function ManageProduct() {
                                                                 <div className="flex items-center gap-2 mt-0.5">
                                                                     <Badge variant="outline" className="text-[9px] h-4 px-1 bg-blue-50/50 text-blue-600 font-bold border-blue-100">{material.unit}</Badge>
                                                                     <span className="text-[10px] text-muted-foreground font-medium truncate">{material.shop_name}</span>
+                                                                </div>
+                                                                <div className={`text-[9px] flex items-center gap-1 font-medium mt-1 ${!material.created_at ? 'text-muted-foreground' :
+                                                                    differenceInDays(new Date(), new Date(material.created_at)) > 90 ? 'text-amber-600 bg-amber-50 px-1 py-0.5 rounded-sm inline-flex w-fit border border-amber-200' : 'text-green-600'
+                                                                    }`}>
+                                                                    {material.created_at ? (
+                                                                        <>
+                                                                            {differenceInDays(new Date(), new Date(material.created_at)) > 90 ? '⚠️' : '🗓️'}
+                                                                            Added {format(new Date(material.created_at), 'dd/MM/yy')}
+                                                                        </>
+                                                                    ) : (
+                                                                        'No date'
+                                                                    )}
                                                                 </div>
                                                             </div>
                                                             <div className="flex items-center gap-2 shrink-0">
