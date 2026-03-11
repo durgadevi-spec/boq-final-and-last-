@@ -477,10 +477,37 @@ function BoqItemCard({ boqItem, boqIdx, isVersionSubmitted, expandedProductIds, 
                   ))
                 }
               </tbody>
-              <tfoot className="bg-gray-50/50 font-bold border-t-2 border-gray-200">
-                <tr>
-                  <td colSpan={10} className="border px-2 py-1.5 text-right uppercase tracking-wider text-[10px] text-gray-500">Total</td>
-                  <td className="border px-2 py-1.5 text-right text-green-700 bg-green-50/50">₹{totalAmount.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
+              <tfoot className="bg-gray-50/50 border-t-2 border-gray-200">
+                <tr className="text-gray-600 font-medium">
+                  <td colSpan={10} className="border px-2 py-1 text-right uppercase tracking-wider text-[10px]">Material Sub-total</td>
+                  <td className="border px-2 py-1 text-right">₹{totalAmount.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
+                  <td className="border px-2 py-1"></td>
+                </tr>
+                {(() => {
+                  const targetQty = tableData.targetRequiredQty || (Number(displayLines[0]?.qty) || Number(step11Items[0]?.qty) || 1);
+                  const displayRate = Number(ratePerUnit.toFixed(2));
+                  const logicalTotal = targetQty * displayRate;
+                  const roundOff = logicalTotal - totalAmount;
+
+                  if (Math.abs(roundOff) < 0.01) return null;
+
+                  return (
+                    <tr className="text-gray-500 italic">
+                      <td colSpan={10} className="border px-2 py-1 text-right uppercase tracking-wider text-[10px]">Round Off (Adjustment)</td>
+                      <td className="border px-2 py-1 text-right">{roundOff > 0 ? "+" : ""}₹{roundOff.toFixed(2)}</td>
+                      <td className="border px-2 py-1"></td>
+                    </tr>
+                  );
+                })()}
+                <tr className="font-bold bg-blue-50/20 text-blue-900">
+                  <td colSpan={10} className="border px-2 py-1.5 text-right uppercase tracking-wider text-[10px]">Grand Total</td>
+                  <td className="border px-2 py-1.5 text-right bg-blue-50/30">
+                    ₹{(() => {
+                      const targetQty = tableData.targetRequiredQty || (Number(displayLines[0]?.qty) || Number(step11Items[0]?.qty) || 1);
+                      const displayRate = Number(ratePerUnit.toFixed(2));
+                      return (targetQty * displayRate).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+                    })()}
+                  </td>
                   <td className="border px-2 py-1.5"></td>
                 </tr>
               </tfoot>
@@ -1108,10 +1135,21 @@ export default function CreateBom() {
           productTotal += (l.amount || 0);
         });
 
+        // Calculate logical rounding
+        const targetQty = tableData.targetRequiredQty || (displayLines[0]?.qty ?? 1);
+        const productRate = productTotal / targetQty;
+        const displayRate = Number(productRate.toFixed(2));
+        const logicalTotal = targetQty * displayRate;
+        const roundOff = logicalTotal - productTotal;
+
+        if (Math.abs(roundOff) >= 0.01) {
+          exportData.push(["", "Round Off (Adjustment)", "", "", "", "", "", "", "", roundOff]);
+        }
+
         // Product total row
-        exportData.push(["", "Product Total", "", "", "", "", "", "", "", productTotal]);
+        exportData.push(["", "Grand Total", "", "", "", "", "", "", "", logicalTotal]);
         exportData.push([]); // spacing
-        grandTotal += productTotal;
+        grandTotal += logicalTotal;
       });
 
       // Grand total row
@@ -1276,14 +1314,29 @@ export default function CreateBom() {
           productTotal += (l.amount || 0);
         });
 
+        // Calculate logical rounding
+        const targetQty = td.targetRequiredQty || (displayLines[0]?.qty ?? 1);
+        const productRate = productTotal / targetQty;
+        const displayRate = Number(productRate.toFixed(2));
+        const logicalTotal = targetQty * displayRate;
+        const roundOff = logicalTotal - productTotal;
+
+        if (Math.abs(roundOff) >= 0.01) {
+          tableBody.push([
+            { content: "", colSpan: 8 },
+            { content: "Round Off", styles: { fontStyle: 'italic', textColor: [100, 100, 100], fillColor: [252, 252, 252] } },
+            { content: (roundOff > 0 ? "+" : "") + roundOff.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }), styles: { fontStyle: 'italic', textColor: [100, 100, 100], fillColor: [252, 252, 252], halign: 'right' } }
+          ]);
+        }
+
         // Product Subtotal Row
         tableBody.push([
           { content: "", colSpan: 8, styles: { borderTop: [1, 0, 0, 0] } },
-          { content: "Product Total", styles: { fontStyle: 'bold', fillColor: [250, 250, 250] } },
-          { content: productTotal.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }), styles: { fontStyle: 'bold', fillColor: [250, 250, 250], halign: 'right' } }
+          { content: "Grand Total", styles: { fontStyle: 'bold', fillColor: [250, 250, 250] } },
+          { content: logicalTotal.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }), styles: { fontStyle: 'bold', fillColor: [250, 250, 250], halign: 'right' } }
         ]);
 
-        grandTotal += productTotal;
+        grandTotal += logicalTotal;
       });
 
       // Grand Total Row (Dark accent)
