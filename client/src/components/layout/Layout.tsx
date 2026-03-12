@@ -1,5 +1,6 @@
 import { ReactNode } from "react";
 import { Sidebar } from "./Sidebar";
+import { Chatbot } from "../ui/Chatbot";
 
 interface LayoutProps {
   children: ReactNode;
@@ -16,6 +17,9 @@ export function Layout({ children }: LayoutProps) {
           {children}
         </div>
       </main>
+      <div className="no-print">
+        <Chatbot />
+      </div>
     </div>
   );
 }

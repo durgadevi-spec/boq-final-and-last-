@@ -1,6 +1,6 @@
-import { useEffect, useState, useRef, useCallback } from "react";
+import React, { useEffect, useState, useRef, useCallback, useMemo } from "react";
 import { Reorder, useDragControls } from "framer-motion";
-import { ChevronUp, ChevronDown, Loader2, CheckCircle2, XCircle, Lock, History, Clock, Briefcase, MapPin, IndianRupee, GripVertical, Search } from "lucide-react";
+import { ChevronUp, ChevronDown, Loader2, CheckCircle2, XCircle, Lock, History, Clock, Briefcase, MapPin, IndianRupee, GripVertical, Search, ArrowUp } from "lucide-react";
 import { fuzzySearch } from "@/lib/utils";
 import { Layout } from "@/components/layout/Layout";
 import { Card, CardContent } from "@/components/ui/card";
@@ -63,19 +63,67 @@ function CodeBadge({ label, value }: { label: string; value: string }) {
   );
 }
 
-function HsnSacBadges({ tableData }: { tableData: any }) {
-  const hsnSacType = tableData.hsn_sac_type || tableData.tax_code_type || "";
-  const hsnSacCode = tableData.hsn_sac_code || tableData.tax_code_value || "";
+function PriceUpdateBanner({ count, onApplyAll }: { count: number; onApplyAll: () => void }) {
+  if (count === 0) return null;
+  return (
+    <div className="bg-amber-50 border border-amber-200 rounded p-4 text-sm text-amber-800 flex items-center justify-between gap-4 mb-4 shadow-sm animate-in fade-in slide-in-from-top-2 duration-300">
+      <div className="flex items-center gap-3">
+        <div className="bg-amber-100 p-2 rounded-full">
+          <IndianRupee className="h-5 w-5 text-amber-700" />
+        </div>
+        <div>
+          <div className="font-bold text-amber-900">Price Update Available!</div>
+          <div className="text-amber-700">
+            {count} items in this BOM have updated rates in the material library.
+            Would you like to update them to reflect the current market prices?
+          </div>
+        </div>
+      </div>
+      <Button
+        variant="default"
+        size="sm"
+        className="bg-amber-600 hover:bg-amber-700 text-white font-bold px-4 h-9 shadow-sm"
+        onClick={onApplyAll}
+      >
+        Update All Rates
+      </Button>
+    </div>
+  );
+}
 
-  const hasHsn = tableData.hsn_code || hsnSacType === "hsn";
-  const hasSac = tableData.sac_code || hsnSacType === "sac";
-  const hasNeither = !tableData.hsn_code && !tableData.sac_code && !hsnSacCode && !tableData.hsn_sac_code;
+function EditableHsnSac({ tableData, onUpdate }: { tableData: any; onUpdate: (hsn: string, sac: string) => void }) {
+  const [hsn, setHsn] = useState(tableData.hsn_code || (tableData.hsn_sac_type === "hsn" ? tableData.hsn_sac_code : "") || "");
+  const [sac, setSac] = useState(tableData.sac_code || (tableData.hsn_sac_type === "sac" ? tableData.hsn_sac_code : "") || "");
+
+  useEffect(() => {
+    setHsn(tableData.hsn_code || (tableData.hsn_sac_type === "hsn" ? tableData.hsn_sac_code : "") || "");
+    setSac(tableData.sac_code || (tableData.hsn_sac_type === "sac" ? tableData.hsn_sac_code : "") || "");
+  }, [tableData]);
 
   return (
-    <div className="flex flex-wrap items-center gap-2 mt-1">
-      {hasHsn && <CodeBadge label="HSN" value={tableData.hsn_code || (hsnSacType === "hsn" ? hsnSacCode : "") || "—"} />}
-      {hasSac && <CodeBadge label="SAC" value={tableData.sac_code || (hsnSacType === "sac" ? hsnSacCode : "") || "—"} />}
-      {hasNeither && <CodeBadge label="HSN/SAC" value="—" />}
+    <div className="flex flex-wrap items-center gap-3 mt-1 bg-slate-50 p-2 rounded-md border border-slate-200">
+      <div className="flex items-center gap-1.5">
+        <span className="text-[10px] font-bold text-slate-500 uppercase">HSN:</span>
+        <input
+          type="text"
+          value={hsn}
+          onChange={(e) => setHsn(e.target.value)}
+          onBlur={() => onUpdate(hsn, sac)}
+          placeholder="HSN Code"
+          className="text-xs font-semibold text-slate-700 bg-white px-2 py-0.5 rounded border border-slate-300 w-24 focus:ring-1 ring-blue-500 outline-none"
+        />
+      </div>
+      <div className="flex items-center gap-1.5">
+        <span className="text-[10px] font-bold text-slate-500 uppercase">SAC:</span>
+        <input
+          type="text"
+          value={sac}
+          onChange={(e) => setSac(e.target.value)}
+          onBlur={() => onUpdate(hsn, sac)}
+          placeholder="SAC Code"
+          className="text-xs font-semibold text-slate-700 bg-white px-2 py-0.5 rounded border border-slate-300 w-24 focus:ring-1 ring-blue-500 outline-none"
+        />
+      </div>
     </div>
   );
 }
@@ -143,7 +191,7 @@ function VersionStatusBanner({ version }: { version: BOMVersion }) {
 
 function BoqItemRow({ item, itemIdx, boqItem, tableData, isEngineBased, isVersionSubmitted,
   getEditedValue, updateEditedField, handleDeleteRow, checkBudgetEarly, handleSaveProject,
-  isDraggable, onDragStart, onDragOver, onDrop, isDragOver }: {
+  isDraggable, onDragStart, onDragOver, onDrop, isDragOver, mismatch }: {
     item: any; itemIdx: number; boqItem: BOMItem; tableData: any; isEngineBased: boolean;
     isVersionSubmitted: boolean; getEditedValue: (k: string, f: string, v: any) => any;
     updateEditedField: (k: string, f: string, v: any) => void;
@@ -152,7 +200,7 @@ function BoqItemRow({ item, itemIdx, boqItem, tableData, isEngineBased, isVersio
     handleSaveProject: () => Promise<void>;
     isDraggable?: boolean; onDragStart?: () => void;
     onDragOver?: (e: React.DragEvent) => void; onDrop?: () => void;
-    isDragOver?: boolean;
+    isDragOver?: boolean; mismatch?: any;
   }) {
   const itemKey = item.itemKey || `${boqItem.id}-${itemIdx}`;
   const perItemIsEngine = isEngineBased && !item.manual;
@@ -195,7 +243,16 @@ function BoqItemRow({ item, itemIdx, boqItem, tableData, isEngineBased, isVersio
       <td className="border px-2 py-1 text-center">{(item.qtyPerSqf ?? 0).toFixed(3)}</td>
       <td className="border px-2 py-1 text-center text-blue-600">{(item.requiredQty ?? item.qty ?? 0).toFixed(2)}</td>
       <td className="border px-2 py-1 text-center font-bold">{item.roundOff}</td>
-      <td className="border px-2 py-1 text-right">₹{(item.rateSqft || 0).toLocaleString()}</td>
+      <td className={`border px-2 py-1 text-right ${mismatch ? 'bg-amber-50 animate-pulse' : ''}`}>
+        <div className="flex flex-col items-end">
+          <span className={mismatch ? 'text-amber-700 font-bold' : ''}>₹{(item.rateSqft || 0).toLocaleString()}</span>
+          {mismatch && (
+            <span className="text-[9px] text-amber-600 font-bold flex items-center gap-0.5 whitespace-nowrap">
+              <ArrowUp className="h-2 w-2" /> Latest: ₹{mismatch.new}
+            </span>
+          )}
+        </div>
+      </td>
       <td className="border px-2 py-1 text-right font-bold bg-green-50/30">₹{(item.amount || 0).toLocaleString()}</td>
       <td className="border px-2 py-1 text-center"><DeleteBtn /></td>
     </tr>
@@ -234,12 +291,19 @@ function BoqItemRow({ item, itemIdx, boqItem, tableData, isEngineBased, isVersio
       </td>
       <td className="border px-2 py-1 text-center text-blue-600">{(getEditedValue(itemKey, "qty", item.qty || 0) || 0).toFixed(2)}</td>
       <td className="border px-2 py-1 font-bold text-center">-</td>
-      <td className="border px-1 py-1">
-        <input type="number" value={rateVal} disabled={isLocked}
-          onFocus={checkBudgetEarly}
-          onBlur={handleSaveProject}
-          onChange={e => { const v = parseFloat(e.target.value) || 0; updateEditedField(itemKey, "rate", v); updateEditedField(itemKey, "supply_rate", v); updateEditedField(itemKey, "install_rate", 0); }}
-          className="w-full border rounded px-1 py-0.5 text-xs text-right focus:ring-1 ring-blue-500 outline-none" placeholder="Rate" />
+      <td className={`border px-1 py-1 ${mismatch ? 'bg-amber-50 animate-pulse' : ''}`}>
+        <div className="flex flex-col">
+          <input type="number" value={rateVal} disabled={isLocked}
+            onFocus={checkBudgetEarly}
+            onBlur={handleSaveProject}
+            onChange={e => { const v = parseFloat(e.target.value) || 0; updateEditedField(itemKey, "rate", v); updateEditedField(itemKey, "supply_rate", v); updateEditedField(itemKey, "install_rate", 0); }}
+            className={`w-full border rounded px-1 py-0.5 text-xs text-right focus:ring-1 ring-blue-500 outline-none ${mismatch ? 'border-amber-400 text-amber-700 font-bold' : ''}`} placeholder="Rate" />
+          {mismatch && (
+            <div className="text-[9px] text-amber-600 font-bold flex items-center justify-end gap-0.5 mt-0.5">
+              <ArrowUp className="h-2 w-2" /> Latest: ₹{mismatch.new}
+            </div>
+          )}
+        </div>
       </td>
       <td className="border px-1 py-1 text-right text-xs bg-gray-50/50 font-bold">₹{(qty * (rateVal || 0)).toFixed(2)}</td>
       <td className="border px-2 py-1 text-center"><DeleteBtn /></td>
@@ -250,7 +314,7 @@ function BoqItemRow({ item, itemIdx, boqItem, tableData, isEngineBased, isVersio
 
 // ─── BOQ Item Card ─────────────────────────────────────────────────────────────
 
-function BoqItemCard({ boqItem, boqIdx, isVersionSubmitted, expandedProductIds, setExpandedProductIds, getEditedValue, updateEditedField, handleDeleteRow, handleFinalizeProduct, handleAddItem, loadBoqItemsAndEdits, setBoqItems, checkBudgetEarly, handleSaveProject, onCardDragStart, onCardDragOver, onCardDrop, isCardDragOver }: {
+function BoqItemCard({ boqItem, boqIdx, isVersionSubmitted, expandedProductIds, setExpandedProductIds, getEditedValue, updateEditedField, handleDeleteRow, handleFinalizeProduct, handleAddItem, loadBoqItemsAndEdits, setBoqItems, checkBudgetEarly, handleSaveProject, mismatches, onCardDragStart, onCardDragOver, onCardDrop, isCardDragOver }: {
   boqItem: BOMItem; boqIdx: number; isVersionSubmitted: boolean;
   expandedProductIds: Set<string>; setExpandedProductIds: (fn: (p: Set<string>) => Set<string>) => void;
   getEditedValue: (k: string, f: string, v: any) => any;
@@ -266,6 +330,7 @@ function BoqItemCard({ boqItem, boqIdx, isVersionSubmitted, expandedProductIds, 
   onCardDragOver?: (e: React.DragEvent) => void;
   onCardDrop?: (e: React.DragEvent) => void;
   isCardDragOver?: boolean;
+  mismatches?: any[];
 }) {
   const tableData = parseTableData(boqItem.table_data);
   const step11Items = Array.isArray(tableData.step11_items) ? tableData.step11_items : [];
@@ -432,7 +497,22 @@ function BoqItemCard({ boqItem, boqIdx, isVersionSubmitted, expandedProductIds, 
                   } catch (err) { console.error("Failed to save description", err); }
                 }}
               />
-              <HsnSacBadges tableData={tableData} />
+              <EditableHsnSac
+                tableData={tableData}
+                onUpdate={async (hsn, sac) => {
+                  try {
+                    const updatedTd = { ...tableData, hsn_code: hsn, sac_code: sac, hsn_sac_type: hsn ? 'hsn' : (sac ? 'sac' : null), hsn_sac_code: hsn || sac || "" };
+                    const resp = await apiFetch(`/api/boq-items/${boqItem.id}`, {
+                      method: "PUT",
+                      headers: { "Content-Type": "application/json" },
+                      body: JSON.stringify({ table_data: updatedTd })
+                    });
+                    if (resp.ok) {
+                      setBoqItems((prev: BOMItem[]) => prev.map((i: BOMItem) => i.id === boqItem.id ? { ...i, table_data: updatedTd } : i));
+                    }
+                  } catch (err) { console.error("Failed to save HSN/SAC", err); }
+                }}
+              />
             </div>
             {isEngineBased && (
               <div className="flex items-center gap-2 text-[11px] text-gray-600 font-medium">
@@ -501,6 +581,7 @@ function BoqItemCard({ boqItem, boqIdx, isVersionSubmitted, expandedProductIds, 
                         newOrder.splice(itemIdx, 0, moved);
                         handleRowReorder(newOrder);
                       }}
+                      mismatch={mismatches?.find(m => m.index === (isEngineBased ? item._materialIdx : item._s11Idx) && m.type === (isEngineBased ? 'materialLine' : 'step11'))}
                     />
                   ))
                 }
@@ -624,6 +705,8 @@ export default function CreateBom() {
   const cardDragIdxRef = useRef<number | null>(null);
   const [cardDragOverIdx, setCardDragOverIdx] = useState<number | null>(null);
   const [loading, setLoading] = useState(true);
+  const [materialsById, setMaterialsById] = useState<Record<string, any>>({});
+  const [isUpdatingRates, setIsUpdatingRates] = useState(false);
   // Budget warning/modals removed for Generate BOM page per request
   const editedFieldsRef = useRef(editedFields);
   const [location, setLocation] = useLocation();
@@ -682,6 +765,15 @@ export default function CreateBom() {
   const loadBoqItemsAndEdits = useCallback(async () => {
     if (!selectedVersionId) return;
     try {
+      // Fetch all materials to compare rates
+      const materialsRes = await apiFetch("/api/materials");
+      if (materialsRes.ok) {
+        const materialsData = await materialsRes.json();
+        setMaterialsById(Object.fromEntries((materialsData.materials || []).map((m: any) => [m.id, m])));
+      } else {
+        console.warn("Failed to load materials for rate comparison.");
+      }
+
       const res = await apiFetch(`/api/boq-items/version/${encodeURIComponent(selectedVersionId)}`, { headers: {} });
       if (!res.ok) { toast({ title: "Error", description: `Failed to load items (${res.status})`, variant: "destructive" }); return; }
       const data = await safeJson(res as unknown as Response);
@@ -715,6 +807,74 @@ export default function CreateBom() {
     loadBoqItemsAndEdits();
     loadHistory();
   }, [selectedVersionId, loadBoqItemsAndEdits, loadHistory]);
+
+  const mismatches = useMemo(() => {
+    const list: any[] = [];
+    boqItems.forEach(boqItem => {
+      const td = parseTableData(boqItem.table_data);
+      if (td.materialLines) {
+        td.materialLines.forEach((ml: any, idx: number) => {
+          const latest = materialsById[ml.id || ml.materialId];
+          if (latest && latest.rate > ml.supplyRate) {
+            list.push({ boqItemId: boqItem.id, type: 'materialLine', index: idx, old: ml.supplyRate, new: latest.rate });
+          }
+        });
+      }
+      if (td.step11_items) {
+        td.step11_items.forEach((s11: any, idx: number) => {
+          const latest = materialsById[s11.id];
+          if (latest && latest.rate > (s11.supply_rate || 0)) {
+            list.push({ boqItemId: boqItem.id, type: 'step11', index: idx, old: (s11.supply_rate || 0), new: latest.rate });
+          }
+        });
+      }
+    });
+    return list;
+  }, [boqItems, materialsById]);
+
+  const handleUpdateAllRates = async () => {
+    if (mismatches.length === 0 || isUpdatingRates) return;
+    if (!confirm(`This will update rates for ${mismatches.length} items to the latest market prices. Continue?`)) return;
+
+    setIsUpdatingRates(true);
+    try {
+      // Group mismatches by boqItemId to minimize API calls
+      const byBoqItem: Record<string, any[]> = {};
+      mismatches.forEach(m => {
+        if (!byBoqItem[m.boqItemId]) byBoqItem[m.boqItemId] = [];
+        byBoqItem[m.boqItemId].push(m);
+      });
+
+      const updates = Object.entries(byBoqItem).map(async ([boqItemId, ms]) => {
+        const boqItem = boqItems.find(i => i.id === boqItemId);
+        if (!boqItem) return;
+
+        const td = parseTableData(boqItem.table_data);
+        ms.forEach(m => {
+          if (m.type === 'materialLine') {
+            td.materialLines[m.index].supplyRate = m.new;
+          } else if (m.type === 'step11') {
+            td.step11_items[m.index].supply_rate = m.new;
+          }
+        });
+
+        return apiFetch(`/api/boq-items/${boqItemId}`, {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ table_data: td }),
+        });
+      });
+
+      await Promise.all(updates);
+      toast({ title: "Success", description: "All rates updated successfully" });
+      loadBoqItemsAndEdits();
+    } catch (err) {
+      console.error(err);
+      toast({ title: "Error", description: "Failed to update rates", variant: "destructive" });
+    } finally {
+      setIsUpdatingRates(false);
+    }
+  };
 
   // Auto-select project from URL
   useEffect(() => {
@@ -846,6 +1006,7 @@ export default function CreateBom() {
       try {
         const { unit, rate, shopName, hsnSacType, hsnSacCode } = await resolveMaterialFields(template);
         const materialItem = {
+          id: template.id,
           title: template.name,
           description: template.technicalspecification || template.technicalSpecification || template.name,
           unit,
@@ -890,6 +1051,7 @@ export default function CreateBom() {
         const currentStep11 = Array.isArray(tableData.step11_items) ? tableData.step11_items : [];
         const { unit, rate, shopName, hsnSacType, hsnSacCode } = await resolveMaterialFields(template);
         const newItem: Step11Item = {
+          id: template.id,
           title: template.name,
           description: template.technicalspecification || template.technicalSpecification || template.name,
           unit,
@@ -1650,7 +1812,9 @@ export default function CreateBom() {
                             // Persist the new order
                             apiFetch('/api/boq-items/reorder', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ itemIds: reordered.map(i => i.id) }) }).catch(console.error);
                             cardDragIdxRef.current = null;
-                          }} />
+                          }}
+                          mismatches={mismatches.filter(m => m.boqItemId === boqItem.id)}
+                        />
                       ))}
                   </div>
                 }
@@ -1663,6 +1827,9 @@ export default function CreateBom() {
             <Card>
               <CardContent className="space-y-3 pt-6">
                 {selectedVersion && <VersionStatusBanner version={selectedVersion} />}
+                <PriceUpdateBanner count={mismatches.length} onApplyAll={handleUpdateAllRates} isUpdating={isUpdatingRates} />
+
+                {/* Version History Modal */}
                 <div className="grid grid-cols-1 md:grid-cols-6 gap-3">
                   <Button onClick={withBudgetCheck(() => currentProjectValue, handleSaveProject)} variant="outline" disabled={isVersionSubmitted || Object.keys(editedFields).length === 0}>Save Draft</Button>
                   <Button onClick={() => handleSubmitVersion("submitted")} variant="outline" className="border-primary text-primary hover:bg-primary/5 font-bold" disabled={isVersionSubmitted || boqItems.length === 0}>Lock Version</Button>

@@ -838,7 +838,9 @@ export default function GeneratePo() {
           install_rate: 0,
           location: "Main Area",
           s_no: 1,
-          shop_name: shopName
+          shop_name: shopName,
+          hsn_code: hsnSacType === "HSN" ? hsnSacCode : null,
+          sac_code: hsnSacType === "SAC" ? hsnSacCode : null,
         };
         const res = await apiFetch("/api/boq-items", {
           method: "POST",
@@ -882,8 +884,10 @@ export default function GeneratePo() {
           install_rate: 0,
           location: template.location || "Main Area",
           s_no: currentStep11.length + 1,
-          shop_name: shopName
-        };
+          shop_name: shopName,
+          hsn_code: hsnSacType === "HSN" ? hsnSacCode : null,
+          sac_code: hsnSacType === "SAC" ? hsnSacCode : null,
+        } as any;
         const updatedTableData = tableData.materialLines && tableData.targetRequiredQty !== undefined
           ? { ...tableData, step11_items: [...currentStep11, { ...newItem, manual: true }] }
           : { ...tableData, step11_items: [...currentStep11, newItem], hsn_sac_type: hsnSacType, hsn_sac_code: hsnSacCode };

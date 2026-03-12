@@ -28,12 +28,12 @@ import {
     ChevronLeft,
     Loader2,
     Printer,
-    Building2,
-    Calendar,
-    User,
-    Mail,
-    Phone,
+    Edit,
+    Save,
+    X,
+    Trash2,
 } from "lucide-react";
+import { Input } from "@/components/ui/input";
 import apiFetch from "@/lib/api";
 import { useToast } from "@/hooks/use-toast";
 
@@ -61,11 +61,13 @@ interface PurchaseOrder {
     vendor_gstin?: string;
     project_client?: string;
     project_location?: string;
+    approval_comments?: string | null;
 }
 
 interface PurchaseOrderItem {
     id: string;
-    item_name: string;
+    item?: string;
+    item_name?: string;
     description: string | null;
     unit: string | null;
     qty: string;
@@ -87,6 +89,15 @@ export default function PurchaseOrderDetail() {
     const [comment, setComment] = useState("");
     const [isSubmitting, setIsSubmitting] = useState(false);
 
+    // Revise Mode States
+    const [isReviseMode, setIsReviseMode] = useState(false);
+    const [editedItems, setEditedItems] = useState<PurchaseOrderItem[]>([]);
+    const [deletedItems, setDeletedItems] = useState<PurchaseOrderItem[]>([]);
+    const [showReviseDialog, setShowReviseDialog] = useState(false);
+    const [reviseReason, setReviseReason] = useState("");
+
+    const [relatedPos, setRelatedPos] = useState<any[]>([]);
+
     const searchParams = new URLSearchParams(window.location.search);
     const mode = searchParams.get("mode");
 
@@ -102,6 +113,7 @@ export default function PurchaseOrderDetail() {
                 const data = await res.json();
                 setPo(data.purchaseOrder);
                 setItems(data.items || []);
+                setRelatedPos(data.relatedPos || []);
             }
         } catch (error) {
             toast({
@@ -156,6 +168,75 @@ export default function PurchaseOrderDetail() {
         }
     };
 
+    const handleReviseClick = () => {
+        setIsReviseMode(true);
+        setEditedItems(items.map(i => ({ ...i })));
+        setDeletedItems([]);
+    };
+
+    const handleQtyChange = (itemId: string, newQty: string) => {
+        setEditedItems(prev => prev.map(i => {
+            if (i.id === itemId) {
+                const qtyVal = parseFloat(newQty) || 0;
+                const rateVal = parseFloat(i.rate) || 0;
+                return { ...i, qty: newQty, amount: (qtyVal * rateVal).toString() };
+            }
+            return i;
+        }));
+    };
+
+    const handleDeleteItem = (itemId: string) => {
+        const itemToDelete = editedItems.find(i => i.id === itemId);
+        if (itemToDelete) {
+            setDeletedItems(prev => [...prev, itemToDelete]);
+        }
+        setEditedItems(prev => prev.filter(i => i.id !== itemId));
+    };
+
+    const handleSaveRevisionClick = () => {
+        if (editedItems.length === 0) {
+            toast({ title: "Error", description: "PO must have at least one item.", variant: "destructive" });
+            return;
+        }
+
+        const hasIncrease = editedItems.some(edited => {
+            const original = items.find(i => i.id === edited.id);
+            if (!original) return false;
+            return parseFloat(edited.qty) > parseFloat(original.qty);
+        });
+
+        if (hasIncrease) {
+            setShowReviseDialog(true);
+            setReviseReason("");
+        } else {
+            submitRevision("");
+        }
+    };
+
+    const submitRevision = async (reason: string) => {
+        setIsSubmitting(true);
+        try {
+            const res = await apiFetch(`/api/purchase-orders/${id}/revise`, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ items: editedItems, reason, deletedItems }),
+            });
+            if (res.ok) {
+                const data = await res.json();
+                toast({ title: "Success", description: "PO Revised successfully." });
+                setIsReviseMode(false);
+                setShowReviseDialog(false);
+                setLocation(`/purchase-orders/${data.newPo.id}`);
+            } else {
+                toast({ title: "Error", description: "Failed to revise PO", variant: "destructive" });
+            }
+        } catch (error) {
+            toast({ title: "Error", description: "Failed to revise PO", variant: "destructive" });
+        } finally {
+            setIsSubmitting(false);
+        }
+    };
+
     const getStatusBadge = (status: string) => {
         switch (status.toLowerCase()) {
             case "draft":
@@ -198,7 +279,9 @@ export default function PurchaseOrderDetail() {
     }
 
     // Calculations
-    const subtotal = items.reduce((sum, item) => sum + parseFloat(item.amount || "0"), 0);
+    // Calculations base on current mode
+    const displayItems = isReviseMode ? editedItems : items;
+    const subtotal = displayItems.reduce((sum, item) => sum + parseFloat(item.amount || "0"), 0);
     const sgst = subtotal * 0.09;
     const cgst = subtotal * 0.09;
     const totalWithTax = subtotal + sgst + cgst;
@@ -271,10 +354,28 @@ export default function PurchaseOrderDetail() {
                             </Button>
                         )}
 
-                        {po.status === "ordered" && (
+                        {po.status === "ordered" && !isReviseMode && (
                             <Button onClick={() => handleStatusUpdate("delivered")} className="bg-emerald-600 hover:bg-emerald-700 text-white font-bold">
                                 Mark Delivered
                             </Button>
+                        )}
+
+                        {po.status !== "revised" && po.status !== "delivered" && po.status !== "rejected" && !isReviseMode && (
+                            <Button variant="outline" onClick={handleReviseClick}>
+                                <Edit className="h-4 w-4 mr-2" /> Revise PO
+                            </Button>
+                        )}
+
+                        {isReviseMode && (
+                            <>
+                                <Button variant="outline" onClick={() => setIsReviseMode(false)}>
+                                    <X className="h-4 w-4 mr-2" /> Cancel
+                                </Button>
+                                <Button className="bg-blue-600 hover:bg-blue-700 text-white" onClick={handleSaveRevisionClick} disabled={isSubmitting}>
+                                    {isSubmitting ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <Save className="h-4 w-4 mr-2" />}
+                                    Save Revision
+                                </Button>
+                            </>
                         )}
                     </div>
                 </div>
@@ -343,6 +444,27 @@ export default function PurchaseOrderDetail() {
                             </div>
                         </div>
 
+                        {/* Approval Comments / Revision Reason */}
+                        {po.approval_comments && (
+                            <div className="bg-amber-50 border-l-4 border-amber-500 p-4 mb-6 rounded-r-md">
+                                <div className="flex items-start">
+                                    <div className="flex-shrink-0">
+                                        <svg className="h-5 w-5 text-amber-500 mt-0.5" viewBox="0 0 20 20" fill="currentColor">
+                                            <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2v-3a1 1 0 00-1-1H9z" clipRule="evenodd" />
+                                        </svg>
+                                    </div>
+                                    <div className="ml-3">
+                                        <h3 className="text-sm font-medium text-amber-800">
+                                            {po.status === 'rejected' ? 'Rejection Reason' : 'Revision/Approval Note'}
+                                        </h3>
+                                        <div className="mt-2 text-sm text-amber-700 whitespace-pre-wrap">
+                                            {po.approval_comments}
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        )}
+
                         {/* Items Table */}
                         <div className="border border-slate-300 overflow-hidden">
                             <Table>
@@ -354,21 +476,42 @@ export default function PurchaseOrderDetail() {
                                         <TableHead className="text-slate-700 font-semibold text-xs text-center py-2">Qty</TableHead>
                                         <TableHead className="text-slate-700 font-semibold text-xs text-right py-2">Rate</TableHead>
                                         <TableHead className="text-slate-700 font-semibold text-xs text-right py-2 pr-4">Amount</TableHead>
+                                        {isReviseMode && <TableHead className="text-slate-700 font-semibold text-xs text-center w-12 py-2">Action</TableHead>}
                                     </TableRow>
                                 </TableHeader>
                                 <TableBody>
-                                    {items.map((item, idx) => (
+                                    {displayItems.map((item, idx) => (
                                         <TableRow key={item.id} className="border-b border-slate-200">
                                             <TableCell className="text-center text-sm text-slate-500">{idx + 1}</TableCell>
                                             <TableCell>
-                                                <div className="text-sm text-slate-800">{item.item_name}</div>
+                                                <div className="text-sm text-slate-800">{item.item || item.item_name}</div>
                                                 {item.description && <div className="text-xs text-slate-400 mt-0.5">{item.description}</div>}
                                                 {item.unit && <div className="text-xs text-slate-400">{item.unit}</div>}
                                             </TableCell>
                                             <TableCell className="text-center text-sm text-slate-600">{item.hsn_code || item.sac_code || ""}</TableCell>
-                                            <TableCell className="text-center text-sm">{parseFloat(item.qty).toFixed(2)}</TableCell>
+                                            <TableCell className="text-center text-sm">
+                                                {isReviseMode ? (
+                                                    <Input
+                                                        type="number"
+                                                        value={item.qty}
+                                                        onChange={(e) => handleQtyChange(item.id, e.target.value)}
+                                                        className="w-20 text-center mx-auto h-8 text-sm"
+                                                        min="0"
+                                                        step="0.01"
+                                                    />
+                                                ) : (
+                                                    parseFloat(item.qty).toFixed(2)
+                                                )}
+                                            </TableCell>
                                             <TableCell className="text-right text-sm">{parseFloat(item.rate).toLocaleString('en-IN', { minimumFractionDigits: 2 })}</TableCell>
                                             <TableCell className="text-right text-sm font-medium pr-4">{parseFloat(item.amount).toLocaleString('en-IN', { minimumFractionDigits: 2 })}</TableCell>
+                                            {isReviseMode && (
+                                                <TableCell className="text-center">
+                                                    <Button variant="ghost" size="sm" onClick={() => handleDeleteItem(item.id)} className="h-8 w-8 p-0">
+                                                        <Trash2 className="h-4 w-4 text-red-500" />
+                                                    </Button>
+                                                </TableCell>
+                                            )}
                                         </TableRow>
                                     ))}
                                 </TableBody>
@@ -414,6 +557,31 @@ export default function PurchaseOrderDetail() {
                         </div>
                     </CardContent>
                 </Card>
+
+                {/* Related PO Versions */}
+                {relatedPos.length > 0 && (
+                    <Card className="max-w-[1000px] mx-auto border-slate-300 shadow bg-white no-print mt-6">
+                        <CardContent className="p-6">
+                            <h3 className="text-lg font-bold text-slate-800 mb-4">Related PO Versions</h3>
+                            <div className="space-y-3">
+                                {relatedPos.map(rpo => (
+                                    <div key={rpo.id} className="flex items-center justify-between p-3 border rounded hover:bg-slate-50 cursor-pointer" onClick={() => setLocation(`/purchase-orders/${rpo.id}`)}>
+                                        <div>
+                                            <div className="font-semibold text-slate-800">{rpo.po_number}</div>
+                                            <div className="text-xs text-slate-500">{new Date(rpo.created_at).toLocaleDateString()}</div>
+                                        </div>
+                                        <div className="flex items-center gap-4">
+                                            <div className="text-right">
+                                                <div className="text-sm font-bold text-slate-700">₹{parseFloat(rpo.total || "0").toLocaleString('en-IN', { minimumFractionDigits: 2 })}</div>
+                                            </div>
+                                            {getStatusBadge(rpo.status)}
+                                        </div>
+                                    </div>
+                                ))}
+                            </div>
+                        </CardContent>
+                    </Card>
+                )}
             </div>
 
             {/* Approval Dialog */}
@@ -444,6 +612,38 @@ export default function PurchaseOrderDetail() {
                         >
                             {isSubmitting ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : null}
                             {approvalAction === "approve" ? "Approve" : "Reject"}
+                        </Button>
+                    </DialogFooter>
+                </DialogContent>
+            </Dialog>
+
+            {/* Revise Reason Dialog */}
+            <Dialog open={showReviseDialog} onOpenChange={setShowReviseDialog}>
+                <DialogContent>
+                    <DialogHeader>
+                        <DialogTitle>Reason for Quantity Increase</DialogTitle>
+                        <DialogDescription>
+                            You have increased the quantity of one or more items. 
+                            This revision will require Admin approval. Please provide a reason.
+                        </DialogDescription>
+                    </DialogHeader>
+                    <div className="py-4">
+                        <Textarea
+                            placeholder="Enter reason for quantity increase..."
+                            value={reviseReason}
+                            onChange={(e) => setReviseReason(e.target.value)}
+                            className="min-h-[100px]"
+                        />
+                    </div>
+                    <DialogFooter>
+                        <Button variant="outline" onClick={() => setShowReviseDialog(false)} disabled={isSubmitting}>Cancel</Button>
+                        <Button
+                            className="bg-blue-600 hover:bg-blue-700 text-white"
+                            onClick={() => submitRevision(reviseReason)}
+                            disabled={isSubmitting || !reviseReason.trim()}
+                        >
+                            {isSubmitting ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : null}
+                            Submit Revision
                         </Button>
                     </DialogFooter>
                 </DialogContent>

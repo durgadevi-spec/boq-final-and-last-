@@ -517,7 +517,7 @@ export function Sidebar() {
           )}
 
           {/* BOQ / Projects Section */}
-          {(isAdminOrSoftware || isPreSales) && !isProductManager && (
+          {(isAdminOrSoftware || isPreSales || isProductManager) && (
             <>
               <div className="px-3 mb-2 mt-4 text-xs font-semibold text-muted-foreground uppercase tracking-wider">
                 BOQ / Projects
@@ -535,19 +535,21 @@ export function Sidebar() {
                   <ShoppingCart className="h-4 w-4" /> Generate BOM
                 </span>
               </Link>
-              <Link href="/generate-po">
-                <span
-                  className={cn(
-                    "flex items-center gap-3 rounded-md px-3 py-2 text-sm font-medium transition-colors cursor-pointer",
-                    location === "/generate-po"
-                      ? "bg-sidebar-primary text-sidebar-primary-foreground"
-                      : "text-sidebar-foreground hover:bg-sidebar-accent",
-                  )}
-                  onClick={() => setIsOpen(false)}
-                >
-                  <FileText className="h-4 w-4" /> Generate PO
-                </span>
-              </Link>
+              {!isProductManager && (
+                  <Link href="/generate-po">
+                    <span
+                      className={cn(
+                        "flex items-center gap-3 rounded-md px-3 py-2 text-sm font-medium transition-colors cursor-pointer",
+                        location === "/generate-po"
+                          ? "bg-sidebar-primary text-sidebar-primary-foreground"
+                          : "text-sidebar-foreground hover:bg-sidebar-accent",
+                      )}
+                      onClick={() => setIsOpen(false)}
+                    >
+                      <FileText className="h-4 w-4" /> Generate PO
+                    </span>
+                  </Link>
+              )}
               {isAdminOrSoftware && (
                 <Link href="/finalize-bom">
                   <span

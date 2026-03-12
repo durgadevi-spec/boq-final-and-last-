@@ -6485,6 +6485,8 @@ export async function registerRoutes(
             vendorGroups[vendorName].push({
               ...line,
               boq_item_id: boqItem.id,
+              hsn_code: line.hsn_code || tableData.hsn_sac_code || tableData.hsn_code || null,
+              sac_code: line.sac_code || tableData.sac_code || null
             });
           }
         }
@@ -6776,6 +6778,113 @@ export async function registerRoutes(
   });
 
 
+  // POST /api/purchase-orders/:id/revise - Revise PO Items and Qty
+  app.post("/api/purchase-orders/:id/revise", authMiddleware, async (req: Request, res: Response) => {
+    try {
+      const { id } = req.params;
+      const { items, reason, deletedItems } = req.body;
+      const user = (req as any).user;
+
+      // 1. Get existing PO
+      const poRes = await query(`SELECT * FROM purchase_orders WHERE id = $1`, [id]);
+      if (poRes.rows.length === 0) {
+        return res.status(404).json({ message: "Purchase Order not found" });
+      }
+      const existingPo = poRes.rows[0];
+
+      // 2. Generate new PO Number (-R1, -R2, etc)
+      let revCount = 1;
+      let defCount = 1;
+      let basePoNumber = existingPo.po_number;
+      
+      const revMatch = basePoNumber.match(/-R(\d+)$/);
+      if (revMatch) {
+        revCount = parseInt(revMatch[1], 10) + 1;
+        basePoNumber = basePoNumber.replace(/-R\d+$/, "");
+      }
+      const newPoNumber = `${basePoNumber}-R${revCount}`;
+      
+      // Look up existing deferred POs for numbering
+      const defRes = await query(`SELECT boq_number FROM (SELECT po_number as boq_number FROM purchase_orders WHERE po_number LIKE $1) as tmp ORDER BY boq_number DESC LIMIT 1`, [`${basePoNumber}-Deferred%`]);
+      if (defRes.rows.length > 0) {
+         const dMatch = defRes.rows[0].boq_number.match(/-Deferred(\d+)$/);
+         if (dMatch) defCount = parseInt(dMatch[1], 10) + 1;
+      }
+
+
+      // 3. Determine new status
+      let hasIncrease = false;
+      const existingItemsRes = await query(`SELECT * FROM purchase_order_items WHERE po_id = $1`, [id]);
+      const existingItems = existingItemsRes.rows;
+
+      for (const item of items) {
+        const original = existingItems.find((i: any) => i.id === item.id);
+        if (original && parseFloat(item.qty) > parseFloat(original.qty)) {
+          hasIncrease = true;
+          break;
+        }
+      }
+
+      const newStatus = hasIncrease ? "pending_approval" : existingPo.status;
+      const approvalComments = hasIncrease ? reason : existingPo.approval_comments;
+
+      // Calculate new total
+      let totalAmount = 0;
+      for (const item of items) {
+        totalAmount += parseFloat(item.amount) || (parseFloat(item.qty) * parseFloat(item.rate)) || 0;
+      }
+
+      // 4. Create new PO
+      const newPoRes = await query(
+        `INSERT INTO purchase_orders (po_number, project_id, project_name, vendor_id, vendor_name, subtotal, total, status, requested_by, approval_comments) 
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10) RETURNING *`,
+        [newPoNumber, existingPo.project_id, existingPo.project_name, existingPo.vendor_id, existingPo.vendor_name, totalAmount, totalAmount, newStatus, existingPo.requested_by, approvalComments]
+      );
+      const newPo = newPoRes.rows[0];
+
+      // 5. Insert new items
+      for (const item of items) {
+        await query(
+          `INSERT INTO purchase_order_items (po_id, item, description, unit, qty, rate, amount, hsn_code, sac_code) 
+           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
+          [newPo.id, item.item || item.item_name, item.description || null, item.unit || null, item.qty, item.rate, item.amount, item.hsn_code || null, item.sac_code || null]
+        );
+      }
+
+      // 5.5 Handle deleted items (Defer them)
+      if (deletedItems && deletedItems.length > 0) {
+        const deferredPoNumber = `${basePoNumber}-Deferred${defCount}`;
+        let deferredTotal = 0;
+        for (const ditem of deletedItems) {
+            deferredTotal += parseFloat(ditem.amount) || (parseFloat(ditem.qty || 0) * parseFloat(ditem.rate || 0)) || 0;
+        }
+        
+        const defPoRes = await query(
+            `INSERT INTO purchase_orders (po_number, project_id, project_name, vendor_id, vendor_name, subtotal, total, status, requested_by, approval_comments) 
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10) RETURNING *`,
+            [deferredPoNumber, existingPo.project_id, existingPo.project_name, existingPo.vendor_id, existingPo.vendor_name, deferredTotal, deferredTotal, "draft", existingPo.requested_by, "Items deferred due to budget constraints during revision."]
+        );
+        const defPo = defPoRes.rows[0];
+        
+        for (const ditem of deletedItems) {
+            await query(
+              `INSERT INTO purchase_order_items (po_id, item, description, unit, qty, rate, amount, hsn_code, sac_code) 
+               VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
+              [defPo.id, ditem.item || ditem.item_name, ditem.description || null, ditem.unit || null, ditem.qty, ditem.rate, ditem.amount, ditem.hsn_code || null, ditem.sac_code || null]
+            );
+        }
+      }
+
+      // 6. Update old PO status
+      await query(`UPDATE purchase_orders SET status = 'revised', updated_at = NOW() WHERE id = $1`, [id]);
+
+      res.status(201).json({ message: "PO Revised successfully", newPo });
+    } catch (err) {
+      console.error("POST /api/purchase-orders/:id/revise error:", err);
+      res.status(500).json({ message: "Failed to revise PO" });
+    }
+  });
+
   // GET /api/purchase-orders - List all purchase orders (with optional status filter)
   app.get("/api/purchase-orders", authMiddleware, async (req: Request, res: Response) => {
     try {
@@ -6835,9 +6944,22 @@ export async function registerRoutes(
         [id]
       );
 
+      // Fetch Related PO Versions
+      let basePoNumber = poResult.rows[0].po_number.split('-R')[0];
+      basePoNumber = basePoNumber.split('-Deferred')[0];
+      
+      const relatedPosResult = await query(
+        `SELECT id, po_number, status, total, approval_comments, created_at 
+         FROM purchase_orders 
+         WHERE po_number LIKE $1 AND id != $2 
+         ORDER BY created_at DESC`,
+        [`${basePoNumber}%`, id]
+      );
+
       res.json({
         purchaseOrder: poResult.rows[0],
-        items: itemsResult.rows
+        items: itemsResult.rows,
+        relatedPos: relatedPosResult.rows
       });
     } catch (err) {
       console.error("GET /api/purchase-orders/:id error:", err);
@@ -6923,6 +7045,80 @@ export async function registerRoutes(
     } catch (err) {
       console.error("DELETE /api/purchase-orders/:id error:", err);
       res.status(500).json({ message: "Failed to delete purchase order" });
+    }
+  });
+
+  // ================= CHATBOT =================
+  app.post("/api/bot-query", authMiddleware, async (req, res) => {
+    try {
+      const q = (req.body.query || "").toLowerCase().trim();
+      let answer = "I'm sorry, I didn't understand that. You can ask me about material prices, availability, or products (e.g., 'price of MDF', 'do we have hinges', 'list restroom products').";
+
+      // 1. Check for price
+      const priceMatch = q.match(/price of (.+)|cost of (.+)|rate of (.+)|how much is (.+)/i);
+      if (priceMatch) {
+         const matName = priceMatch[1] || priceMatch[2] || priceMatch[3] || priceMatch[4];
+         const r = await query(`SELECT name, rate, unit FROM materials WHERE name ILIKE $1 LIMIT 5`, [`%${matName.trim()}%`]);
+         if (r.rows.length === 0) {
+            answer = `I couldn't find any material matching "${matName}".`;
+         } else {
+            answer = r.rows.map((row: any) => `The price of ${row.name} is ₹${row.rate} per ${row.unit || 'unit'}.`).join('\n');
+         }
+      } 
+      // 2. Check for availability
+      else if (q.match(/do we have (.+)|is (.+) available|is (.+) in stock|do you have (.+)|is there any material like (.+)|is there material like (.+)|is there any (.+)|any (.+) material/i)) {
+         const availMatch = q.match(/do we have (.+)|is (.+) available|is (.+) in stock|do you have (.+)|is there any material like (.+)|is there material like (.+)|is there any (.+)|any (.+) material/i);
+         const matName = availMatch![1] || availMatch![2] || availMatch![3] || availMatch![4] || availMatch![5] || availMatch![6] || availMatch![7] || availMatch![8];
+         const r = await query(`SELECT name FROM materials WHERE name ILIKE $1 LIMIT 5`, [`%${matName.trim()}%`]);
+         if (r.rows.length === 0) {
+            answer = `No, we do not have any materials matching "${matName}" in our database.`;
+         } else {
+            answer = `Yes, we have:\n${r.rows.map((row: any) => '- ' + row.name).join('\n')}`;
+         }
+      }
+      // 3. List products
+      else if (q.match(/list (.+) products|what (.+) products|show (.+) products/i)) {
+         const catMatch = q.match(/list (.+) products|what (.+) products|show (.+) products/i);
+         const catName = catMatch![1] || catMatch![2] || catMatch![3];
+         const cRes = await query(`SELECT id FROM material_categories WHERE name ILIKE $1 LIMIT 1`, [`%${catName.trim()}%`]);
+         if (cRes.rows.length > 0) {
+            const catId = cRes.rows[0].id;
+            const pRes = await query(`SELECT name FROM products WHERE category_id = $1 LIMIT 10`, [catId]);
+            if (pRes.rows.length === 0) {
+                answer = `We don't have any products under the "${catName}" category.`;
+            } else {
+                answer = `Products in ${catName}:\n${pRes.rows.map((p: any) => '- ' + p.name).join('\n')}`;
+            }
+         } else {
+            // try searching products just by name
+            const pRes = await query(`SELECT name FROM products WHERE name ILIKE $1 LIMIT 10`, [`%${catName.trim()}%`]);
+            if (pRes.rows.length > 0) {
+               answer = `Here are some products matching "${catName}":\n${pRes.rows.map((p: any) => '- ' + p.name).join('\n')}`;
+            } else {
+               answer = `I couldn't find any category or products matching "${catName}".`;
+            }
+         }
+      }
+      // 4. Fallback search (just material/product name)
+      else {
+         const matRes = await query(`SELECT name, rate, unit FROM materials WHERE name ILIKE $1 LIMIT 5`, [`%${q}%`]);
+         if (matRes.rows.length > 0) {
+             answer = `I found these materials matching "${q}":\n${matRes.rows.map((row: any) => `- ${row.name} (Price: ₹${row.rate}/${row.unit || 'unit'})`).join('\n')}`;
+         } else {
+             // Also search products
+             const pRes = await query(`SELECT name FROM products WHERE name ILIKE $1 LIMIT 5`, [`%${q}%`]);
+             if (pRes.rows.length > 0) {
+                 answer = `I found these products matching "${q}":\n${pRes.rows.map((p: any) => `- ${p.name}`).join('\n')}`;
+             } else {
+                 answer = "I'm sorry, I couldn't find any materials or products matching your query. You can try asking 'price of MDF', 'do we have hinges', or just type a material name.";
+             }
+         }
+      }
+
+      res.json({ answer });
+    } catch (err) {
+      console.error("/api/bot-query error:", err);
+      res.status(500).json({ error: "Failed to process query" });
     }
   });
 

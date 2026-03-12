@@ -805,7 +805,8 @@ export default function FinalizeBoq() {
             // keep existing
           } else {
             const approved = bomList.find((v: BOQVersion) => v.status === "approved");
-            const selectable = filterVersions(bomList);
+            const selectable = bomList.filter((v: BOQVersion) => v.status === "approved");
+            
             if (approved && selectable.some((v: BOQVersion) => v.id === approved.id)) {
               setSelectedBomVersionId(approved.id);
             } else if (selectable.length > 0) {
@@ -993,56 +994,7 @@ export default function FinalizeBoq() {
     }
   }, [location, projects]);
 
-  const addProject = async () => {
-    if (!name.trim()) {
-      toast({
-        title: "Error",
-        description: "Project name is required",
-        variant: "destructive",
-      });
-      return;
-    }
-
-    try {
-      const response = await apiFetch("/api/boq-projects", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          name: name.trim(),
-          client: client.trim(),
-          budget: budget.trim(),
-          location: projectLocation.trim(),
-        }),
-      });
-
-      if (response.ok) {
-        const newProject = await response.json();
-        setProjects((prev) => [newProject, ...prev]);
-        setName("");
-        setClient("");
-        setBudget("");
-        setProjectLocation("");
-        setSelectedProjectId(newProject.id);
-        toast({
-          title: "Success",
-          description: "Project created",
-        });
-      } else {
-        toast({
-          title: "Error",
-          description: "Failed to create project",
-          variant: "destructive",
-        });
-      }
-    } catch (err) {
-      console.error("Failed to create project:", err);
-      toast({
-        title: "Error",
-        description: "Failed to create project",
-        variant: "destructive",
-      });
-    }
-  };
+  // Project creation moved to dedicated Create Project page
 
   const handleAddFinalized = async () => {
     if (!selectedProjectId) return;
@@ -1107,7 +1059,7 @@ export default function FinalizeBoq() {
         setBoqItems(prev => [...prev, newItem]);
         setShowFinalizedPicker(false);
         toast({ title: "Success", description: "Added finalized item" });
-        loadBoqItemsAndEdits();
+        loadBoqItemsAndEdits(selectedBoqVersionId || selectedBomVersionId);
       } else {
         throw new Error("Failed to add item");
       }

@@ -82,6 +82,11 @@ export default function PurchaseOrders() {
     const [projectFilter, setProjectFilter] = useState<string>("all");
     const [deletingPo, setDeletingPo] = useState<PurchaseOrder | null>(null);
 
+    // Bulk Delete State
+    const [selectedPoIds, setSelectedPoIds] = useState<Set<string>>(new Set());
+    const [showBulkDeleteDialog, setShowBulkDeleteDialog] = useState(false);
+    const [isDeletingBulk, setIsDeletingBulk] = useState(false);
+
     useEffect(() => {
         fetchData();
     }, []);
@@ -139,6 +144,51 @@ export default function PurchaseOrders() {
             });
         } finally {
             setDeletingPo(null);
+        }
+    };
+
+    const toggleSelectAll = () => {
+        if (selectedPoIds.size === filteredPOs.length && filteredPOs.length > 0) {
+            setSelectedPoIds(new Set());
+        } else {
+            setSelectedPoIds(new Set(filteredPOs.map((po) => po.id)));
+        }
+    };
+
+    const toggleSelectPo = (id: string, e?: React.ChangeEvent) => {
+        if(e) e.stopPropagation();
+        setSelectedPoIds((prev) => {
+            const newSet = new Set(prev);
+            if (newSet.has(id)) newSet.delete(id);
+            else newSet.add(id);
+            return newSet;
+        });
+    };
+
+    const handleBulkDelete = async () => {
+        setIsDeletingBulk(true);
+        try {
+            const promises = Array.from(selectedPoIds).map(id => 
+                apiFetch(`/api/purchase-orders/${id}`, { method: "DELETE" })
+            );
+            await Promise.all(promises);
+            
+            toast({
+                title: "Deleted",
+                description: `Successfully deleted ${selectedPoIds.size} purchase orders.`,
+            });
+            
+            setPurchaseOrders((prev) => prev.filter((po) => !selectedPoIds.has(po.id)));
+            setSelectedPoIds(new Set());
+            setShowBulkDeleteDialog(false);
+        } catch (error) {
+            toast({
+                title: "Error",
+                description: "Failed to delete some purchase orders.",
+                variant: "destructive",
+            });
+        } finally {
+            setIsDeletingBulk(false);
         }
     };
 
@@ -258,6 +308,16 @@ export default function PurchaseOrders() {
                                         ))}
                                     </SelectContent>
                                 </Select>
+                                {selectedPoIds.size > 0 && (
+                                    <Button 
+                                        variant="destructive" 
+                                        onClick={() => setShowBulkDeleteDialog(true)}
+                                        className="h-9 ml-2"
+                                    >
+                                        <Trash2 className="h-4 w-4 mr-2" />
+                                        Delete Selected ({selectedPoIds.size})
+                                    </Button>
+                                )}
                             </div>
                         </div>
                     </CardHeader>
@@ -266,6 +326,14 @@ export default function PurchaseOrders() {
                             <Table>
                                 <TableHeader className="bg-slate-50">
                                     <TableRow>
+                                        <TableHead className="w-12 text-center border-r">
+                                            <input 
+                                                type="checkbox" 
+                                                className="w-4 h-4 rounded border-gray-300 align-middle"
+                                                checked={filteredPOs.length > 0 && selectedPoIds.size === filteredPOs.length}
+                                                onChange={toggleSelectAll}
+                                            />
+                                        </TableHead>
                                         <TableHead className="font-bold">PO Number</TableHead>
                                         <TableHead className="font-bold">Project</TableHead>
                                         <TableHead className="font-bold">Vendor</TableHead>
@@ -285,6 +353,14 @@ export default function PurchaseOrders() {
                                     ) : (
                                         filteredPOs.map((po) => (
                                             <TableRow key={po.id} className="hover:bg-slate-50/50 cursor-pointer" onClick={() => setLocation(`/purchase-orders/${po.id}`)}>
+                                                <TableCell className="text-center border-r" onClick={(e) => e.stopPropagation()}>
+                                                    <input 
+                                                        type="checkbox" 
+                                                        className="w-4 h-4 rounded border-gray-300 align-middle"
+                                                        checked={selectedPoIds.has(po.id)}
+                                                        onChange={(e) => toggleSelectPo(po.id, e)}
+                                                    />
+                                                </TableCell>
                                                 <TableCell className="font-bold text-primary">{po.po_number}</TableCell>
                                                 <TableCell className="font-medium">{po.project_name || "N/A"}</TableCell>
                                                 <TableCell>{po.vendor_name || "N/A"}</TableCell>
@@ -339,6 +415,29 @@ export default function PurchaseOrders() {
                             onClick={handleDelete}
                         >
                             Delete
+                        </AlertDialogAction>
+                    </AlertDialogFooter>
+                </AlertDialogContent>
+            </AlertDialog>
+
+            {/* Bulk Delete Confirmation Dialog */}
+            <AlertDialog open={showBulkDeleteDialog} onOpenChange={setShowBulkDeleteDialog}>
+                <AlertDialogContent>
+                    <AlertDialogHeader>
+                        <AlertDialogTitle>Delete Multiple Purchase Orders</AlertDialogTitle>
+                        <AlertDialogDescription>
+                            Are you sure you want to delete <strong>{selectedPoIds.size}</strong> purchase orders? This will permanently remove the orders and all their associated items. This action cannot be undone.
+                        </AlertDialogDescription>
+                    </AlertDialogHeader>
+                    <AlertDialogFooter>
+                        <AlertDialogCancel disabled={isDeletingBulk}>Cancel</AlertDialogCancel>
+                        <AlertDialogAction
+                            className="bg-red-600 hover:bg-red-700 text-white"
+                            onClick={handleBulkDelete}
+                            disabled={isDeletingBulk}
+                        >
+                            {isDeletingBulk ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : null}
+                            Delete {selectedPoIds.size} Orders
                         </AlertDialogAction>
                     </AlertDialogFooter>
                 </AlertDialogContent>
