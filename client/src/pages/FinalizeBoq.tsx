@@ -1602,9 +1602,9 @@ export default function FinalizeBoq() {
       "Description / Location",
       "HSN",
       "SAC",
+      "Unit",
       "Qty",
       "Rate / Unit",
-      "Unit",
       "Total Value (₹)",
       "Override Rate",
       "Override Total",
@@ -1663,9 +1663,9 @@ export default function FinalizeBoq() {
           "Description / Location",
           "HSN",
           "SAC",
+          "Unit",
           "Qty",
           "Rate / Unit",
-          "Unit",
           "Total Value (₹)",
           "Override Rate",
           "Override Total",
@@ -1775,12 +1775,12 @@ export default function FinalizeBoq() {
 
       // ── Apply per-column cell fill colours ──────────────────────────────────
       // Rules (by column name in selectedExportCols):
-      //   • "Rate / Unit", "Unit", "Total Value (₹)"  → light blue  (#D6EAF8)
+      //   • "Rate / Unit", "Total Value (₹)"  → light blue  (#D6EAF8)
       //   • "Override Rate" / "Override Total"         → light blue  (#D6EAF8)
       //   • Custom cols (GST, Finance, etc.) BEFORE any "Supply Rate" col → light orange (#FFF3E0)
       //   • Custom cols AT or AFTER a "Supply Rate" col → no fill (white)
       //   • All other predefined cols (S.No, Product, etc.) → no fill
-      const LIGHT_BLUE_COLS_SET = new Set(["Rate / Unit", "Unit", "Total Value (₹)", "Override Rate", "Override Total"]);
+      const LIGHT_BLUE_COLS_SET = new Set(["Rate / Unit", "Total Value (₹)", "Override Rate", "Override Total"]);
 
       // Index of the first column whose name (case-insensitive) is/contains "Supply Rate"
       const supplyRateColIdx = selectedExportCols.findIndex(
@@ -1835,7 +1835,7 @@ export default function FinalizeBoq() {
 
     const potentialPdfCols = [
       "S.No", "Product / Material", "Description", "HSN", "SAC",
-      "Rate", "Unit", "Qty", "Total",
+      "Unit", "Qty", "Rate", "Total",
       "Override Rate", "Override Total",
       ...allCols.map(c => c.name)
     ];
@@ -1957,29 +1957,42 @@ export default function FinalizeBoq() {
         body.push(row);
       });
 
+      const fmtNum = (n: number) => n.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+
       const footerRow: any[] = [];
       if (selectedPdfExportCols.includes("S.No")) footerRow.push("");
-      if (selectedPdfExportCols.includes("Product / Material")) footerRow.push("GRAND TOTAL");
+      if (selectedPdfExportCols.includes("Product / Material")) footerRow.push("TOTAL");
       if (selectedPdfExportCols.includes("Description")) footerRow.push("");
       if (selectedPdfExportCols.includes("HSN")) footerRow.push("");
       if (selectedPdfExportCols.includes("SAC")) footerRow.push("");
       if (selectedPdfExportCols.includes("Unit")) footerRow.push("");
       if (selectedPdfExportCols.includes("Qty")) footerRow.push("");
-      if (selectedPdfExportCols.includes("Rate")) footerRow.push("₹" + calculatedColumnTotals.totalRateSum.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }));
-      if (selectedPdfExportCols.includes("Total")) footerRow.push(hideSystemTotalFooter ? "" : "₹" + calculatedColumnTotals.totalValueSum.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }));
+      if (selectedPdfExportCols.includes("Rate")) footerRow.push(fmtNum(calculatedColumnTotals.totalRateSum));
+      if (selectedPdfExportCols.includes("Total")) footerRow.push(hideSystemTotalFooter ? "" : fmtNum(calculatedColumnTotals.totalValueSum));
       if (selectedPdfExportCols.includes("Override Rate")) footerRow.push("");
-      if (selectedPdfExportCols.includes("Override Total")) footerRow.push("₹" + calculatedColumnTotals.overrideTotalSum.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }));
+      if (selectedPdfExportCols.includes("Override Total")) footerRow.push(fmtNum(calculatedColumnTotals.overrideTotalSum));
 
       allCols.forEach((col: any, idx) => {
         if (selectedPdfExportCols.includes(col.name)) {
-          if (col.hideTotal) {
-            footerRow.push("");
-          } else {
-            const val = calculatedColumnTotals.totals[idx] || 0;
-            footerRow.push("₹" + val.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }));
-          }
+          footerRow.push(col.hideTotal ? "" : fmtNum(calculatedColumnTotals.totals[idx] || 0));
         }
       });
+
+      const grandTotalRow: any[] = Array(selectedPdfExportCols.length).fill("");
+      const pIdx = selectedPdfExportCols.indexOf("Product / Material");
+      if (pIdx !== -1) grandTotalRow[pIdx] = "GRAND TOTAL";
+
+      let gtValIdx = -1;
+      if (grandTotalColumn === "Total Value (₹)") gtValIdx = selectedPdfExportCols.indexOf("Total");
+      else if (grandTotalColumn === "Override Total") gtValIdx = selectedPdfExportCols.indexOf("Override Total");
+      else gtValIdx = selectedPdfExportCols.indexOf(grandTotalColumn);
+
+      const gtStr = fmtNum(currentProjectValue);
+      if (gtValIdx !== -1) {
+        grandTotalRow[gtValIdx] = gtStr;
+      } else {
+        grandTotalRow[selectedPdfExportCols.length - 1] = gtStr;
+      }
 
       // 4. Logo Fetching
       const logoPath = "/image.png";
@@ -2000,35 +2013,93 @@ export default function FinalizeBoq() {
       // 5. PDF Generation
       const doc = new jsPDF({ orientation: "landscape" });
       const pageWidth = doc.internal.pageSize.getWidth();
-      const headerY = 10;
+      const marginX = 10;
+      const headerBoxY = 8;
+      const headerBoxH = 28;
 
+      // Draw header box — 3 sides only (no bottom), table top border acts as shared edge
+      doc.setDrawColor(0, 0, 0);
+      doc.setLineWidth(0.5);
+      const boxRight = pageWidth - marginX;
+      const boxBottom = headerBoxY + headerBoxH;
+      // Top line
+      doc.line(marginX, headerBoxY, boxRight, headerBoxY);
+      // Left line
+      doc.line(marginX, headerBoxY, marginX, boxBottom);
+      // Right line
+      doc.line(boxRight, headerBoxY, boxRight, boxBottom);
+
+      // Logo inside box (left side)
       if (logoDataUrl) {
         const imgProps: any = doc.getImageProperties(logoDataUrl);
-        const imgH = 24;
+        const imgH = 22;
         const imgW = (imgProps.width / imgProps.height) * imgH;
-        doc.addImage(logoDataUrl, "PNG", 10, headerY, imgW, imgH);
+        doc.addImage(logoDataUrl, "PNG", marginX + 2, headerBoxY + 3, imgW, imgH);
       }
 
-      const metaX = pageWidth - 10;
-      doc.setFontSize(10);
+      // Centered title inside box
+      doc.setFontSize(15);
+      doc.setFont("helvetica", "bold");
+      doc.text("CONCEPT TRUNK INTERIORS", pageWidth / 2, headerBoxY + 13, { align: "center" });
+
+      // Project info on right inside box
+      const metaX = pageWidth - marginX - 2;
+      doc.setFontSize(8);
       doc.setFont("helvetica", "bold");
       const projNameStr = selectedProject?.name || "BOM";
-      doc.text(projNameStr, metaX, headerY + 6, { align: "right" });
-      doc.setFontSize(9);
+      doc.text(`Project: ${projNameStr}`, metaX, headerBoxY + 7, { align: "right" });
       doc.setFont("helvetica", "normal");
-      doc.text(`Client: ${selectedProject?.client || "-"}`, metaX, headerY + 12, { align: "right" });
-      doc.text(`Budget: ${selectedProject?.budget || "-"}`, metaX, headerY + 18, { align: "right" });
+      doc.text(`Client: ${selectedProject?.client || "-"}`, metaX, headerBoxY + 13, { align: "right" });
+      doc.text(`Date: ${new Date().toLocaleDateString()}`, metaX, headerBoxY + 19, { align: "right" });
+
+      const colStyles: any = {};
+      selectedPdfExportCols.forEach((col, i) => {
+        if (["Rate", "Total", "Override Rate", "Override Total", ...allCols.map(c => c.name)].includes(col)) {
+          colStyles[i] = { halign: 'right' };
+        } else if (col === "S.No" || col === "Qty" || col === "Unit" || col === "HSN" || col === "SAC") {
+          colStyles[i] = { halign: 'center' };
+        }
+      });
+      if (selectedPdfExportCols.includes("S.No")) {
+        const snoIdx = selectedPdfExportCols.indexOf("S.No");
+        colStyles[snoIdx] = { ...colStyles[snoIdx], cellWidth: 10 };
+      }
 
       // @ts-ignore - autotable types
       autoTable(doc, {
         head: [headers],
         body: body,
-        startY: headerY + 30,
-        styles: { fontSize: 8 },
-        headStyles: { fillColor: [64, 64, 64], textColor: [255, 255, 255], fontStyle: "bold" },
+        startY: headerBoxY + headerBoxH, // attach directly to header box
+        margin: { left: 10, right: 10 },
+        styles: {
+          fontSize: 8,
+          lineColor: [0, 0, 0],
+          lineWidth: 0.3,
+        },
+        headStyles: {
+          fillColor: [40, 40, 40],
+          textColor: [255, 255, 255],
+          fontStyle: "bold",
+          lineColor: [0, 0, 0],
+          lineWidth: 0.4,
+        },
+        bodyStyles: {
+          lineColor: [0, 0, 0],
+          lineWidth: 0.3,
+        },
         theme: "grid",
-        foot: [footerRow],
-        footStyles: { fillColor: [240, 240, 240], textColor: [0, 0, 0], fontStyle: "bold" },
+        foot: [footerRow, grandTotalRow],
+        footStyles: {
+          fillColor: [220, 220, 220],
+          textColor: [0, 0, 0],
+          fontStyle: "bold",
+          fontSize: 8,
+          lineColor: [0, 0, 0],
+          lineWidth: 0.4,
+        },
+        columnStyles: colStyles,
+        tableLineColor: [0, 0, 0],
+        tableLineWidth: 0.5,
       });
 
       // 6. Terms and Conditions
@@ -2443,9 +2514,9 @@ export default function FinalizeBoq() {
                 { label: "D: Description / Location", name: "Description / Location" },
                 { label: "E: HSN", name: "HSN" },
                 { label: "F: SAC", name: "SAC" },
-                { label: "G: Qty", name: "Qty" },
-                { label: "H: Rate / Unit", name: "Rate / Unit" },
-                { label: "I: Unit", name: "Unit" },
+                { label: "G: Unit", name: "Unit" },
+                { label: "H: Qty", name: "Qty" },
+                { label: "I: Rate / Unit", name: "Rate / Unit" },
                 { label: "J: Total Value (₹)", name: "Total Value (₹)" },
                 { label: "K: Override Rate (₹)", name: "Override Rate" },
                 { label: "L: Override Total (₹)", name: "Override Total" },
@@ -2465,7 +2536,7 @@ export default function FinalizeBoq() {
                           // maintain table order
                           const order = [
                             "S.No", "Product / Material", "Description / Location",
-                            "HSN", "SAC", "Qty", "Rate / Unit", "Unit", "Total Value (₹)",
+                            "HSN", "SAC", "Unit", "Qty", "Rate / Unit", "Total Value (₹)",
                             "Override Rate", "Override Total",
                             ...allCols.map(c => c.name)
                           ];
@@ -2505,9 +2576,9 @@ export default function FinalizeBoq() {
                 { label: "Description", name: "Description" },
                 { label: "HSN", name: "HSN" },
                 { label: "SAC", name: "SAC" },
-                { label: "Rate (₹)", name: "Rate" },
                 { label: "Unit", name: "Unit" },
                 { label: "Qty", name: "Qty" },
+                { label: "Rate (₹)", name: "Rate" },
                 { label: "Total (₹)", name: "Total" },
                 { label: "Override Rate (₹)", name: "Override Rate" },
                 { label: "Override Total (₹)", name: "Override Total" },
@@ -2893,27 +2964,30 @@ export default function FinalizeBoq() {
                             </div>
                           </th>
                         )}
-                        {allCols.filter(c => !c.hideColumn).map((col, idx) => (
-                          <DraggableHeaderCol
-                            key={col.name}
-                            col={col}
-                            idx={idx}
-                            isVersionSubmitted={isVersionSubmitted}
-                            allCols={allCols}
-                            getExcelColumnName={getExcelColumnName}
-                            handleGlobalCalculation={handleGlobalCalculation}
-                            globalColSettings={globalColSettings}
-                            handleHideColumn={handleHideColumn}
-                            boqItems={boqItems}
-                            customColumns={customColumns}
-                            customColumnValues={customColumnValues}
-                            saveItemLayout={saveItemLayout}
-                            toast={toast}
-                            setCustomColumns={setCustomColumns}
-                            setCustomColumnValues={setCustomColumnValues}
-                            setGlobalColSettings={setGlobalColSettings}
-                          />
-                        ))}
+                        {allCols.map((col, realIdx) => {
+                          if (col.hideColumn) return null;
+                          return (
+                            <DraggableHeaderCol
+                              key={col.name}
+                              col={col}
+                              idx={realIdx}
+                              isVersionSubmitted={isVersionSubmitted}
+                              allCols={allCols}
+                              getExcelColumnName={getExcelColumnName}
+                              handleGlobalCalculation={handleGlobalCalculation}
+                              globalColSettings={globalColSettings}
+                              handleHideColumn={handleHideColumn}
+                              boqItems={boqItems}
+                              customColumns={customColumns}
+                              customColumnValues={customColumnValues}
+                              saveItemLayout={saveItemLayout}
+                              toast={toast}
+                              setCustomColumns={setCustomColumns}
+                              setCustomColumnValues={setCustomColumnValues}
+                              setGlobalColSettings={setGlobalColSettings}
+                            />
+                          );
+                        })}
                       </Reorder.Group>
                     </thead>
                     <Reorder.Group
@@ -3113,16 +3187,14 @@ export default function FinalizeBoq() {
                               let accumulator = 0;
                               const rowCalculatedValues: { [colName: string]: number } = {};
 
-                              return allCols.map((col, realIdx) => {
+                              return allCols.filter(c => !c.hideColumn).map((col, idx) => {
+                                const realIdx = allCols.findIndex(c => c.name === col.name);
                                 if (col.isTotal) {
                                   itemTotal += accumulator;
                                   accumulator = 0;
                                   rowCalculatedValues[col.name] = itemTotal;
-                                  
-                                  if (col.hideColumn) return null;
-                                  
                                   return (
-                                    <td key={`${col.name}-${realIdx}`} className="border-r px-2 py-1.5 text-right font-semibold text-green-900 bg-green-100/40 text-[10px]">
+                                    <td key={`${col.name}-${idx}`} className="border-r px-2 py-1.5 text-right font-semibold text-green-900 bg-green-100/40 text-[10px]">
                                       ₹{itemTotal.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                                     </td>
                                   );
@@ -3161,10 +3233,8 @@ export default function FinalizeBoq() {
                                   const itemMultiplier = (itemCol as any).percentageValue || 0;
                                   const itemOp = (itemCol as any).operator || "%";
 
-                                  if (col.hideColumn) return null;
-
                                   return (
-                                    <td key={`${col.name}-${realIdx}`} className="border-r px-2 py-1 bg-transparent relative group/cell align-middle text-[11px] min-w-[180px]">
+                                    <td key={`${col.name}-${idx}`} className="border-r px-2 py-1 bg-transparent relative group/cell align-middle text-[11px] min-w-[180px]">
                                       <div className="flex flex-col h-full min-h-[45px] justify-between">
                                         {!col.isTotal && (
                                           <div className="absolute left-1 top-1 z-20 pointer-events-none group-hover/cell:pointer-events-auto focus-within:pointer-events-auto">

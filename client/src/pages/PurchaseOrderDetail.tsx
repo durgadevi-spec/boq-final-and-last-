@@ -601,6 +601,7 @@ export default function PurchaseOrderDetail() {
                                         <TableHead className="text-slate-700 font-semibold w-12 text-center text-[10px] py-1">#</TableHead>
                                         <TableHead className="text-slate-700 font-semibold text-[10px] py-1">Item Details</TableHead>
                                         <TableHead className="text-slate-700 font-semibold text-[10px] text-center py-1">HSN/SAC</TableHead>
+                                        <TableHead className="text-slate-700 font-semibold text-[10px] text-center py-1 bg-slate-200/50">Original Qty</TableHead>
                                         <TableHead className="text-slate-700 font-semibold text-[10px] text-center py-1">Ordered Qty</TableHead>
                                         <TableHead className="text-slate-700 font-semibold text-[10px] text-center py-1">Change</TableHead>
                                         <TableHead className="text-slate-700 font-semibold text-[10px] text-center py-1">Balance Qty</TableHead>
@@ -642,6 +643,11 @@ export default function PurchaseOrderDetail() {
                                                     {item.unit && <div className="text-[9px] text-slate-400">Unit: {item.unit}</div>}
                                                 </TableCell>
                                                 <TableCell className="text-center text-[11px] text-slate-600 py-2">{item.hsn_code || item.sac_code || "—"}</TableCell>
+
+                                                {/* Original Qty Column */}
+                                                <TableCell className="text-center text-[11px] py-1 bg-slate-50 font-medium text-slate-500">
+                                                    {originalQty.toFixed(2)}
+                                                </TableCell>
 
                                                 {/* Ordered Qty Column */}
                                                 <TableCell className="text-center text-[11px] py-1">
