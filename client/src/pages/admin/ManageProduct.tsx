@@ -16,6 +16,7 @@ import { Layout } from "@/components/layout/Layout";
 import { computeBoq, UnitType } from "@/lib/boqCalc";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { fuzzySearch } from "@/lib/utils";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 
 type Product = { id: string; name: string; subcategory: string; created_at: string; created_by?: string };
 type Material = { id: string; name: string; unit: string; rate: number; category: string; subcategory: string; description?: string; shop_name?: string; shop_id?: string; shopId?: string; code?: string; technicalspecification?: string; created_at?: string };
@@ -125,6 +126,14 @@ export default function ManageProduct() {
         if (!productsData) return [];
         return productsData.filter(p => fuzzySearch(productSearch, p.name || ""));
     }, [productsData, productSearch]);
+
+    const approvedProducts = useMemo(() => {
+        return filteredProducts.filter(p => approvedProductIds.has(p.id));
+    }, [filteredProducts, approvedProductIds]);
+
+    const needsWorkProducts = useMemo(() => {
+        return filteredProducts.filter(p => !approvedProductIds.has(p.id));
+    }, [filteredProducts, approvedProductIds]);
 
     const { data: categoriesData } = useQuery({
         queryKey: ["/api/material-categories"],
@@ -403,39 +412,82 @@ export default function ManageProduct() {
                                         <p className="text-muted-foreground font-medium">Loading products...</p>
                                     </div>
                                 ) : (
-                                    <div className="rounded-xl border shadow-sm overflow-hidden bg-white max-h-[500px] overflow-y-auto">
-                                        <Table>
-                                            <TableHeader className="bg-muted/30 sticky top-0 z-10">
-                                                <TableRow>
-                                                    <TableHead className="w-[60px]"></TableHead>
-                                                    <TableHead className="font-bold">Product Name</TableHead>
-                                                    <TableHead className="font-bold">Created Date</TableHead>
-                                                    <TableHead className="font-bold text-center w-[120px]">Status</TableHead>
-                                                </TableRow>
-                                            </TableHeader>
-                                            <TableBody>
-                                                {filteredProducts.length === 0 ? (
-                                                    <TableRow><TableCell colSpan={4} className="text-center py-10 text-muted-foreground">No products found matching "{productSearch}"</TableCell></TableRow>
-                                                ) : filteredProducts.map(product => {
-                                                    const isApproved = approvedProductIds.has(product.id);
-                                                    return (
-                                                        <TableRow key={product.id} className={`hover:bg-muted/20 transition-colors cursor-pointer ${selectedProduct?.id === product.id ? "bg-primary/5 hover:bg-primary/10" : ""} ${isApproved ? "bg-green-50/50" : ""}`} onClick={() => selectProduct(product)}>
-                                                            <TableCell onClick={e => e.stopPropagation()}>
-                                                                <Checkbox checked={selectedProduct?.id === product.id} onCheckedChange={checked => checked ? selectProduct(product) : setSelectedProduct(null)} />
-                                                            </TableCell>
-                                                            <TableCell className="font-semibold text-base">
-                                                                {product.name}
-                                                            </TableCell>
-                                                            <TableCell className="text-muted-foreground">{product.created_at ? new Date(product.created_at).toLocaleDateString() : "N/A"}</TableCell>
-                                                            <TableCell className="text-center">
-                                                                {isApproved ? <Badge variant="outline" className="bg-green-100 text-green-700 border-green-200 text-[10px] h-5 px-1.5 font-bold uppercase tracking-tight whitespace-nowrap flex items-center gap-1 justify-center w-fit mx-auto"><Check className="h-3 w-3" /> Approved</Badge> : <span className="text-[10px] font-medium text-muted-foreground border border-dashed border-muted/50 px-2 py-0.5 rounded-sm whitespace-nowrap">Needs Work</span>}
-                                                            </TableCell>
+                                    <Tabs defaultValue="needs-work" className="w-full">
+                                        <TabsList className="grid w-full grid-cols-2 mb-6">
+                                            <TabsTrigger value="needs-work" className="font-bold">Needs Work ({needsWorkProducts.length})</TabsTrigger>
+                                            <TabsTrigger value="approved" className="font-bold">Approved ({approvedProducts.length})</TabsTrigger>
+                                        </TabsList>
+                                        
+                                        <TabsContent value="needs-work" className="mt-0">
+                                            <div className="rounded-xl border shadow-sm overflow-hidden bg-white max-h-[500px] overflow-y-auto">
+                                                <Table>
+                                                    <TableHeader className="bg-muted/30 sticky top-0 z-10">
+                                                        <TableRow>
+                                                            <TableHead className="w-[60px]"></TableHead>
+                                                            <TableHead className="font-bold">Product Name</TableHead>
+                                                            <TableHead className="font-bold">Created Date</TableHead>
+                                                            <TableHead className="font-bold text-center w-[120px]">Status</TableHead>
                                                         </TableRow>
-                                                    )
-                                                })}
-                                            </TableBody>
-                                        </Table>
-                                    </div>
+                                                    </TableHeader>
+                                                    <TableBody>
+                                                        {needsWorkProducts.length === 0 ? (
+                                                            <TableRow><TableCell colSpan={4} className="text-center py-10 text-muted-foreground">No products currently need work.</TableCell></TableRow>
+                                                        ) : needsWorkProducts.map(product => {
+                                                            return (
+                                                                <TableRow key={product.id} className={`hover:bg-muted/20 transition-colors cursor-pointer ${selectedProduct?.id === product.id ? "bg-primary/5 hover:bg-primary/10" : ""}`} onClick={() => selectProduct(product)}>
+                                                                    <TableCell onClick={e => e.stopPropagation()}>
+                                                                        <Checkbox checked={selectedProduct?.id === product.id} onCheckedChange={checked => checked ? selectProduct(product) : setSelectedProduct(null)} />
+                                                                    </TableCell>
+                                                                    <TableCell className="font-semibold text-base">
+                                                                        {product.name}
+                                                                    </TableCell>
+                                                                    <TableCell className="text-muted-foreground">{product.created_at ? new Date(product.created_at).toLocaleDateString() : "N/A"}</TableCell>
+                                                                    <TableCell className="text-center">
+                                                                        <span className="text-[10px] font-medium text-muted-foreground border border-dashed border-muted/50 px-2 py-0.5 rounded-sm whitespace-nowrap">Needs Work</span>
+                                                                    </TableCell>
+                                                                </TableRow>
+                                                            )
+                                                        })}
+                                                    </TableBody>
+                                                </Table>
+                                            </div>
+                                        </TabsContent>
+                                        
+                                        <TabsContent value="approved" className="mt-0">
+                                            <div className="rounded-xl border shadow-sm overflow-hidden bg-white max-h-[500px] overflow-y-auto">
+                                                <Table>
+                                                    <TableHeader className="bg-muted/30 sticky top-0 z-10">
+                                                        <TableRow>
+                                                            <TableHead className="w-[60px]"></TableHead>
+                                                            <TableHead className="font-bold">Product Name</TableHead>
+                                                            <TableHead className="font-bold">Created Date</TableHead>
+                                                            <TableHead className="font-bold text-center w-[120px]">Status</TableHead>
+                                                        </TableRow>
+                                                    </TableHeader>
+                                                    <TableBody>
+                                                        {approvedProducts.length === 0 ? (
+                                                            <TableRow><TableCell colSpan={4} className="text-center py-10 text-muted-foreground">No approved products found matching your search.</TableCell></TableRow>
+                                                        ) : approvedProducts.map(product => {
+                                                            return (
+                                                                <TableRow key={product.id} className={`hover:bg-muted/20 transition-colors cursor-pointer ${selectedProduct?.id === product.id ? "bg-primary/5 hover:bg-primary/10" : ""} bg-green-50/50`} onClick={() => selectProduct(product)}>
+                                                                    <TableCell onClick={e => e.stopPropagation()}>
+                                                                        <Checkbox checked={selectedProduct?.id === product.id} onCheckedChange={checked => checked ? selectProduct(product) : setSelectedProduct(null)} />
+                                                                    </TableCell>
+                                                                    <TableCell className="font-semibold text-base">
+                                                                        {product.name}
+                                                                    </TableCell>
+                                                                    <TableCell className="text-muted-foreground">{product.created_at ? new Date(product.created_at).toLocaleDateString() : "N/A"}</TableCell>
+                                                                    <TableCell className="text-center">
+                                                                        <Badge variant="outline" className="bg-green-100 text-green-700 border-green-200 text-[10px] h-5 px-1.5 font-bold uppercase tracking-tight whitespace-nowrap flex items-center gap-1 justify-center w-fit mx-auto"><Check className="h-3 w-3" /> Approved</Badge>
+                                                                    </TableCell>
+                                                                </TableRow>
+                                                            )
+                                                        })}
+                                                    </TableBody>
+                                                </Table>
+                                            </div>
+                                        </TabsContent>
+                                    </Tabs>
                                 )}
                                 {selectedProduct && (
                                     <div className="space-y-3 p-6 bg-primary/5 rounded-xl border border-primary/20">
