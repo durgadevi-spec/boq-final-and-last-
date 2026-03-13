@@ -2893,7 +2893,7 @@ export default function FinalizeBoq() {
                             </div>
                           </th>
                         )}
-                        {allCols.map((col, idx) => (
+                        {allCols.filter(c => !c.hideColumn).map((col, idx) => (
                           <DraggableHeaderCol
                             key={col.name}
                             col={col}
