@@ -8,7 +8,8 @@ import { Input } from "@/components/ui/input";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Search, Loader2, Plus, ArrowRight, ArrowLeft, Trash2, Edit, Check, XCircle, Layers, Copy } from "lucide-react";
+import { Search, Loader2, Plus, ArrowRight, ArrowLeft, Trash2, Edit, Check, XCircle, Layers, Copy, GripVertical } from "lucide-react";
+import { Reorder } from "framer-motion";
 import { Textarea } from "@/components/ui/textarea";
 import apiFetch from "@/lib/api";
 import { useToast } from "@/hooks/use-toast";
@@ -1027,6 +1028,7 @@ export default function ManageProduct() {
                                         <Table>
                                             <TableHeader className="bg-muted/30">
                                                 <TableRow>
+                                                    <TableHead className="w-[30px]"></TableHead>
                                                     {["Sl", "", "Item", "Shop", "Item Description", "Unit"].map((h, i) => (
                                                         <TableHead key={i} className={`font-bold ${i < 2 ? "w-[40px]" : i === 2 ? "py-4" : i === 3 ? "w-[100px]" : i === 4 ? "w-[120px]" : "w-[60px]"}`}>{h}</TableHead>
                                                     ))}
@@ -1050,17 +1052,20 @@ export default function ManageProduct() {
                                                     {!compactMode && <TableHead className="w-[90px] font-bold">Per {requiredUnitType} Qty</TableHead>}
                                                 </TableRow>
                                             </TableHeader>
-                                            <TableBody>
+                                            <Reorder.Group as="tbody" axis="y" values={configMaterials} onReorder={setConfigMaterials}>
                                                 {boqResults.computed.map((m, idx) => {
                                                     const baseAmt = m.baseQty * (m.supplyRate + m.installRate);
                                                     return (
-                                                        <TableRow key={m.id} className="hover:bg-muted/5">
+                                                        <Reorder.Item key={m.id} value={configMaterials.find(cm => cm.id === m.id) || m} as="tr" className="hover:bg-muted/5 transition-colors cursor-default bg-white border-b">
+                                                            <TableCell className="text-center cursor-grab active:cursor-grabbing">
+                                                                <GripVertical className="h-4 w-4 text-muted-foreground/40" />
+                                                            </TableCell>
                                                             <TableCell className="text-center font-medium text-[10px]">{idx + 1}</TableCell>
                                                             <TableCell className="text-center">
                                                                 <Button variant="ghost" size="sm" onClick={() => removeConfigMaterial(m.id!)} className="h-6 w-6 p-0 text-red-500 hover:text-red-700 hover:bg-red-50"><span className="text-xs font-bold">×</span></Button>
                                                             </TableCell>
-                                                            <TableCell className="font-semibold text-[10px]">{m.name}</TableCell>
-                                                            <TableCell className="text-[10px]">{m.shop_name || "N/A"}</TableCell>
+                                                            <TableCell className="font-semibold text-[10px] whitespace-nowrap overflow-hidden text-ellipsis max-w-[150px]">{m.name}</TableCell>
+                                                            <TableCell className="text-[10px] whitespace-nowrap overflow-hidden text-ellipsis max-w-[100px]">{m.shop_name || "N/A"}</TableCell>
                                                             <TableCell><Input value={m.location} onChange={e => updateConfig(m.id!, "location", e.target.value)} className="h-8 border-muted text-[10px] px-2" /></TableCell>
                                                             <TableCell className="text-[10px] font-medium">{m.unit}</TableCell>
                                                             <TableCell><div className="flex justify-center"><Input type="number" value={m.baseQty} onChange={e => updateConfig(m.id!, "baseQty", Number(e.target.value))} className="h-8 border-muted text-[11px] px-2 font-bold w-20 text-center" /></div></TableCell>
@@ -1076,20 +1081,20 @@ export default function ManageProduct() {
                                                             )}
                                                             <TableCell className="text-[10px] font-bold text-blue-600">₹{m.lineTotal.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</TableCell>
                                                             {!compactMode && <TableCell className="text-[10px] font-bold text-primary">{m.perUnitQty.toFixed(4)}</TableCell>}
-                                                        </TableRow>
+                                                        </Reorder.Item>
                                                     );
                                                 })}
                                                 <TableRow className="bg-muted/20 font-black">
-                                                    <TableCell colSpan={compactMode ? 8 : 13} className="text-right py-3 pr-4">Total (Incl. Wastage)</TableCell>
+                                                    <TableCell colSpan={compactMode ? 9 : 14} className="text-right py-3 pr-4">Total (Incl. Wastage)</TableCell>
                                                     <TableCell className="text-[11px] text-primary">₹{totalCost.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</TableCell>
                                                     {!compactMode && <TableCell></TableCell>}
                                                 </TableRow>
                                                 <TableRow className="bg-primary/5 font-black border-t-2 border-primary/20">
-                                                    <TableCell colSpan={compactMode ? 8 : 13} className="text-right py-4 pr-4 text-primary uppercase tracking-widest text-xs">Rate per {requiredUnitType}</TableCell>
+                                                    <TableCell colSpan={compactMode ? 9 : 14} className="text-right py-4 pr-4 text-primary uppercase tracking-widest text-xs">Rate per {requiredUnitType}</TableCell>
                                                     <TableCell className="text-sm text-primary font-black underline decoration-primary decoration-2 underline-offset-8">₹{(totalCost / (baseRequiredQty || 1)).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</TableCell>
                                                     {!compactMode && <TableCell></TableCell>}
                                                 </TableRow>
-                                            </TableBody>
+                                            </Reorder.Group>
                                         </Table>
                                     </div>
 
