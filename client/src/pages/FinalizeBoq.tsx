@@ -1679,7 +1679,7 @@ export default function FinalizeBoq() {
           else if (colName === "HSN") rowValues[colName] = tableData.hsn_code || (tableData.hsn_sac_type === 'hsn' ? tableData.hsn_sac_code : "") || "—";
           else if (colName === "SAC") rowValues[colName] = tableData.sac_code || (tableData.hsn_sac_type === 'sac' ? tableData.hsn_sac_code : "") || "—";
           else if (colName === "Rate / Unit") rowValues[colName] = Number(rateSqft.toFixed(2));
-          else if (colName === "Unit") rowValues[colName] = currentStep11Items[0]?.unit || tableData.unit || "";
+          else if (colName === "Unit") rowValues[colName] = productUnits[boqItem.id] ?? (currentStep11Items[0]?.unit || tableData.unit || "");
           else if (colName === "Qty") rowValues[colName] = Number(displayQty.toFixed(2));
           else if (colName === "Total Value (₹)") rowValues[colName] = Number(totalVal.toFixed(2));
           else if (colName === "Override Rate") rowValues[colName] = Number((parseFloat(overrideRates[boqItem.id] || "0") || 0).toFixed(2));
@@ -1941,7 +1941,7 @@ export default function FinalizeBoq() {
         if (selectedPdfExportCols.includes("Description")) row.push(manualDesc);
         if (selectedPdfExportCols.includes("HSN")) row.push(tableData.hsn_code || (tableData.hsn_sac_type === 'hsn' ? tableData.hsn_sac_code : "") || "—");
         if (selectedPdfExportCols.includes("SAC")) row.push(tableData.sac_code || (tableData.hsn_sac_type === 'sac' ? tableData.hsn_sac_code : "") || "—");
-        if (selectedPdfExportCols.includes("Unit")) row.push(currentStep11Items[0]?.unit || tableData.unit || "");
+        if (selectedPdfExportCols.includes("Unit")) row.push(productUnits[boqItem.id] ?? (currentStep11Items[0]?.unit || tableData.unit || ""));
         if (selectedPdfExportCols.includes("Qty")) row.push(displayQty.toFixed(2));
         if (selectedPdfExportCols.includes("Rate")) row.push(rateSqft.toFixed(2));
         if (selectedPdfExportCols.includes("Total")) row.push(totalVal.toFixed(2));
