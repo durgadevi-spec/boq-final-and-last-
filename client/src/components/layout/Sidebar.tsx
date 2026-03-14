@@ -372,12 +372,12 @@ export function Sidebar() {
           )}
 
           {/* Creations Section */}
-          {!isVoltAmpele && (isAdminOrSoftwareOrPurchaseTeam || isPreSales || isProductManager) && (
+          {((!isVoltAmpele && (isAdminOrSoftwareOrPurchaseTeam || isPreSales || isProductManager)) || isVoltAmpele) && (
             <>
               <div className="px-3 mb-2 mt-4 text-xs font-semibold text-muted-foreground uppercase tracking-wider">
                 Creations
               </div>
-              {isAdminOrSoftwareOrPurchaseTeam && !isPreSales && !isContractor && !isProductManager && (
+              {isAdminOrSoftwareOrPurchaseTeam && !isPreSales && !isContractor && !isProductManager && !isVoltAmpele && (
                 <Link href="/admin/dashboard?tab=materials">
                   <span
                     className={cn(
@@ -392,7 +392,7 @@ export function Sidebar() {
                   </span>
                 </Link>
               )}
-              {(isAdminOrSoftwareOrPurchaseTeam || isPreSales || isProductManager) && (
+              {(isAdminOrSoftwareOrPurchaseTeam || isPreSales || isProductManager || isVoltAmpele) && (
                 <Link href="/admin/dashboard?tab=create-product">
                   <span
                     className={cn(
@@ -407,7 +407,7 @@ export function Sidebar() {
                   </span>
                 </Link>
               )}
-              {canCreateBOQAndProject && !isProductManager && (
+              {canCreateBOQAndProject && !isProductManager && !isVoltAmpele && (
                 <Link href="/create-project">
                   <span
                     className={cn(
