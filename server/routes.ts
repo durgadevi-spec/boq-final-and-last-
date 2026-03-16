@@ -5742,44 +5742,85 @@ export async function registerRoutes(
       fs.appendFileSync('server_api_log.txt', logMsg);
 
       try {
+        // Helper function to check if a string is a valid UUID
+        const isValidUUID = (id: string) => /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id);
+        const isUUID = isValidUUID(productId);
+
         // 0. Fetch the product name for this productId to ensure we catch all configurations
         // (Legacy data might use different UUIDs for the same product name)
-        const productInfo = await query("SELECT name FROM products WHERE id = $1", [productId]);
-        const productName = productInfo.rows[0]?.name;
+        let productName = null;
+        if (isUUID) {
+          const productInfo = await query("SELECT name FROM products WHERE id = $1", [productId]);
+          productName = productInfo.rows[0]?.name;
+        }
 
         // 1. Fetch approved configurations (Step 11)
-        // Query by BOTH productId and productName to ensure consistency
-        const step11Result = await query(
-          `SELECT s.*, pr.name as live_product_name, 
+        // Query by BOTH productId and productName to ensure consistency, but ONLY if productId is a valid UUID
+        let step11Query = "";
+        let step11Params: any[] = [];
+        if (isUUID) {
+          step11Query = `SELECT s.*, pr.name as live_product_name, 
            COALESCE(pr.name, s.product_name) as product_name, 
            'approved' as status FROM step11_products s
            LEFT JOIN products pr ON s.product_id = pr.id
            WHERE s.product_id = $1 ${productName ? "OR s.product_name = $2" : ""} 
-           ORDER BY s.updated_at DESC`,
-          productName ? [productId, productName] : [productId],
-        );
+           ORDER BY s.updated_at DESC`;
+          step11Params = productName ? [productId, productName] : [productId];
+        } else {
+          // If productId is not a UUID (it's a legacy name), just search by name
+          const searchName = productName || productId;
+          step11Query = `SELECT s.*, pr.name as live_product_name, 
+           COALESCE(pr.name, s.product_name) as product_name, 
+           'approved' as status FROM step11_products s
+           LEFT JOIN products pr ON s.product_id = pr.id
+           WHERE s.product_name = $1
+           ORDER BY s.updated_at DESC`;
+          step11Params = [searchName];
+        }
+        const step11Result = await query(step11Query, step11Params);
 
         // 2. Fetch draft configurations (Step 3)
-        const step3Result = await query(
-          `SELECT s.*, pr.name as live_product_name, 
+        let step3Query = "";
+        let step3Params: any[] = [];
+        if (isUUID) {
+          step3Query = `SELECT s.*, pr.name as live_product_name, 
            COALESCE(pr.name, s.product_name) as product_name, 
            'draft' as status FROM product_step3_config s
-           LEFT JOIN products pr ON s.product_id = pr.id
+           LEFT JOIN products pr ON s.product_id = pr.id::varchar
            WHERE s.product_id = $1 ${productName ? "OR s.product_name = $2" : ""} 
-           ORDER BY s.updated_at DESC`,
-          productName ? [productId, productName] : [productId],
-        );
+           ORDER BY s.updated_at DESC`;
+          step3Params = productName ? [productId, productName] : [productId];
+        } else {
+          const searchName = productName || productId;
+          step3Query = `SELECT s.*, pr.name as live_product_name, 
+           COALESCE(pr.name, s.product_name) as product_name, 
+           'draft' as status FROM product_step3_config s
+           LEFT JOIN products pr ON s.product_id = pr.id::varchar
+           WHERE s.product_name = $1
+           ORDER BY s.updated_at DESC`;
+          step3Params = [searchName];
+        }
+        const step3Result = await query(step3Query, step3Params);
 
         const resLog = `  -> Found ${step11Result.rows.length} approved and ${step3Result.rows.length} draft configurations\n`;
         fs.appendFileSync('server_api_log.txt', resLog);
 
         // Fetch latest Step 3 config for this product to use as smart fallback for legacy records
-        const step3LatestResult = await query(
-          `SELECT required_unit_type, base_required_qty, wastage_pct_default, description FROM product_step3_config 
+        let step3LatestQuery = "";
+        let step3LatestParams: any[] = [];
+        if (isUUID) {
+          step3LatestQuery = `SELECT required_unit_type, base_required_qty, wastage_pct_default, description FROM product_step3_config 
            WHERE product_id = $1 ${productName ? "OR product_name = $2" : ""} 
-           ORDER BY updated_at DESC LIMIT 1`,
-          productName ? [productId, productName] : [productId]
-        );
+           ORDER BY updated_at DESC LIMIT 1`;
+          step3LatestParams = productName ? [productId, productName] : [productId];
+        } else {
+          const searchName = productName || productId;
+          step3LatestQuery = `SELECT required_unit_type, base_required_qty, wastage_pct_default, description FROM product_step3_config 
+           WHERE product_name = $1
+           ORDER BY updated_at DESC LIMIT 1`;
+          step3LatestParams = [searchName];
+        }
+        const step3LatestResult = await query(step3LatestQuery, step3LatestParams);
         const step3Fallback = step3LatestResult.rows[0] || { required_unit_type: 'Sqft', base_required_qty: 100, wastage_pct_default: 0, description: null };
 
         // 3. Process Step 11 configurations
@@ -7219,5 +7260,169 @@ ${list.rows.map((row: any) => `- ${row.name}`).join('\n')}`;
     }
   });
 
+  // ============================================================
+  // DYNAMIC USER ACCESS CONTROL (Admin Panel Feature)
+  // New tables only — no existing tables are touched.
+  // ============================================================
+
+  // Ensure user_management_registry table exists (entirely new)
+  try {
+    await query(`
+      CREATE TABLE IF NOT EXISTS user_management_registry (
+        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        user_id VARCHAR(36) NOT NULL UNIQUE,
+        is_custom_managed BOOLEAN NOT NULL DEFAULT TRUE,
+        created_at TIMESTAMPTZ DEFAULT NOW()
+      )
+    `);
+    await query(`CREATE INDEX IF NOT EXISTS idx_umr_user_id ON user_management_registry(user_id)`);
+  } catch (err: unknown) {
+    console.warn('[dynamic-access] Could not create user_management_registry:', (err as any)?.message || err);
+  }
+
+  // Ensure user_sidebar_permissions table exists (entirely new)
+  try {
+    await query(`
+      CREATE TABLE IF NOT EXISTS user_sidebar_permissions (
+        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        user_id VARCHAR(36) NOT NULL,
+        module_name TEXT NOT NULL,
+        created_at TIMESTAMPTZ DEFAULT NOW(),
+        UNIQUE(user_id, module_name)
+      )
+    `);
+    await query(`CREATE INDEX IF NOT EXISTS idx_usp_user_id ON user_sidebar_permissions(user_id)`);
+  } catch (err: unknown) {
+    console.warn('[dynamic-access] Could not create user_sidebar_permissions:', (err as any)?.message || err);
+  }
+
+  /**
+   * GET /api/admin/dynamic-access/pending-users
+   * Returns users NOT yet in user_management_registry (excluding admin role)
+   */
+  app.get('/api/admin/dynamic-access/pending-users', authMiddleware, requireRole('admin'), async (_req: Request, res: Response) => {
+    try {
+      const result = await query(`
+        SELECT u.id, u.username, u.role, u.full_name, u.created_at
+        FROM users u
+        WHERE u.role NOT IN ('admin', 'software_team')
+          AND u.id NOT IN (SELECT user_id FROM user_management_registry)
+        ORDER BY u.created_at DESC
+      `);
+      res.json({ users: result.rows });
+    } catch (err) {
+      console.error('/api/admin/dynamic-access/pending-users error:', err);
+      res.status(500).json({ message: 'Failed to load pending users' });
+    }
+  });
+
+  /**
+   * GET /api/admin/dynamic-access/managed-users
+   * Returns users already enrolled with their assigned modules
+   */
+  app.get('/api/admin/dynamic-access/managed-users', authMiddleware, requireRole('admin'), async (_req: Request, res: Response) => {
+    try {
+      const usersResult = await query(`
+        SELECT u.id, u.username, u.role, u.full_name, umr.created_at as assigned_at
+        FROM users u
+        INNER JOIN user_management_registry umr ON umr.user_id = u.id
+        ORDER BY umr.created_at DESC
+      `);
+      const users = usersResult.rows;
+      // Attach permissions for each user
+      for (const u of users) {
+        const perms = await query(`SELECT module_name FROM user_sidebar_permissions WHERE user_id = $1 ORDER BY module_name`, [u.id]);
+        u.modules = perms.rows.map((r: any) => r.module_name);
+      }
+      res.json({ users });
+    } catch (err) {
+      console.error('/api/admin/dynamic-access/managed-users error:', err);
+      res.status(500).json({ message: 'Failed to load managed users' });
+    }
+  });
+
+  /**
+   * GET /api/admin/dynamic-access/permissions/:userId
+   * Returns the list of allowed module names for a specific user
+   */
+  app.get('/api/admin/dynamic-access/permissions/:userId', authMiddleware, requireRole('admin'), async (req: Request, res: Response) => {
+    try {
+      const { userId } = req.params;
+      const result = await query(`SELECT module_name FROM user_sidebar_permissions WHERE user_id = $1 ORDER BY module_name`, [userId]);
+      res.json({ modules: result.rows.map((r: any) => r.module_name) });
+    } catch (err) {
+      console.error('/api/admin/dynamic-access/permissions/:userId error:', err);
+      res.status(500).json({ message: 'Failed to load permissions' });
+    }
+  });
+
+  /**
+   * POST /api/admin/dynamic-access/assign
+   * Body: { userId: string, modules: string[] }
+   * Saves permissions and registers the user into user_management_registry
+   */
+  app.post('/api/admin/dynamic-access/assign', authMiddleware, requireRole('admin'), async (req: Request, res: Response) => {
+    try {
+      const { userId, modules } = req.body as { userId: string; modules: string[] };
+      if (!userId) {
+        res.status(400).json({ message: 'userId is required' });
+        return;
+      }
+
+      // Enroll user in management registry (upsert)
+      await query(`
+        INSERT INTO user_management_registry (user_id, is_custom_managed)
+        VALUES ($1, TRUE)
+        ON CONFLICT (user_id) DO NOTHING
+      `, [userId]);
+
+      // Delete existing permissions then insert new ones
+      await query(`DELETE FROM user_sidebar_permissions WHERE user_id = $1`, [userId]);
+
+      if (Array.isArray(modules) && modules.length > 0) {
+        for (const mod of modules) {
+          if (mod && typeof mod === 'string') {
+            await query(`
+              INSERT INTO user_sidebar_permissions (user_id, module_name)
+              VALUES ($1, $2)
+              ON CONFLICT (user_id, module_name) DO NOTHING
+            `, [userId, mod]);
+          }
+        }
+      }
+
+      res.json({ message: 'Permissions saved successfully' });
+    } catch (err) {
+      console.error('/api/admin/dynamic-access/assign error:', err);
+      res.status(500).json({ message: 'Failed to save permissions' });
+    }
+  });
+
+  /**
+   * GET /api/my-permissions
+   * Returns the current logged-in user's custom module list (if custom managed)
+   * Returns { isCustomManaged: false } if user is not under custom management
+   */
+  app.get('/api/my-permissions', authMiddleware, async (req: Request, res: Response) => {
+    try {
+      if (!req.user) {
+        res.status(401).json({ message: 'Unauthorized' });
+        return;
+      }
+      const userId = req.user.id;
+      const registry = await query(`SELECT id FROM user_management_registry WHERE user_id = $1`, [userId]);
+      if (registry.rows.length === 0) {
+        res.json({ isCustomManaged: false, modules: [] });
+        return;
+      }
+      const perms = await query(`SELECT module_name FROM user_sidebar_permissions WHERE user_id = $1 ORDER BY module_name`, [userId]);
+      res.json({ isCustomManaged: true, modules: perms.rows.map((r: any) => r.module_name) });
+    } catch (err) {
+      console.error('/api/my-permissions error:', err);
+      res.status(500).json({ message: 'Failed to load permissions' });
+    }
+  });
+
   return httpServer;
 }
+
