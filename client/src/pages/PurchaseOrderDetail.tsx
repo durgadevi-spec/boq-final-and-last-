@@ -62,6 +62,8 @@ interface PurchaseOrder {
     project_client?: string;
     project_location?: string;
     approval_comments?: string | null;
+    shipping_address?: string | null;
+    payment_terms?: string | null;
 }
 
 interface PurchaseOrderItem {
@@ -109,6 +111,8 @@ export default function PurchaseOrderDetail() {
 
     const [relatedPos, setRelatedPos] = useState<any[]>([]);
     const [parentItems, setParentItems] = useState<PurchaseOrderItem[]>([]);
+    const [showDeleteExistingDialog, setShowDeleteExistingDialog] = useState(false);
+    const [existingRevisionToDelete, setExistingRevisionToDelete] = useState<any>(null);
 
     const searchParams = new URLSearchParams(window.location.search);
     const mode = searchParams.get("mode");
@@ -185,9 +189,69 @@ export default function PurchaseOrderDetail() {
     };
 
     const handleReviseClick = () => {
+        if (!po) return;
+        // Check if there's already a draft or pending revision in the lineage
+        // Extraction logic to match the base PO (stripping -R\d+ or -Deferred\d+)
+        const baseNumber = po.po_number.replace(/-(R\d+|Deferred\d+)$/, "");
+        const existingRevision = relatedPos.find(p => 
+            p.id !== po.id && 
+            p.po_number.startsWith(baseNumber) && 
+            (p.status.toLowerCase() === 'draft' || p.status.toLowerCase() === 'pending_approval')
+        );
+
+        if (existingRevision) {
+            setExistingRevisionToDelete(existingRevision);
+            setShowDeleteExistingDialog(true);
+        } else {
+            startRevision();
+        }
+    };
+
+    const startRevision = () => {
+        if (!po) return;
         setIsReviseMode(true);
         setEditedItems(items.map(i => ({ ...i })));
         setDeletedItems([]);
+        
+        // Ensure editable fields are initialized from current PO
+        setEditableDeliveryDate(po.delivery_date ? new Date(po.delivery_date).toISOString().split('T')[0] : "");
+        setShippingAddress(po.shipping_address || "");
+        setPaymentTerms(po.payment_terms || "");
+    };
+
+    const confirmDeleteAndRevise = async () => {
+        if (!existingRevisionToDelete) return;
+        
+        try {
+            setIsSubmitting(true);
+            const res = await apiFetch(`/api/purchase-orders/${existingRevisionToDelete.id}`, {
+                method: "DELETE",
+            });
+            
+            if (res.ok) {
+                toast({
+                    title: "Success",
+                    description: `Existing revision ${existingRevisionToDelete.po_number} has been deleted.`,
+                });
+                // Remove from local relatedPos state
+                setRelatedPos(prev => prev.filter(p => p.id !== existingRevisionToDelete.id));
+                
+                // Now start our revision
+                startRevision();
+            } else {
+                toast({
+                    title: "Error",
+                    description: "Failed to delete previous revision.",
+                    variant: "destructive",
+                });
+            }
+        } catch (error) {
+            toast({ title: "Error", description: "Network error while deleting revision", variant: "destructive" });
+        } finally {
+            setIsSubmitting(false);
+            setShowDeleteExistingDialog(false);
+            setExistingRevisionToDelete(null);
+        }
     };
 
     const handleQtyChange = (itemId: string, newQty: string) => {
@@ -229,6 +293,21 @@ export default function PurchaseOrderDetail() {
             return;
         }
 
+        if (!editableDeliveryDate) {
+            toast({ title: "Error", description: "Expected Delivery date is mandatory.", variant: "destructive" });
+            return;
+        }
+
+        if (!shippingAddress.trim()) {
+            toast({ title: "Error", description: "Deliver To (Shipping Address) is mandatory.", variant: "destructive" });
+            return;
+        }
+
+        if (!paymentTerms) {
+            toast({ title: "Error", description: "Payment Terms are mandatory.", variant: "destructive" });
+            return;
+        }
+
         const hasIncrease = editedItems.some(edited => {
             const original = items.find(i => i.id === edited.id);
             if (!original) return false;
@@ -249,7 +328,14 @@ export default function PurchaseOrderDetail() {
             const res = await apiFetch(`/api/purchase-orders/${id}/revise`, {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ items: editedItems, reason, deletedItems }),
+                body: JSON.stringify({ 
+                    items: editedItems, 
+                    reason, 
+                    deletedItems,
+                    delivery_date: editableDeliveryDate,
+                    shippingAddress,
+                    paymentTerms
+                }),
             });
             if (res.ok) {
                 const data = await res.json();
@@ -281,6 +367,8 @@ export default function PurchaseOrderDetail() {
                 return <Badge variant="outline" className="bg-indigo-50 text-indigo-600 border-indigo-200">Ordered</Badge>;
             case "delivered":
                 return <Badge variant="outline" className="bg-emerald-50 text-emerald-600 border-emerald-200">Delivered</Badge>;
+            case "revised":
+                return <Badge variant="outline" className="bg-slate-900 text-white border-slate-900 font-bold px-3">REVISED</Badge>;
             default:
                 return <Badge variant="outline">{status}</Badge>;
         }
@@ -368,7 +456,7 @@ export default function PurchaseOrderDetail() {
                 {/* Actions Header */}
                 <div className="flex justify-between items-start no-print">
                     <div className="space-y-1">
-                        <Button variant="ghost" size="sm" className="-ml-2 text-muted-foreground" onClick={() => setLocation("/purchase-orders")}>
+                        <Button variant="ghost" size="sm" className="-ml-2 text-muted-foreground" onClick={() => setLocation(mode === "approval" ? "/po-approvals" : "/purchase-orders")}>
                             <ChevronLeft className="h-4 w-4 mr-1" /> Back to List
                         </Button>
                         <h1 className="text-2xl font-bold tracking-tight flex items-center gap-3">
@@ -466,94 +554,90 @@ export default function PurchaseOrderDetail() {
                     {po.status === 'approved' && <div className="watermark no-print">Approved</div>}
 
                     <CardContent className="p-8 space-y-8 relative z-10">
-                        {/* Header Section - Logo + Company Info + BILL badge */}
-                        <div className="flex justify-between items-start pb-6">
-                            <div className="flex items-start gap-4">
-                                <img src="/logo.png" alt="Concept Trunk Interiors" className="h-20 w-auto" />
+                        {/* Header Section - Logo + Company Info + PO Info */}
+                        <div className="flex justify-between items-start pb-6 border-b border-slate-200">
+                            <div className="flex gap-6">
+                                <img src="/logo.png" alt="Concept Trunk Interiors" className="h-16 w-auto" />
+                                <div className="text-sm leading-tight text-slate-700 space-y-0.5">
+                                    <p className="font-bold text-slate-800">Concept Trunk Interiors</p>
+                                    <p>12/36A, Indira Nagar, Medavakkam</p>
+                                    <p>Chennai, Tamil Nadu 600100</p>
+                                    <p className="text-[10px] text-slate-500">GSTIN 33ASOPS5560M1Z1</p>
+                                </div>
                             </div>
-                            <div className="text-right">
-                                <div className="text-2xl font-bold text-slate-800 tracking-tight">PURCHASE ORDER</div>
-                                <div className="text-sm text-slate-500 mt-1">PO# <span className="font-semibold text-slate-700">{po.po_number}</span></div>
+                            <div className="text-right space-y-1">
+                                <div className="text-xl font-black text-slate-900 tracking-tighter">PURCHASE ORDER</div>
+                                <div className="text-sm text-slate-500">PO# <span className="font-bold text-slate-800">{po.po_number}</span></div>
+                                
+                                <div className="pt-2 space-y-1">
+                                    <div className="flex justify-end gap-3 text-xs">
+                                        <span className="text-slate-500 uppercase font-semibold tracking-wider">Date:</span>
+                                        <span className="font-bold text-slate-700">{new Date(po.created_at).toLocaleDateString('en-IN', { day: '2-digit', month: '2-digit', year: 'numeric' })}</span>
+                                    </div>
+                                    
+                                    {isReviseMode ? (
+                                        <div className="flex justify-end gap-2 items-center">
+                                            <span className="text-[10px] text-slate-500 uppercase font-semibold tracking-wider">Exp. Delivery <span className="text-red-500">*</span>:</span>
+                                            <Input 
+                                                type="date" 
+                                                className="w-32 h-7 text-xs p-1"
+                                                value={editableDeliveryDate}
+                                                onChange={(e) => setEditableDeliveryDate(e.target.value)}
+                                            />
+                                        </div>
+                                    ) : (
+                                        (po.delivery_date || editableDeliveryDate) && (
+                                            <div className="flex justify-end gap-3 text-xs">
+                                                <span className="text-slate-500 uppercase font-semibold tracking-wider">Expected Delivery :</span>
+                                                <span className="font-bold text-slate-700">
+                                                    {new Date(editableDeliveryDate || po.delivery_date || "").toLocaleDateString('en-IN', { day: '2-digit', month: '2-digit', year: 'numeric' })}
+                                                </span>
+                                            </div>
+                                        )
+                                    )}
+                                </div>
                             </div>
                         </div>
 
-                        {/* Company Address Block */}
-                        <div className="pb-4 border-b border-slate-200">
-                            <div className="text-sm leading-relaxed text-slate-700">
-                                <p className="font-semibold">Concept Trunk Interiors</p>
-                                <p>12/36A, Indira Nagar</p>
-                                <p>Medavakkam</p>
-                                <p>Chennai Tamil Nadu 600100</p>
-                                <p>India</p>
-                                <p className="text-xs text-slate-500 mt-1">GSTIN 33ASOPS5560M1Z1</p>
-                            </div>
-                        </div>
+                        {/* Bill From / Deliver To Grid */}
+                        <div className="grid grid-cols-2 gap-12 py-2">
+                            <div className="space-y-6">
+                                <div className="space-y-1">
+                                    <p className="text-[10px] text-slate-500 font-bold uppercase tracking-widest">Bill From</p>
+                                    <div className="text-sm">
+                                        <p className="font-bold text-slate-800">{po.vendor_name || "Vendor"}</p>
+                                        {po.vendor_location && <p className="text-slate-600 truncate">{po.vendor_location}</p>}
+                                        <p className="text-slate-600">
+                                            {[po.vendor_city, po.vendor_state, po.vendor_pincode].filter(Boolean).join(', ')}
+                                        </p>
+                                        {po.vendor_gstin && <p className="text-[10px] text-slate-500 mt-1 font-medium">GSTIN: {po.vendor_gstin}</p>}
+                                    </div>
+                                </div>
 
-                        {/* Bill From / Deliver To / Dates Grid */}
-                        <div className="flex justify-between gap-8 py-4">
-                            <div className="flex-1">
-                                <p className="text-sm text-slate-500 mb-1">Bill From</p>
-                                <p className="font-semibold text-slate-800">{po.vendor_name || "Vendor"}</p>
-                                {po.vendor_location && <p className="text-sm text-slate-600">{po.vendor_location}</p>}
-                                {po.vendor_city && <p className="text-sm text-slate-600">{po.vendor_city}</p>}
-                                {(po.vendor_state || po.vendor_pincode) && (
-                                    <p className="text-sm text-slate-600">
-                                        {po.vendor_state || ''} {po.vendor_pincode || ''}
+                                <div className="space-y-1">
+                                    <p className="text-xs text-slate-600">
+                                        <span className="font-semibold text-slate-500 uppercase text-[10px] tracking-wider mr-2">Project Name:</span>
+                                        <span className="font-bold text-slate-700 uppercase">{po.project_client || po.project_name || '—'}</span>
                                     </p>
-                                )}
-                                <p className="text-sm text-slate-600">India</p>
-                                {po.vendor_gstin && (
-                                    <p className="text-xs text-slate-500 mt-1">GSTIN {po.vendor_gstin}</p>
-                                )}
+                                </div>
                             </div>
                             
-                            <div className="flex-1">
-                                <p className="text-sm text-slate-500 mb-1">Deliver To</p>
+                            <div className="space-y-1">
+                                <p className="text-[10px] text-slate-500 font-bold uppercase tracking-widest">
+                                    Deliver To {isReviseMode && <span className="text-red-500">*</span>}
+                                </p>
                                 {isReviseMode ? (
                                     <Textarea 
                                         placeholder="Enter Shipping Address..."
-                                        className="text-sm text-slate-600 min-h-[100px] w-full"
+                                        className="text-xs text-slate-600 min-h-[100px] w-full resize-none p-3 border-slate-200 shadow-sm"
                                         value={shippingAddress}
                                         onChange={(e) => setShippingAddress(e.target.value)}
                                     />
                                 ) : (
-                                    shippingAddress ? (
-                                        <div className="text-sm text-slate-600 whitespace-pre-wrap">{shippingAddress}</div>
-                                    ) : (
-                                        <div className="text-sm text-slate-400 italic">No alternative shipping address provided. Assuming standard company address.</div>
-                                    )
-                                )}
-                            </div>
-
-                            <div className="flex-1 text-right space-y-2">
-                                <div className="flex justify-end gap-8">
-                                    <span className="text-sm text-slate-500">PO Date :</span>
-                                    <span className="text-sm font-medium text-slate-700">{new Date(po.created_at).toLocaleDateString('en-IN', { day: '2-digit', month: '2-digit', year: 'numeric' })}</span>
-                                </div>
-                                {isReviseMode ? (
-                                    <div className="flex justify-end gap-2 items-center">
-                                        <span className="text-sm text-slate-500">Exp. Delivery :</span>
-                                        <Input 
-                                            type="date" 
-                                            className="w-36 h-8 text-sm"
-                                            value={editableDeliveryDate}
-                                            onChange={(e) => setEditableDeliveryDate(e.target.value)}
-                                        />
+                                    <div className="text-xs text-slate-600 whitespace-pre-wrap leading-relaxed italic border-l-2 border-slate-100 pl-4 bg-slate-50/30 p-3 rounded-r">
+                                        {shippingAddress || "Standard office delivery"}
                                     </div>
-                                ) : (
-                                    (po.delivery_date || editableDeliveryDate) && (
-                                        <div className="flex justify-end gap-8">
-                                            <span className="text-sm text-slate-500">Expected Delivery :</span>
-                                            <span className="text-sm font-medium text-slate-700">
-                                                {new Date(editableDeliveryDate || po.delivery_date || "").toLocaleDateString('en-IN', { day: '2-digit', month: '2-digit', year: 'numeric' })}
-                                            </span>
-                                        </div>
-                                    )
                                 )}
-                                <div className="flex justify-end gap-8">
-                                    <span className="text-sm text-slate-500">Customer Name :</span>
-                                    <span className="text-sm font-medium text-slate-700 uppercase">{po.project_client || po.project_name || '—'}</span>
-                                </div>
                             </div>
                         </div>
 
@@ -608,7 +692,6 @@ export default function PurchaseOrderDetail() {
                                         <TableHead className="text-slate-700 font-semibold text-[10px] text-center py-1">Tax %</TableHead>
                                         <TableHead className="text-slate-700 font-semibold text-[10px] text-right py-1">Rate</TableHead>
                                         <TableHead className="text-slate-700 font-semibold text-[10px] text-right py-1 pr-4">Amount</TableHead>
-                                        <TableHead className="text-slate-700 font-semibold text-[10px] text-center py-1">Exp. Delivery</TableHead>
                                         {isReviseMode && <TableHead className="text-slate-700 font-semibold text-[10px] text-center w-8 py-1">Action</TableHead>}
                                     </TableRow>
                                 </TableHeader>
@@ -709,19 +792,7 @@ export default function PurchaseOrderDetail() {
                                                     {parseFloat(item.amount).toLocaleString('en-IN', { minimumFractionDigits: 2 })}
                                                 </TableCell>
 
-                                                {/* Delivery Date per Item */}
-                                                <TableCell className="text-center text-[11px] py-1">
-                                                    {isReviseMode ? (
-                                                        <Input 
-                                                            type="date" 
-                                                            className="w-24 h-6 text-[9px] p-0.5 mx-auto"
-                                                            value={item.delivery_date || ""}
-                                                            onChange={(e) => handleItemDateChange(item.id, e.target.value)}
-                                                        />
-                                                    ) : (
-                                                        <span className="text-slate-600">{item.delivery_date ? new Date(item.delivery_date).toLocaleDateString() : "—"}</span>
-                                                    )}
-                                                </TableCell>
+
 
                                                 {isReviseMode && (
                                                     <TableCell className="text-center py-1">
@@ -743,7 +814,9 @@ export default function PurchaseOrderDetail() {
                             <div className="flex-1 pr-8 pt-2">
                                 <div className="space-y-4">
                                     <div>
-                                        <p className="text-xs text-slate-500 mb-1.5 font-semibold uppercase tracking-wider">Payment Terms</p>
+                                        <p className="text-xs text-slate-500 mb-1.5 font-semibold uppercase tracking-wider">
+                                            Payment Terms {isReviseMode && <span className="text-red-500">*</span>}
+                                        </p>
                                         {isReviseMode ? (
                                             <select 
                                                 className="w-full max-w-xs text-sm border border-slate-300 rounded p-2 bg-white outline-none focus:ring-1 focus:ring-primary h-10"
@@ -922,6 +995,35 @@ export default function PurchaseOrderDetail() {
                         >
                             {isSubmitting ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : null}
                             Submit Revision
+                        </Button>
+                    </DialogFooter>
+                </DialogContent>
+            </Dialog>
+            {/* Delete Existing Revision Dialog */}
+            <Dialog open={showDeleteExistingDialog} onOpenChange={setShowDeleteExistingDialog}>
+                <DialogContent className="sm:max-w-[425px]">
+                    <DialogHeader>
+                        <DialogTitle className="flex items-center gap-2 text-amber-600">
+                             Revision Already Exists
+                        </DialogTitle>
+                        <DialogDescription className="pt-2">
+                            A revision (<strong className="text-slate-900">{existingRevisionToDelete?.po_number}</strong>) is currently in <span className="font-semibold uppercase text-slate-700">{existingRevisionToDelete?.status}</span> status.
+                            <br/><br/>
+                            Do you want to <strong>delete</strong> the existing revision and start a fresh one?
+                        </DialogDescription>
+                    </DialogHeader>
+                    <DialogFooter className="mt-4">
+                        <Button variant="outline" onClick={() => setShowDeleteExistingDialog(false)}>
+                            Cancel
+                        </Button>
+                        <Button 
+                            variant="destructive" 
+                            onClick={confirmDeleteAndRevise}
+                            className="bg-red-600 hover:bg-red-700"
+                            disabled={isSubmitting}
+                        >
+                            {isSubmitting ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <Trash2 className="h-4 w-4 mr-2" />}
+                            Delete & Start Fresh
                         </Button>
                     </DialogFooter>
                 </DialogContent>
