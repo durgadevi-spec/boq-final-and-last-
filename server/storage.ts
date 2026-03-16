@@ -142,25 +142,6 @@ export class PostgresStorage implements IStorage {
     );
 
     if (!result.rows[0]) {
-      if (id === "virtual-user-volt-0001") {
-        return {
-          id: "virtual-user-volt-0001",
-          username: "VoltAmpele@gmail.com",
-          password: "$2b$10$2RmAp68TJb4.gIAunIhAfOD7QTSToVeiZWf040xMt2fTPB9vjbtCy",
-          role: "product_manager",
-          approved: "approved",
-          approvalReason: null,
-          fullName: "Volt Ampele",
-          mobileNumber: null,
-          department: null,
-          employeeCode: null,
-          companyName: null,
-          gstNumber: null,
-          businessAddress: null,
-          createdAt: new Date(),
-          updatedAt: new Date(),
-        } as User;
-      }
       return undefined;
     }
     return this.mapDbUser(result.rows[0]);
@@ -193,26 +174,6 @@ export class PostgresStorage implements IStorage {
     );
 
     if (!result.rows[0]) {
-      // Virtual user for VoltAmpele@gmail.com
-      if (username === "VoltAmpele@gmail.com") {
-        return {
-          id: "virtual-user-volt-0001",
-          username: "VoltAmpele@gmail.com",
-          password: "$2b$10$2RmAp68TJb4.gIAunIhAfOD7QTSToVeiZWf040xMt2fTPB9vjbtCy",
-          role: "product_manager",
-          approved: "approved",
-          approvalReason: null,
-          fullName: "Volt Ampele",
-          mobileNumber: null,
-          department: null,
-          employeeCode: null,
-          companyName: null,
-          gstNumber: null,
-          businessAddress: null,
-          createdAt: new Date(),
-          updatedAt: new Date(),
-        } as User;
-      }
       return undefined;
     }
     return this.mapDbUser(result.rows[0]);
