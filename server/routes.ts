@@ -485,6 +485,10 @@ export async function registerRoutes(
     await query(`CREATE INDEX IF NOT EXISTS idx_purchase_orders_po_number ON purchase_orders(po_number)`);
     await query(`CREATE INDEX IF NOT EXISTS idx_purchase_orders_project_id ON purchase_orders(project_id)`);
     await query(`CREATE INDEX IF NOT EXISTS idx_purchase_orders_vendor_id ON purchase_orders(vendor_id)`);
+    
+    await query(`ALTER TABLE purchase_orders ADD COLUMN IF NOT EXISTS shipping_address TEXT`);
+    await query(`ALTER TABLE purchase_orders ADD COLUMN IF NOT EXISTS payment_terms TEXT`);
+
     console.log("[db] purchase_orders table verified/created");
   } catch (err: unknown) {
     console.warn("[db] Could not create purchase_orders table:", (err as any)?.message || err);
@@ -6056,15 +6060,17 @@ export async function registerRoutes(
       try {
         const result = await query(
           `WITH latest_submissions AS (
-             SELECT DISTINCT ON (product_id, config_name) *
-             FROM product_approvals
-             ORDER BY product_id, config_name, created_at DESC
+             SELECT DISTINCT ON (pa.product_id, pa.config_name) pa.*
+             FROM product_approvals pa
+             ORDER BY pa.product_id, pa.config_name, pa.created_at DESC
            )
-           SELECT p.*, 
+           SELECT p.*, pr.name as live_product_name,
+             COALESCE(pr.name, p.product_name) as product_name,
              (SELECT COUNT(*) FROM product_approvals p2 
               WHERE p2.product_id = p.product_id 
               AND p2.config_name = p.config_name) as submission_count
-           FROM latest_submissions p 
+           FROM latest_submissions p
+           LEFT JOIN products pr ON p.product_id = pr.id
            ORDER BY p.created_at DESC`
         );
         res.json({ approvals: result.rows });
@@ -6082,7 +6088,13 @@ export async function registerRoutes(
     requireRole("admin", "software_team", "purchase_team", "product_manager", "pre_sales"),
     async (req: Request, res: Response) => {
       try {
-        const approvalResult = await query("SELECT * FROM product_approvals WHERE id = $1", [req.params.id]);
+        const approvalResult = await query(
+          `SELECT pa.*, pr.name as live_product_name, 
+           COALESCE(pr.name, pa.product_name) as product_name
+           FROM product_approvals pa
+           LEFT JOIN products pr ON pa.product_id = pr.id
+           WHERE pa.id = $1`, [req.params.id]
+        );
         if (approvalResult.rows.length === 0) {
           res.status(404).json({ message: "Approval request not found" });
           return;
@@ -6782,7 +6794,7 @@ export async function registerRoutes(
   app.post("/api/purchase-orders/:id/revise", authMiddleware, async (req: Request, res: Response) => {
     try {
       const { id } = req.params;
-      const { items, reason, deletedItems } = req.body;
+      const { items, reason, deletedItems, delivery_date, shippingAddress, paymentTerms } = req.body;
       const user = (req as any).user;
 
       // 1. Get existing PO
@@ -6795,7 +6807,8 @@ export async function registerRoutes(
       // 2. Generate new PO Number (-R1, -R2, etc)
       let revCount = 1;
       let defCount = 1;
-      let basePoNumber = existingPo.po_number;
+      let originalPoNumber = existingPo.po_number;
+      let basePoNumber = originalPoNumber;
       
       const revMatch = basePoNumber.match(/-R(\d+)$/);
       if (revMatch) {
@@ -6825,7 +6838,7 @@ export async function registerRoutes(
         }
       }
 
-      const newStatus = hasIncrease ? "pending_approval" : existingPo.status;
+      const newStatus = "draft";
       
       // Auto-generate Change Summary
       let changeSummary = "Change Log:\n";
@@ -6863,9 +6876,9 @@ export async function registerRoutes(
 
       // 4. Create new PO
       const newPoRes = await query(
-        `INSERT INTO purchase_orders (po_number, project_id, project_name, vendor_id, vendor_name, subtotal, total, status, requested_by, approval_comments) 
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10) RETURNING *`,
-        [newPoNumber, existingPo.project_id, existingPo.project_name, existingPo.vendor_id, existingPo.vendor_name, totalAmount, totalAmount, newStatus, existingPo.requested_by, approvalComments]
+        `INSERT INTO purchase_orders (po_number, project_id, project_name, vendor_id, vendor_name, subtotal, total, status, requested_by, approval_comments, delivery_date, shipping_address, payment_terms) 
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13) RETURNING *`,
+        [newPoNumber, existingPo.project_id, existingPo.project_name, existingPo.vendor_id, existingPo.vendor_name, totalAmount, totalAmount, newStatus, existingPo.requested_by, approvalComments, delivery_date || null, shippingAddress || null, paymentTerms || null]
       );
       const newPo = newPoRes.rows[0];
       console.log(`[revise-po] New PO created with ID: ${newPo.id}`);
