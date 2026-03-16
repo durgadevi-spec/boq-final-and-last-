@@ -5750,17 +5750,23 @@ export async function registerRoutes(
         // 1. Fetch approved configurations (Step 11)
         // Query by BOTH productId and productName to ensure consistency
         const step11Result = await query(
-          `SELECT *, 'approved' as status FROM step11_products 
-           WHERE product_id = $1 ${productName ? "OR product_name = $2" : ""} 
-           ORDER BY updated_at DESC`,
+          `SELECT s.*, pr.name as live_product_name, 
+           COALESCE(pr.name, s.product_name) as product_name, 
+           'approved' as status FROM step11_products s
+           LEFT JOIN products pr ON s.product_id = pr.id
+           WHERE s.product_id = $1 ${productName ? "OR s.product_name = $2" : ""} 
+           ORDER BY s.updated_at DESC`,
           productName ? [productId, productName] : [productId],
         );
 
         // 2. Fetch draft configurations (Step 3)
         const step3Result = await query(
-          `SELECT *, 'draft' as status FROM product_step3_config 
-           WHERE product_id = $1 ${productName ? "OR product_name = $2" : ""} 
-           ORDER BY updated_at DESC`,
+          `SELECT s.*, pr.name as live_product_name, 
+           COALESCE(pr.name, s.product_name) as product_name, 
+           'draft' as status FROM product_step3_config s
+           LEFT JOIN products pr ON s.product_id = pr.id
+           WHERE s.product_id = $1 ${productName ? "OR s.product_name = $2" : ""} 
+           ORDER BY s.updated_at DESC`,
           productName ? [productId, productName] : [productId],
         );
 
@@ -5838,7 +5844,11 @@ export async function registerRoutes(
       console.log("[GET /api/step11-products/config/:id] id:", id);
       try {
         const productResult = await query(
-          "SELECT * FROM step11_products WHERE id = $1",
+          `SELECT s.*, pr.name as live_product_name, 
+           COALESCE(pr.name, s.product_name) as product_name
+           FROM step11_products s
+           LEFT JOIN products pr ON s.product_id = pr.id
+           WHERE s.id = $1`,
           [id],
         );
 
