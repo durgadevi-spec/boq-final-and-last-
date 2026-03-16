@@ -230,9 +230,31 @@ export default function PurchaseOrders() {
                         <Truck size={12} className="mr-1" /> Delivered
                     </Badge>
                 );
+            case "revised":
+                return (
+                    <Badge variant="outline" className="bg-slate-900 text-white border-slate-900 font-bold px-3">
+                        REVISED
+                    </Badge>
+                );
             default:
                 return <Badge variant="outline">{status}</Badge>;
         }
+    };
+
+    const [expandedGroups, setExpandedGroups] = useState<Set<string>>(new Set());
+
+    const toggleGroup = (baseNumber: string, e: React.MouseEvent) => {
+        e.stopPropagation();
+        setExpandedGroups((prev) => {
+            const newSet = new Set(prev);
+            if (newSet.has(baseNumber)) newSet.delete(baseNumber);
+            else newSet.add(baseNumber);
+            return newSet;
+        });
+    };
+
+    const getBasePoNumber = (poNumber: string) => {
+        return poNumber.replace(/-(R\d+|Deferred\d+)$/, "");
     };
 
     const filteredPOs = purchaseOrders.filter((po) => {
@@ -245,6 +267,26 @@ export default function PurchaseOrders() {
         const matchesProject = projectFilter === "all" || po.project_id === projectFilter;
 
         return matchesSearch && matchesStatus && matchesProject;
+    });
+
+    // Grouping Logic
+    const groupedPOs: Record<string, PurchaseOrder[]> = {};
+    filteredPOs.forEach(po => {
+        const base = getBasePoNumber(po.po_number);
+        if (!groupedPOs[base]) groupedPOs[base] = [];
+        groupedPOs[base].push(po);
+    });
+
+    // Sort POs within each group by creation date (newest first)
+    Object.keys(groupedPOs).forEach(base => {
+        groupedPOs[base].sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
+    });
+
+    // Get the representative PO for each group (the newest one or best matching status)
+    const sortedGroupBases = Object.keys(groupedPOs).sort((a, b) => {
+        const dateA = new Date(groupedPOs[a][0].created_at).getTime();
+        const dateB = new Date(groupedPOs[b][0].created_at).getTime();
+        return dateB - dateA;
     });
 
     if (loading) {
@@ -334,6 +376,7 @@ export default function PurchaseOrders() {
                                                 onChange={toggleSelectAll}
                                             />
                                         </TableHead>
+                                        <TableHead className="w-6"></TableHead>
                                         <TableHead className="font-bold">PO Number</TableHead>
                                         <TableHead className="font-bold">Project</TableHead>
                                         <TableHead className="font-bold">Vendor</TableHead>
@@ -344,53 +387,125 @@ export default function PurchaseOrders() {
                                     </TableRow>
                                 </TableHeader>
                                 <TableBody>
-                                    {filteredPOs.length === 0 ? (
+                                    {sortedGroupBases.length === 0 ? (
                                         <TableRow>
-                                            <TableCell colSpan={7} className="text-center py-10 text-muted-foreground">
+                                            <TableCell colSpan={9} className="text-center py-10 text-muted-foreground">
                                                 No purchase orders found.
                                             </TableCell>
                                         </TableRow>
                                     ) : (
-                                        filteredPOs.map((po) => (
-                                            <TableRow key={po.id} className="hover:bg-slate-50/50 cursor-pointer" onClick={() => setLocation(`/purchase-orders/${po.id}`)}>
-                                                <TableCell className="text-center border-r" onClick={(e) => e.stopPropagation()}>
-                                                    <input 
-                                                        type="checkbox" 
-                                                        className="w-4 h-4 rounded border-gray-300 align-middle"
-                                                        checked={selectedPoIds.has(po.id)}
-                                                        onChange={(e) => toggleSelectPo(po.id, e)}
-                                                    />
-                                                </TableCell>
-                                                <TableCell className="font-bold text-primary">{po.po_number}</TableCell>
-                                                <TableCell className="font-medium">{po.project_name || "N/A"}</TableCell>
-                                                <TableCell>{po.vendor_name || "N/A"}</TableCell>
-                                                <TableCell className="text-right font-bold text-green-700">
-                                                    ₹{parseFloat(po.total_amount).toLocaleString(undefined, { minimumFractionDigits: 2 })}
-                                                </TableCell>
-                                                <TableCell>{getStatusBadge(po.status)}</TableCell>
-                                                <TableCell className="text-xs text-muted-foreground">
-                                                    {new Date(po.created_at).toLocaleDateString()}
-                                                </TableCell>
-                                                <TableCell className="text-right">
-                                                    <div className="flex items-center justify-end gap-1">
-                                                        <Button
-                                                            variant="ghost"
-                                                            size="sm"
-                                                            className="h-8 w-8 p-0 text-red-500 hover:text-red-700 hover:bg-red-50"
-                                                            onClick={(e) => {
-                                                                e.stopPropagation();
-                                                                setDeletingPo(po);
-                                                            }}
-                                                        >
-                                                            <Trash2 className="h-4 w-4" />
-                                                        </Button>
-                                                        <Button variant="ghost" size="sm" className="h-8 w-8 p-0">
-                                                            <ChevronRight className="h-4 w-4" />
-                                                        </Button>
-                                                    </div>
-                                                </TableCell>
-                                            </TableRow>
-                                        ))
+                                        sortedGroupBases.map((base) => {
+                                            const group = groupedPOs[base];
+                                            
+                                            // Identify the "Main" PO of the group (the one without suffix or with -R0)
+                                            // If none found (unlikely), fallback to the oldest one
+                                            let mainPo = group.find(p => p.po_number === base || p.po_number.endsWith("-R0"));
+                                            if (!mainPo) {
+                                                // Fallback: the one with the lowest revision number or earliest date
+                                                mainPo = [...group].sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime())[0];
+                                            }
+                                            
+                                            const subPos = group.filter(p => p.id !== mainPo!.id).sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
+                                            
+                                            const isExpanded = expandedGroups.has(base);
+                                            const hasMultiple = group.length > 1;
+
+                                            return (
+                                                <>
+                                                    <TableRow key={mainPo!.id} className="hover:bg-slate-50/50 cursor-pointer group" onClick={() => setLocation(`/purchase-orders/${mainPo!.id}`)}>
+                                                        <TableCell className="text-center border-r" onClick={(e) => e.stopPropagation()}>
+                                                            <input 
+                                                                type="checkbox" 
+                                                                className="w-4 h-4 rounded border-gray-300 align-middle"
+                                                                checked={selectedPoIds.has(mainPo!.id)}
+                                                                onChange={(e) => toggleSelectPo(mainPo!.id, e)}
+                                                            />
+                                                        </TableCell>
+                                                        <TableCell className="p-0 text-center" onClick={(e) => hasMultiple && toggleGroup(base, e)}>
+                                                            {hasMultiple && (
+                                                                <Button variant="ghost" size="sm" className="h-6 w-6 p-0 hover:bg-slate-100">
+                                                                    <ChevronRight className={`h-4 w-4 transition-transform ${isExpanded ? 'rotate-90' : ''}`} />
+                                                                </Button>
+                                                            )}
+                                                        </TableCell>
+                                                        <TableCell className="font-bold text-primary flex items-center gap-2">
+                                                            {mainPo!.po_number}
+                                                            {hasMultiple && <Badge variant="secondary" className="text-[10px] h-4 px-1.5">{group.length}</Badge>}
+                                                        </TableCell>
+                                                        <TableCell className="font-medium">{mainPo!.project_name || "N/A"}</TableCell>
+                                                        <TableCell>{mainPo!.vendor_name || "N/A"}</TableCell>
+                                                        <TableCell className="text-right font-bold text-green-700">
+                                                            ₹{parseFloat(mainPo!.total_amount).toLocaleString(undefined, { minimumFractionDigits: 2 })}
+                                                        </TableCell>
+                                                        <TableCell>{getStatusBadge(mainPo!.status)}</TableCell>
+                                                        <TableCell className="text-xs text-muted-foreground">
+                                                            {new Date(mainPo!.created_at).toLocaleDateString()}
+                                                        </TableCell>
+                                                        <TableCell className="text-right">
+                                                            <div className="flex items-center justify-end gap-1">
+                                                                <Button
+                                                                    variant="ghost"
+                                                                    size="sm"
+                                                                    className="h-8 w-8 p-0 text-red-500 hover:text-red-700 hover:bg-red-50"
+                                                                    onClick={(e) => {
+                                                                        e.stopPropagation();
+                                                                        setDeletingPo(mainPo!);
+                                                                    }}
+                                                                >
+                                                                    <Trash2 className="h-4 w-4" />
+                                                                </Button>
+                                                                <Button variant="ghost" size="sm" className="h-8 w-8 p-0">
+                                                                    <ChevronRight className="h-4 w-4" />
+                                                                </Button>
+                                                            </div>
+                                                        </TableCell>
+                                                    </TableRow>
+                                                    
+                                                    {/* Expanded History Rows */}
+                                                    {isExpanded && subPos.map((subPo) => (
+                                                        <TableRow key={subPo.id} className="bg-slate-50/50 hover:bg-slate-100/50 cursor-pointer border-l-4 border-l-slate-200" onClick={() => setLocation(`/purchase-orders/${subPo.id}`)}>
+                                                            <TableCell className="text-center border-r" onClick={(e) => e.stopPropagation()}>
+                                                                <input 
+                                                                    type="checkbox" 
+                                                                    className="w-4 h-4 rounded border-gray-300 align-middle ml-2"
+                                                                    checked={selectedPoIds.has(subPo.id)}
+                                                                    onChange={(e) => toggleSelectPo(subPo.id, e)}
+                                                                />
+                                                            </TableCell>
+                                                            <TableCell></TableCell>
+                                                            <TableCell className="pl-8 text-sm text-slate-600 font-medium italic">
+                                                                <div className="flex items-center gap-2">
+                                                                    <span className="w-2 h-2 rounded-full bg-slate-200"></span>
+                                                                    {subPo.po_number}
+                                                                </div>
+                                                            </TableCell>
+                                                            <TableCell className="text-sm text-slate-500">{subPo.project_name || "N/A"}</TableCell>
+                                                            <TableCell className="text-sm text-slate-500">{subPo.vendor_name || "N/A"}</TableCell>
+                                                            <TableCell className="text-right text-sm font-medium text-slate-600">
+                                                                ₹{parseFloat(subPo.total_amount).toLocaleString(undefined, { minimumFractionDigits: 2 })}
+                                                            </TableCell>
+                                                            <TableCell>{getStatusBadge(subPo.status)}</TableCell>
+                                                            <TableCell className="text-xs text-muted-foreground">
+                                                                {new Date(subPo.created_at).toLocaleDateString()}
+                                                            </TableCell>
+                                                            <TableCell className="text-right">
+                                                                <Button
+                                                                    variant="ghost"
+                                                                    size="sm"
+                                                                    className="h-7 w-7 p-0 text-red-400 hover:text-red-700"
+                                                                    onClick={(e) => {
+                                                                        e.stopPropagation();
+                                                                        setDeletingPo(subPo);
+                                                                    }}
+                                                                >
+                                                                    <Trash2 className="h-3.5 w-3.5" />
+                                                                </Button>
+                                                            </TableCell>
+                                                        </TableRow>
+                                                    ))}
+                                                </>
+                                            );
+                                        })
                                     )}
                                 </TableBody>
                             </Table>
