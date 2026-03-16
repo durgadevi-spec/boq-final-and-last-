@@ -5712,10 +5712,21 @@ export async function registerRoutes(
     async (req: Request, res: Response) => {
       const { productId } = req.params;
       try {
-        const configResult = await query(
-          "SELECT * FROM product_step3_config WHERE product_id = $1 ORDER BY updated_at DESC LIMIT 1",
-          [productId],
-        );
+        const isValidUUID = (id: string) => /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id);
+        const isUUID = isValidUUID(productId);
+
+        let configQuery = "";
+        let configParams: any[] = [];
+        if (isUUID) {
+          configQuery = "SELECT * FROM product_step3_config WHERE product_id = $1 ORDER BY updated_at DESC LIMIT 1";
+          configParams = [productId];
+        } else {
+          // If productId is not a UUID, query by product_name instead
+          configQuery = "SELECT * FROM product_step3_config WHERE product_name = $1 ORDER BY updated_at DESC LIMIT 1";
+          configParams = [productId];
+        }
+
+        const configResult = await query(configQuery, configParams);
         if (configResult.rows.length === 0) {
           res.status(404).json({ message: "No Step 3 configuration found" });
           return;
