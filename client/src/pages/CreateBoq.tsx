@@ -994,13 +994,18 @@ export default function CreateBom() {
   const handleAddItem = (boqItemId: string) => { setTargetBoqItemId(boqItemId); setShowMaterialPicker(true); };
 
   const handleSelectMaterialTemplate = async (template: any) => {
-    if (targetBoqItemId) { await handleAddItemToProduct(targetBoqItemId, template); setTargetBoqItemId(null); }
-    else { await handleAddMaterialToBoq(template); }
+    // ask for quantity before adding
+    const qtyStr = prompt("Enter quantity to add", "1");
+    if (qtyStr === null) return; // user cancelled
+    const qty = Number(qtyStr);
+    if (!qty || qty <= 0) { toast({ title: "Error", description: "Invalid quantity", variant: "destructive" }); return; }
+    if (targetBoqItemId) { await handleAddItemToProduct(targetBoqItemId, template, qty); setTargetBoqItemId(null); }
+    else { await handleAddMaterialToBoq(template, qty); }
   };
 
-  const handleAddMaterialToBoq = async (template: any) => {
+  const handleAddMaterialToBoq = async (template: any, qty: number = 1) => {
     const rate = Number(template.rate ?? template.supply_rate ?? template.default_rate ?? 0) || 0;
-    const futureVal = currentProjectValue + rate;
+    const futureVal = currentProjectValue + (rate * qty);
     await withBudgetCheck(() => futureVal, async () => {
       if (!selectedProjectId || !selectedVersionId) { toast({ title: "Error", description: "Select a project and version first", variant: "destructive" }); return; }
       try {
@@ -1010,7 +1015,7 @@ export default function CreateBom() {
           title: template.name,
           description: template.technicalspecification || template.technicalSpecification || template.name,
           unit,
-          qty: 1,
+          qty,
           supply_rate: rate,
           install_rate: 0,
           location: "Main Area",
@@ -1040,9 +1045,9 @@ export default function CreateBom() {
     })();
   };
 
-  const handleAddItemToProduct = async (boqItemId: string, template: any) => {
+  const handleAddItemToProduct = async (boqItemId: string, template: any, qty: number = 1) => {
     const rate = Number(template.rate ?? template.supply_rate ?? template.default_rate ?? 0) || 0;
-    const futureVal = currentProjectValue + rate;
+    const futureVal = currentProjectValue + (rate * qty);
     await withBudgetCheck(() => futureVal, async () => {
       try {
         const existing = boqItems.find(i => i.id === boqItemId);
@@ -1055,7 +1060,7 @@ export default function CreateBom() {
           title: template.name,
           description: template.technicalspecification || template.technicalSpecification || template.name,
           unit,
-          qty: 1,
+          qty,
           supply_rate: rate,
           install_rate: 0,
           location: template.location || "Main Area",
@@ -1612,7 +1617,7 @@ export default function CreateBom() {
                       <SelectTrigger className="w-full bg-slate-50 border-slate-200 h-9 px-3">
                         <SelectValue placeholder={projects.length === 0 ? "No projects" : "Select project"} />
                       </SelectTrigger>
-                      <SelectContent>
+                      <SelectContent className="max-h-60 overflow-auto">
                         {projects.map((p: Project) => <SelectItem value={p.id} key={p.id}>{p.name}</SelectItem>)}
                       </SelectContent>
                     </Select>
@@ -1842,6 +1847,12 @@ export default function CreateBom() {
           )}
         </div>
       </Layout>
+
+      {/* Small floating Add buttons at bottom-right (duplicate of top actions) */}
+      <div className="fixed right-6 bottom-6 z-50 flex flex-col items-end gap-2 md:gap-3">
+        <Button onClick={handleAddProduct} className="bg-primary text-white h-8 px-3 text-xs font-semibold shadow-sm" disabled={isVersionSubmitted || !selectedVersionId} title="Add Product">+ Add Product</Button>
+        <Button onClick={handleAddProductManual} variant="outline" className="border-slate-200 h-8 px-3 text-xs font-semibold shadow-sm bg-white" disabled={isVersionSubmitted || !selectedVersionId} title="Add Item">+ Add Item</Button>
+      </div>
 
       {/* Target Qty Modal */}
       <Dialog open={targetQtyModalOpen} onOpenChange={setTargetQtyModalOpen}>
