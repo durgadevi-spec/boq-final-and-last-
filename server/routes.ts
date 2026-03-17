@@ -355,6 +355,7 @@ export async function registerRoutes(
     await query(`ALTER TABLE boq_projects ADD COLUMN IF NOT EXISTS client_address TEXT`);
     await query(`ALTER TABLE boq_projects ADD COLUMN IF NOT EXISTS gst_no VARCHAR(100)`);
     await query(`ALTER TABLE boq_projects ADD COLUMN IF NOT EXISTS project_value VARCHAR(100)`);
+    await query(`ALTER TABLE boq_projects ADD COLUMN IF NOT EXISTS project_status VARCHAR(50) DEFAULT 'started'`);
 
     // Also on boq_versions for snapshots
     await query(`ALTER TABLE boq_versions ADD COLUMN IF NOT EXISTS project_client_address TEXT`);
@@ -363,6 +364,7 @@ export async function registerRoutes(
   } catch (err: unknown) {
     console.warn('[db] Could not update boq_projects/versions columns (continuing):', (err as any)?.message || err);
   }
+
 
   // Ensure boq_items table exists (stores BOQ line items captured from estimators)
   try {
@@ -3768,7 +3770,7 @@ export async function registerRoutes(
     async (req: Request, res: Response) => {
       try {
         const result = await query(
-          `SELECT id, name, client, budget, location, client_address, gst_no, project_value, status, created_at, updated_at FROM boq_projects ORDER BY created_at DESC`,
+          `SELECT id, name, client, budget, location, client_address, gst_no, project_value, project_status, status, created_at, updated_at FROM boq_projects ORDER BY created_at DESC`,
         );
 
         res.json({ projects: result.rows || [] });
@@ -3864,6 +3866,17 @@ export async function registerRoutes(
         if (project_value !== undefined) {
           fields.push(`project_value = $${idx++}`);
           vals.push(project_value);
+        }
+
+        const { project_status } = req.body;
+        if (project_status !== undefined) {
+          const validStatuses = ['started', 'in_progress', 'hold', 'cancelled', 'closed'];
+          if (!validStatuses.includes(project_status)) {
+            res.status(400).json({ message: 'Invalid project_status' });
+            return;
+          }
+          fields.push(`project_status = $${idx++}`);
+          vals.push(project_status);
         }
 
         if (fields.length > 0) {
