@@ -24,6 +24,7 @@ export type MaterialLine = {
     supplyRate: number;
     installRate: number;
     applyWastage?: boolean;
+    applyRounding?: boolean;
     [key: string]: any; // Preserve extra fields like shop_name, description
 };
 
@@ -69,6 +70,8 @@ export function computeBoq(
     const computed: ComputedLine[] = lines.map((l) => {
         const baseQty = Number(l.baseQty) || 0;
         const applyW = l.applyWastage !== false; // Default to true if undefined
+        const applyR = l.applyRounding !== false; // Default to true if undefined
+
         // Per-row wastage is always a percentage (e.g. 5 = 5%). Divide by 100.
         const rowWRaw = l.wastagePct !== undefined ? Number(l.wastagePct) : NaN;
         const rowW = !isNaN(rowWRaw) ? rowWRaw / 100 : undefined;
@@ -81,11 +84,11 @@ export function computeBoq(
         // This establishes a fixed "Rounded Qty per Basis Unit" which is then scaled linearly.
         // Example: If 16.5 units are needed for 100 Sqft, we round to 17. 
         // The rate becomes 17/100 = 0.17 per Sqft.
-        const roundedQtyAtBasis = Math.ceil(effectiveQtyAtBasis);
+        const roundedQtyAtBasis = applyR ? Math.ceil(effectiveQtyAtBasis) : effectiveQtyAtBasis;
         const perUnitQty = base > 0 ? roundedQtyAtBasis / base : 0;
 
         const scaledQty = perUnitQty * target;
-        const roundOffQty = Math.ceil(scaledQty);
+        const roundOffQty = applyR ? Math.ceil(scaledQty) : scaledQty;
 
         const supplyRate = Number(l.supplyRate) || 0;
         const installRate = Number(l.installRate) || 0;
@@ -151,6 +154,7 @@ export function linesFromTableData(tableData: any): MaterialLine[] {
             shop_name: l.shop_name,
             shop_id: l.shop_id || l.shopId,
             applyWastage: l.apply_wastage !== undefined ? Boolean(l.apply_wastage) : (l.applyWastage !== undefined ? Boolean(l.applyWastage) : true),
+            applyRounding: l.apply_rounding !== undefined ? Boolean(l.apply_rounding) : (l.applyRounding !== undefined ? Boolean(l.applyRounding) : true),
             description: l.description || l.technicalspecification || l.name,
             technicalspecification: l.technicalspecification
         }));
