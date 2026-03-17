@@ -715,15 +715,12 @@ export async function registerRoutes(
     }
     await query(`ALTER TABLE material_templates ADD CONSTRAINT material_templates_tax_code_type_check CHECK (tax_code_type IS NULL OR tax_code_type IN ('hsn', 'sac'))`);
     await query(
-      `ALTER TABLE material_templates ADD COLUMN IF NOT EXISTS tax_code_value VARCHAR(50)`,
+      `ALTER TABLE material_templates ADD COLUMN IF NOT EXISTS hsn_code VARCHAR(50)`
     );
     await query(
-      `ALTER TABLE material_templates ADD COLUMN IF NOT EXISTS technicalspecification TEXT`,
+      `ALTER TABLE material_templates ADD COLUMN IF NOT EXISTS sac_code VARCHAR(50)`
     );
-    await query(
-      `ALTER TABLE material_templates ADD COLUMN IF NOT EXISTS brandname VARCHAR(255)`,
-    );
-    console.log("[db] material_templates tax/vendor/techspec columns ensured");
+    console.log("[db] material_templates tax/vendor/techspec/hsn/sac columns ensured");
   } catch (err: unknown) {
     console.warn(
       "[db] Could not ensure material_templates columns:",
@@ -735,6 +732,8 @@ export async function registerRoutes(
   try {
     await query(`ALTER TABLE materials ADD COLUMN IF NOT EXISTS vendor_category VARCHAR(255)`);
     await query(`ALTER TABLE materials ADD COLUMN IF NOT EXISTS template_id UUID`);
+    await query(`ALTER TABLE materials ADD COLUMN IF NOT EXISTS hsn_code VARCHAR(50)`);
+    await query(`ALTER TABLE materials ADD COLUMN IF NOT EXISTS sac_code VARCHAR(50)`);
     await query(`ALTER TABLE materials ADD COLUMN IF NOT EXISTS tax_code_type VARCHAR(10)`);
     await query(`ALTER TABLE materials ADD COLUMN IF NOT EXISTS tax_code_value VARCHAR(50)`);
     await query(`ALTER TABLE materials ADD COLUMN IF NOT EXISTS technicalspecification TEXT`);
@@ -1833,6 +1832,10 @@ export async function registerRoutes(
         "subcategory",
         "subCategory",
         "product",
+        "hsn_code",
+        "hsnCode",
+        "sac_code",
+        "sacCode",
         "technicalspecification",
         "dimensions",
         "finishtype",
@@ -1850,6 +1853,8 @@ export async function registerRoutes(
           if (k === "templateId") dbFieldName = "template_id";
           if (k === "subCategory") dbFieldName = "subcategory";
           if (k === "metalType" || k === "materialtype" || k === "materialType") dbFieldName = "metaltype";
+          if (k === "hsnCode") dbFieldName = "hsn_code";
+          if (k === "sacCode") dbFieldName = "sac_code";
           if (k === "brandName") dbFieldName = "brandname";
           if (k === "modelNumber") dbFieldName = "modelnumber";
           if (k === "finishType") dbFieldName = "finishtype";
@@ -2151,7 +2156,7 @@ export async function registerRoutes(
     requireRole("admin", "software_team", "purchase_team"),
     async (req: Request, res: Response) => {
       try {
-        const { name, code, category, subcategory, vendorCategory, taxCodeType, taxCodeValue, technicalspecification } = req.body;
+        const { name, code, category, subcategory, vendorCategory, taxCodeType, taxCodeValue, hsnCode, sacCode, hsn_code, sac_code, technicalspecification, technicalSpecification } = req.body;
 
         if (!name || !name.trim()) {
           res.status(400).json({ message: "Template name is required" });
@@ -2165,10 +2170,10 @@ export async function registerRoutes(
 
         const id = randomUUID();
         const result = await query(
-          `INSERT INTO material_templates (id, name, code, category, subcategory, vendor_category, tax_code_type, tax_code_value, technicalspecification, created_at, updated_at) 
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, NOW(), NOW()) 
+          `INSERT INTO material_templates (id, name, code, category, subcategory, vendor_category, tax_code_type, tax_code_value, hsn_code, sac_code, technicalspecification, created_at, updated_at) 
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, NOW(), NOW()) 
          RETURNING *`,
-          [id, name.trim(), code.trim(), category || null, subcategory || null, vendorCategory || null, taxCodeType || null, taxCodeValue || null, technicalspecification || null],
+          [id, name.trim(), code.trim(), category || null, subcategory || null, vendorCategory || null, taxCodeType || null, taxCodeValue || null, hsnCode || hsn_code || null, sacCode || sac_code || null, technicalSpecification || technicalspecification || null],
         );
 
         res.status(201).json({ template: result.rows[0] });
@@ -2190,7 +2195,7 @@ export async function registerRoutes(
         console.log('[PUT /api/material-templates/:id] user:', (req as any).user);
         console.log('[PUT /api/material-templates/:id] params.id:', req.params.id);
         console.log('[PUT /api/material-templates/:id] body:', req.body);
-        const { name, code, category, subcategory, vendorCategory, taxCodeType, taxCodeValue, technicalspecification, vendor_category, tax_code_type, tax_code_value } = req.body;
+        const { name, code, category, subcategory, vendorCategory, taxCodeType, taxCodeValue, hsnCode, sacCode, hsn_code, sac_code, technicalspecification, technicalSpecification, vendor_category, tax_code_type, tax_code_value } = req.body;
 
         // Only update fields that are provided
         const fields: string[] = [];
@@ -2225,9 +2230,17 @@ export async function registerRoutes(
           fields.push(`tax_code_value = $${idx++}`);
           vals.push((taxCodeValue !== undefined ? taxCodeValue : tax_code_value) || null);
         }
-        if (technicalspecification !== undefined) {
+        if (technicalspecification !== undefined || technicalSpecification !== undefined) {
           fields.push(`technicalspecification = $${idx++}`);
-          vals.push(technicalspecification || null);
+          vals.push((technicalSpecification !== undefined ? technicalSpecification : technicalspecification) || null);
+        }
+        if (hsnCode !== undefined || hsn_code !== undefined) {
+          fields.push(`hsn_code = $${idx++}`);
+          vals.push(hsnCode || hsn_code || null);
+        }
+        if (sacCode !== undefined || sac_code !== undefined) {
+          fields.push(`sac_code = $${idx++}`);
+          vals.push(sacCode || sac_code || null);
         }
 
         if (fields.length === 0) {
