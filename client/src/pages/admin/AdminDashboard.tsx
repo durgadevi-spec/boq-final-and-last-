@@ -673,14 +673,18 @@ export default function AdminDashboard() {
     vendorCategory: string;
     taxCodeType: 'hsn' | 'sac' | null;
     taxCodeValue: string;
-    technicalspecification: string;
+    hsnCode: string;
+    sacCode: string;
+    technicalSpecification: string;
   }>({
     name: "",
     code: "",
     vendorCategory: "",
     taxCodeType: null,
     taxCodeValue: "",
-    technicalspecification: "",
+    hsnCode: "",
+    sacCode: "",
+    technicalSpecification: "",
   });
 
   // Auto-generate code when admin enters material name
@@ -712,7 +716,9 @@ export default function AdminDashboard() {
         vendorCategory: newMasterMaterial.vendorCategory.trim(),
         taxCodeType: newMasterMaterial.taxCodeType,
         taxCodeValue: newMasterMaterial.taxCodeValue.trim(),
-        technicalspecification: newMasterMaterial.technicalspecification.trim(),
+        hsnCode: newMasterMaterial.hsnCode.trim(),
+        sacCode: newMasterMaterial.sacCode.trim(),
+        technicalSpecification: newMasterMaterial.technicalSpecification.trim(),
       };
 
       const res = await postJSON('/material-templates', payload);
@@ -731,7 +737,9 @@ export default function AdminDashboard() {
         vendorCategory: "",
         taxCodeType: null,
         taxCodeValue: "",
-        technicalspecification: ""
+        hsnCode: "",
+        sacCode: "",
+        technicalSpecification: ""
       });
     } catch (err: any) {
       console.error('create master material error', err);
@@ -750,7 +758,9 @@ export default function AdminDashboard() {
       vendorCategory: template.vendor_category || "",
       taxCodeType: template.tax_code_type || null,
       taxCodeValue: template.tax_code_value || "",
-      technicalspecification: template.technicalspecification || "",
+      hsnCode: template.hsn_code || "",
+      sacCode: template.sac_code || "",
+      technicalSpecification: template.technicalspecification || template.technicalSpecification || "",
     });
     // Scroll to the "Create Material" form at the top of the tab
     const element = document.getElementById("create-material-section");
@@ -768,7 +778,7 @@ export default function AdminDashboard() {
   // ===== SUPPLIER: Detailed Material (Select from Master + Fill Details) =====
   const [selectedMasterId, setSelectedMasterId] = useState<string>("");
 
-  const [newMaterial, setNewMaterial] = useState<Partial<Material & { vendorCategory?: string; taxCodeType?: 'hsn' | 'sac'; taxCodeValue?: string }>>({
+  const [newMaterial, setNewMaterial] = useState<Partial<Material & { vendorCategory?: string }>>({
     name: "",
     code: "",
     rate: 0,
@@ -785,6 +795,8 @@ export default function AdminDashboard() {
     vendorCategory: "",
     taxCodeType: undefined,
     taxCodeValue: "",
+    hsnCode: "",
+    sacCode: "",
     shopId: "",
   });
 
@@ -2641,8 +2653,8 @@ export default function AdminDashboard() {
                   </CardDescription>
                 </CardHeader>
                 <CardContent className="space-y-4">
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    <div className="space-y-2">
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                    <div className="space-y-2 md:col-span-2">
                       <Label>
                         Item Name <span className="text-red-500">*</span>
                       </Label>
@@ -2709,73 +2721,39 @@ export default function AdminDashboard() {
                       </Select>
                     </div>
                     <div className="space-y-2">
-                      <Label>Tax Code Type</Label>
-                      <div className="flex gap-4 mt-2">
-                        <div className="flex items-center gap-2">
-                          <input
-                            type="radio"
-                            id="hsn"
-                            name="taxCodeType"
-                            value="hsn"
-                            checked={newMasterMaterial.taxCodeType === 'hsn'}
-                            onChange={(e) =>
-                              setNewMasterMaterial({
-                                ...newMasterMaterial,
-                                taxCodeType: e.target.value as 'hsn' | 'sac',
-                              })
-                            }
-                            className="w-4 h-4"
-                          />
-                          <Label htmlFor="hsn" className="cursor-pointer mb-0">
-                            HSN Code
-                          </Label>
-                        </div>
-                        <div className="flex items-center gap-2">
-                          <input
-                            type="radio"
-                            id="sac"
-                            name="taxCodeType"
-                            value="sac"
-                            checked={newMasterMaterial.taxCodeType === 'sac'}
-                            onChange={(e) =>
-                              setNewMasterMaterial({
-                                ...newMasterMaterial,
-                                taxCodeType: e.target.value as 'hsn' | 'sac',
-                              })
-                            }
-                            className="w-4 h-4"
-                          />
-                          <Label htmlFor="sac" className="cursor-pointer mb-0">
-                            SAC Code
-                          </Label>
-                        </div>
-                      </div>
-                    </div>
-                    {newMasterMaterial.taxCodeType && (
-                      <div className="space-y-2">
-                        <Label>
-                          {newMasterMaterial.taxCodeType === 'hsn' ? 'HSN' : 'SAC'} Code <span className="text-red-500">*</span>
-                        </Label>
-                        <Input
-                          value={newMasterMaterial.taxCodeValue}
-                          onChange={(e) =>
-                            setNewMasterMaterial({
-                              ...newMasterMaterial,
-                              taxCodeValue: e.target.value,
-                            })
-                          }
-                          placeholder={`Enter ${newMasterMaterial.taxCodeType === 'hsn' ? 'HSN' : 'SAC'} code`}
-                        />
-                      </div>
-                    )}
-                    <div className="space-y-2 md:col-span-2">
-                      <Label>Description</Label>
-                      <Textarea
-                        value={newMasterMaterial.technicalspecification}
+                      <Label>HSN Code</Label>
+                      <Input
+                        value={newMasterMaterial.hsnCode}
                         onChange={(e) =>
                           setNewMasterMaterial({
                             ...newMasterMaterial,
-                            technicalspecification: e.target.value,
+                            hsnCode: e.target.value,
+                          })
+                        }
+                        placeholder="Enter HSN code"
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label>SAC Code</Label>
+                      <Input
+                        value={newMasterMaterial.sacCode}
+                        onChange={(e) =>
+                          setNewMasterMaterial({
+                            ...newMasterMaterial,
+                            sacCode: e.target.value,
+                          })
+                        }
+                        placeholder="Enter SAC code"
+                      />
+                    </div>
+                    <div className="space-y-2 md:col-span-3">
+                      <Label>Description</Label>
+                      <Textarea
+                        value={newMasterMaterial.technicalSpecification}
+                        onChange={(e) =>
+                          setNewMasterMaterial({
+                            ...newMasterMaterial,
+                            technicalSpecification: e.target.value,
                           })
                         }
                         placeholder="Enter item description..."
@@ -2789,8 +2767,7 @@ export default function AdminDashboard() {
                       disabled={
                         !newMasterMaterial.name.trim() ||
                         masterMaterials.some((m: any) => m.name.toLowerCase().trim() === newMasterMaterial.name.toLowerCase().trim()) ||
-                        masterMaterials.some((m: any) => m.code === newMasterMaterial.code) ||
-                        (newMasterMaterial.taxCodeType && !newMasterMaterial.taxCodeValue.trim())
+                        masterMaterials.some((m: any) => m.code === newMasterMaterial.code)
                       }
                       className="w-full md:w-auto bg-blue-600 hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
                     >
@@ -2805,7 +2782,9 @@ export default function AdminDashboard() {
                           vendorCategory: "",
                           taxCodeType: null,
                           taxCodeValue: "",
-                          technicalspecification: ""
+                          hsnCode: "",
+                          sacCode: "",
+                          technicalSpecification: ""
                         });
                         toast({
                           title: "Form Cleared",
@@ -2892,45 +2871,24 @@ export default function AdminDashboard() {
                                       </Select>
                                     </div>
 
-                                    <div>
-                                      <Label>Tax Code Type</Label>
-                                      <div className="flex gap-4 mt-2">
-                                        <div className="flex items-center gap-2">
-                                          <input
-                                            type="radio"
-                                            id={`hsn-${template.id}`}
-                                            name={`taxCodeType-${template.id}`}
-                                            value="hsn"
-                                            checked={newMaterial.taxCodeType === 'hsn'}
-                                            onChange={(e) => setNewMaterial({ ...newMaterial, taxCodeType: e.target.value as 'hsn' | 'sac' })}
-                                            className="w-4 h-4"
-                                          />
-                                          <Label htmlFor={`hsn-${template.id}`} className="cursor-pointer mb-0">HSN Code</Label>
-                                        </div>
-                                        <div className="flex items-center gap-2">
-                                          <input
-                                            type="radio"
-                                            id={`sac-${template.id}`}
-                                            name={`taxCodeType-${template.id}`}
-                                            value="sac"
-                                            checked={newMaterial.taxCodeType === 'sac'}
-                                            onChange={(e) => setNewMaterial({ ...newMaterial, taxCodeType: e.target.value as 'hsn' | 'sac' })}
-                                            className="w-4 h-4"
-                                          />
-                                          <Label htmlFor={`sac-${template.id}`} className="cursor-pointer mb-0">SAC Code</Label>
-                                        </div>
-                                      </div>
-                                    </div>
-                                    {newMaterial.taxCodeType && (
-                                      <div className="md:col-span-2">
-                                        <Label>{newMaterial.taxCodeType === 'hsn' ? 'HSN' : 'SAC'} Code</Label>
+                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                                      <div>
+                                        <Label>HSN Code</Label>
                                         <Input
-                                          value={newMaterial.taxCodeValue || ""}
-                                          onChange={(e) => setNewMaterial({ ...newMaterial, taxCodeValue: e.target.value })}
-                                          placeholder={`Enter ${newMaterial.taxCodeType === 'hsn' ? 'HSN' : 'SAC'} code`}
+                                          value={newMaterial.hsnCode || ""}
+                                          onChange={(e) => setNewMaterial({ ...newMaterial, hsnCode: e.target.value })}
+                                          placeholder="Enter HSN code"
                                         />
                                       </div>
-                                    )}
+                                      <div>
+                                        <Label>SAC Code</Label>
+                                        <Input
+                                          value={newMaterial.sacCode || ""}
+                                          onChange={(e) => setNewMaterial({ ...newMaterial, sacCode: e.target.value })}
+                                          placeholder="Enter SAC code"
+                                        />
+                                      </div>
+                                    </div>
                                     <div className="md:col-span-2">
                                       <Label>Description</Label>
                                       <Textarea
@@ -2948,18 +2906,14 @@ export default function AdminDashboard() {
                                         toast({ title: 'Error', description: 'Material name is required', variant: 'destructive' });
                                         return;
                                       }
-                                      if (newMaterial.taxCodeType && !newMaterial.taxCodeValue?.trim()) {
-                                        toast({ title: 'Error', description: `${newMaterial.taxCodeType === 'hsn' ? 'HSN' : 'SAC'} code is required when tax code type is selected`, variant: 'destructive' });
-                                        return;
-                                      }
                                       try {
                                         const updateData: any = {
                                           name: newMaterial.name,
                                           code: template.code,
                                           vendor_category: newMaterial.vendorCategory || null,
-                                          tax_code_type: newMaterial.taxCodeType || null,
-                                          tax_code_value: newMaterial.taxCodeValue || null,
-                                          technicalspecification: newMaterial.technicalspecification || newMaterial.technicalSpecification || null
+                                          hsn_code: newMaterial.hsnCode || null,
+                                          sac_code: newMaterial.sacCode || null,
+                                          technicalSpecification: newMaterial.technicalSpecification || null
                                         };
 
                                         const res = await apiFetch(`/material-templates/${template.id}`, {
@@ -2977,9 +2931,9 @@ export default function AdminDashboard() {
                                           ...m,
                                           name: newMaterial.name,
                                           vendor_category: newMaterial.vendorCategory,
-                                          tax_code_type: newMaterial.taxCodeType,
-                                          tax_code_value: newMaterial.taxCodeValue,
-                                          technicalspecification: newMaterial.technicalspecification || newMaterial.technicalSpecification,
+                                          hsn_code: newMaterial.hsnCode,
+                                          sac_code: newMaterial.sacCode,
+                                          technicalspecification: newMaterial.technicalSpecification,
                                           ...(data?.template || {})
                                         } : m));
                                         setEditingMaterialId(null);
@@ -3018,9 +2972,9 @@ export default function AdminDashboard() {
                                     ...newMaterial,
                                     name: template.name,
                                     vendorCategory: template.vendor_category || '',
-                                    taxCodeType: template.tax_code_type,
-                                    taxCodeValue: template.tax_code_value || '',
-                                    technicalspecification: template.technicalspecification || ''
+                                    hsnCode: template.hsn_code || template.hsnCode || '',
+                                    sacCode: template.sac_code || template.sacCode || '',
+                                    technicalSpecification: template.technicalspecification || template.technicalSpecification || ''
                                   });
                                 }}>Edit</Button>
                                 <Button size="sm" variant="destructive" onClick={async () => {
