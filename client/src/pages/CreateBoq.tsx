@@ -24,7 +24,16 @@ import * as XLSX from 'xlsx';
 
 // ─── Types ─────────────────────────────────────────────────────────────────────
 
-type Project = { id: string; name: string; client: string; budget: string; location?: string; status?: string };
+type Project = { id: string; name: string; client: string; budget: string; location?: string; status?: string; project_status?: string };
+
+const PROJECT_STATUSES: { value: string; label: string; color: string }[] = [
+  { value: 'started',     label: 'Started',     color: 'bg-blue-100 text-blue-700' },
+  { value: 'in_progress', label: 'In Progress', color: 'bg-amber-100 text-amber-700' },
+  { value: 'hold',        label: 'Hold',        color: 'bg-orange-100 text-orange-700' },
+  { value: 'cancelled',   label: 'Cancelled',   color: 'bg-red-100 text-red-700' },
+  { value: 'closed',      label: 'Closed',      color: 'bg-gray-200 text-gray-600' },
+];
+const getProjectStatusMeta = (s?: string) => PROJECT_STATUSES.find(x => x.value === s) ?? { label: s || 'Started', color: 'bg-blue-100 text-blue-700' };
 type BOMVersion = { id: string; project_id: string; version_number: number; status: "draft" | "submitted" | "pending_approval" | "approved" | "rejected" | "edit_requested"; created_at: string; rejection_reason?: string; updated_at: string; project_name?: string; project_client?: string; project_location?: string };
 type BOMItem = { id: string; estimator: string; session_id: string; table_data: any; created_at: string };
 type Product = { id: string; name: string; code: string; category?: string; subcategory?: string; description?: string; category_name?: string; subcategory_name?: string; tax_code_type?: string; tax_code_value?: string; hsn_code?: string; sac_code?: string };
@@ -1619,9 +1628,44 @@ export default function CreateBom() {
                         <SelectValue placeholder={projects.length === 0 ? "No projects" : "Select project"} />
                       </SelectTrigger>
                       <SelectContent className="max-h-60 overflow-auto">
-                        {projects.map((p: Project) => <SelectItem value={p.id} key={p.id}>{p.name}</SelectItem>)}
+                        {projects.map((p: Project) => {
+                          const sm = getProjectStatusMeta(p.project_status);
+                          return (
+                            <SelectItem value={p.id} key={p.id}>
+                              <span className="flex items-center gap-2">
+                                {p.name}
+                                <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded-full ${sm.color}`}>{sm.label}</span>
+                              </span>
+                            </SelectItem>
+                          );
+                        })}
                       </SelectContent>
                     </Select>
+                    {selectedProjectId && (() => {
+                      const selProj = projects.find(p => p.id === selectedProjectId);
+                      return (
+                        <div className="flex items-center gap-2 mt-1">
+                          <span className="text-[10px] text-slate-500 font-bold uppercase">Project Status:</span>
+                          <select
+                            className="text-xs border border-slate-200 rounded px-2 py-1 bg-white font-semibold focus:ring-1 ring-blue-400 outline-none"
+                            value={selProj?.project_status || 'started'}
+                            onChange={async (e) => {
+                              const newStatus = e.target.value;
+                              try {
+                                await apiFetch(`/api/boq-projects/${selectedProjectId}`, {
+                                  method: 'PUT',
+                                  headers: { 'Content-Type': 'application/json' },
+                                  body: JSON.stringify({ project_status: newStatus }),
+                                });
+                                setProjects(prev => prev.map(p => p.id === selectedProjectId ? { ...p, project_status: newStatus } : p));
+                              } catch (err) { console.error('Failed to update project status', err); }
+                            }}
+                          >
+                            {PROJECT_STATUSES.map(s => <option key={s.value} value={s.value}>{s.label}</option>)}
+                          </select>
+                        </div>
+                      );
+                    })()}
                   </div>
 
                   {/* Container 2: Version Selector & Actions */}
