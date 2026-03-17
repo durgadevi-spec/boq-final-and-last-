@@ -19,11 +19,14 @@ import {
   ChevronRight,
   ChevronDown,
   Briefcase,
-  Pencil
+  Pencil,
+  Copy
 } from "lucide-react";
 import apiFetch from "@/lib/api";
 
 export default function CreateProject() {
+  const createFormRef = (typeof document !== 'undefined') ? { current: null as HTMLDivElement | null } : { current: null };
+  const createFormRefCallback = (el: HTMLDivElement | null) => { createFormRef.current = el; };
   const [name, setName] = useState("");
   const [client, setClient] = useState("");
   const [budget, setBudget] = useState("");
@@ -39,6 +42,23 @@ export default function CreateProject() {
 
   const { toast } = useToast();
   const [projects, setProjects] = useState<any[]>([]);
+
+  const handleClone = (p: any) => {
+    setName(p.name ? `Copy of ${p.name}` : "");
+    setClient(p.client || "");
+    setBudget(p.budget || "");
+    setLocation(p.location || "");
+    setClientAddress(p.client_address || "");
+    setGstNo(p.gst_no || "");
+    setProjectValue(p.project_value || "");
+    setTemplateProjectId("none");
+    setSelectedVersionId("none");
+    // Scroll to form
+    setTimeout(() => {
+      createFormRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+    }, 100);
+  };
+
   const [expanded, setExpanded] = useState<Record<string, boolean>>({});
   const [projectVersions, setProjectVersions] = useState<Record<string, any[]>>(
     {},
@@ -329,7 +349,7 @@ export default function CreateProject() {
       <div className="space-y-6">
         <h1 className="text-2xl font-semibold">Create Project</h1>
 
-        <Card className="border-slate-200 shadow-sm overflow-hidden bg-white">
+        <Card ref={createFormRefCallback} className="border-slate-200 shadow-sm overflow-hidden bg-white">
           <div className="border-b border-slate-100 px-6 py-4 flex items-center gap-3">
             <Library className="w-5 h-5 text-slate-500" />
             <div>
@@ -534,6 +554,15 @@ export default function CreateProject() {
                         </div>
                       </div>
                       <div className="flex items-center gap-2 px-2">
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          className="h-8 w-8 p-0 text-indigo-500 hover:bg-indigo-50 hover:text-indigo-700"
+                          onClick={(e) => { e.stopPropagation(); handleClone(p); }}
+                          title="Clone Project"
+                        >
+                          <Copy size={16} />
+                        </Button>
                         <Button
                           variant="ghost"
                           size="sm"
