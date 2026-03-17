@@ -20,7 +20,7 @@ import { fuzzySearch } from "@/lib/utils";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 
 type Product = { id: string; name: string; subcategory: string; created_at: string; created_by?: string };
-type Material = { id: string; name: string; unit: string; rate: number; category: string; subcategory: string; description?: string; shop_name?: string; shop_id?: string; shopId?: string; code?: string; technicalspecification?: string; created_at?: string };
+type Material = { id: string; name: string; unit: string; rate: number; category: string; subcategory: string; description?: string; shop_name?: string; shop_id?: string; shopId?: string; code?: string; hsn_code?: string; sac_code?: string; technicalspecification?: string; technicalSpecification?: string; created_at?: string };
 type SelectedMaterial = Material & { qty: number; baseQty: number; wastagePct?: number; amount: number; rate: number; supplyRate: number; installRate: number; location: string; applyWastage: boolean; applyRounding: boolean };
 
 const ALL = "__ALL__";
@@ -821,6 +821,8 @@ export default function ManageProduct() {
                                                                         <span>{material.unit}</span><span>•</span>
                                                                         <span className="truncate max-w-[120px]">{material.shop_name || "Multiple Vendors"}</span><span>•</span>
                                                                         <span className="text-slate-400 font-mono tracking-tighter">Code: {material.code || material.id?.slice(0, 8)}</span>
+                                                                        {material.hsn_code && <span className="bg-amber-50 text-amber-700 px-1 rounded-sm ml-1 text-[9px]">HSN: {material.hsn_code}</span>}
+                                                                        {material.sac_code && <span className="bg-blue-50 text-blue-700 px-1 rounded-sm ml-1 text-[9px]">SAC: {material.sac_code}</span>}
                                                                     </div>
                                                                     <div className={`text-[10px] flex items-center gap-1 font-medium mt-1 ${!material.created_at ? 'text-muted-foreground' :
                                                                         differenceInDays(new Date(), new Date(material.created_at)) > 90 ? 'text-amber-600 bg-amber-50 px-1 py-0.5 rounded-sm inline-flex w-fit border border-amber-200' : 'text-green-600'
