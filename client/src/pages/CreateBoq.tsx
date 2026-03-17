@@ -63,16 +63,16 @@ function CodeBadge({ label, value }: { label: string; value: string }) {
   );
 }
 
-function PriceUpdateBanner({ count, onApplyAll }: { count: number; onApplyAll: () => void }) {
+function PriceUpdateBanner({ count, onApplyAll, isUpdating }: { count: number; onApplyAll: () => void | Promise<void>; isUpdating?: boolean }) {
   if (count === 0) return null;
   return (
     <div className="bg-amber-50 border border-amber-200 rounded p-4 text-sm text-amber-800 flex items-center justify-between gap-4 mb-4 shadow-sm animate-in fade-in slide-in-from-top-2 duration-300">
       <div className="flex items-center gap-3">
         <div className="bg-amber-100 p-2 rounded-full">
-          <IndianRupee className="h-5 w-5 text-amber-700" />
+          {isUpdating ? <Loader2 className="h-5 w-5 text-amber-700 animate-spin" /> : <IndianRupee className="h-5 w-5 text-amber-700" />}
         </div>
         <div>
-          <div className="font-bold text-amber-900">Price Update Available!</div>
+          <div className="font-bold text-amber-900">{isUpdating ? "Updating Rates..." : "Price Update Available!"}</div>
           <div className="text-amber-700">
             {count} items in this BOM have updated rates in the material library.
             Would you like to update them to reflect the current market prices?
@@ -84,8 +84,9 @@ function PriceUpdateBanner({ count, onApplyAll }: { count: number; onApplyAll: (
         size="sm"
         className="bg-amber-600 hover:bg-amber-700 text-white font-bold px-4 h-9 shadow-sm"
         onClick={onApplyAll}
+        disabled={isUpdating}
       >
-        Update All Rates
+        {isUpdating ? "Updating..." : "Update All Rates"}
       </Button>
     </div>
   );
@@ -359,7 +360,7 @@ function BoqItemCard({ boqItem, boqIdx, isVersionSubmitted, expandedProductIds, 
       const iRate = Number(getEditedValue(itemKey, "install_rate", line.installRate));
       const rate = Number(getEditedValue(itemKey, "rate", sRate + iRate)) || (sRate + iRate);
       const reqQty = Number((qty * (tableData.targetRequiredQty || 1)).toFixed(2));
-      const roundOff = Math.ceil(reqQty);
+      const roundOff = line.applyRounding !== false ? Math.ceil(reqQty) : reqQty;
       return {
         title: line.name, description: line.name, unit: line.unit, shop_name: line.shop_name,
         qtyPerSqf: qty, requiredQty: reqQty, roundOff: roundOff,
@@ -1849,7 +1850,7 @@ export default function CreateBom() {
       </Layout>
 
       {/* Small floating Add buttons at bottom-right (duplicate of top actions) */}
-      <div className="fixed right-6 bottom-6 z-50 flex flex-col items-end gap-2 md:gap-3">
+      <div className="fixed right-6 bottom-24 z-50 flex flex-col items-end gap-2 md:gap-3">
         <Button onClick={handleAddProduct} className="bg-primary text-white h-8 px-3 text-xs font-semibold shadow-sm" disabled={isVersionSubmitted || !selectedVersionId} title="Add Product">+ Add Product</Button>
         <Button onClick={handleAddProductManual} variant="outline" className="border-slate-200 h-8 px-3 text-xs font-semibold shadow-sm bg-white" disabled={isVersionSubmitted || !selectedVersionId} title="Add Item">+ Add Item</Button>
       </div>
