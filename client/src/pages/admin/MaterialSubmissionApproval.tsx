@@ -34,6 +34,8 @@ interface MaterialSubmission {
   subcategory: string;
   technicalspecification: string;
   approved: boolean | null;
+  hsn_code: string;
+  sac_code: string;
   created_at: string;
 }
 
@@ -79,12 +81,14 @@ export default function MaterialSubmissionApproval() {
     setApproving(submissionId);
     try {
       const token = localStorage.getItem("authToken");
+      const headers: Record<string, string> = {
+        "Content-Type": "application/json",
+      };
+      if (token) headers["Authorization"] = `Bearer ${token}`;
+
       const response = await fetch(`/api/material-submissions/${submissionId}/approve`, {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: token ? `Bearer ${token}` : undefined,
-        },
+        headers,
       });
 
       if (!response.ok) {
@@ -123,12 +127,14 @@ export default function MaterialSubmissionApproval() {
     setRejecting(submissionId);
     try {
       const token = localStorage.getItem("authToken");
+      const headers: Record<string, string> = {
+        "Content-Type": "application/json",
+      };
+      if (token) headers["Authorization"] = `Bearer ${token}`;
+
       const response = await fetch(`/api/material-submissions/${submissionId}/reject`, {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: token ? `Bearer ${token}` : undefined,
-        },
+        headers,
         body: JSON.stringify({ reason: rejectReason }),
       });
 
@@ -242,6 +248,18 @@ export default function MaterialSubmissionApproval() {
                       <div>
                         <p className="text-sm text-gray-600">Subcategory</p>
                         <p className="font-semibold">{submission.subcategory}</p>
+                      </div>
+                    )}
+                    {submission.hsn_code && (
+                      <div>
+                        <p className="text-sm text-gray-600">HSN Code</p>
+                        <p className="font-semibold">{submission.hsn_code}</p>
+                      </div>
+                    )}
+                    {submission.sac_code && (
+                      <div>
+                        <p className="text-sm text-gray-600">SAC Code</p>
+                        <p className="font-semibold">{submission.sac_code}</p>
                       </div>
                     )}
                   </div>
