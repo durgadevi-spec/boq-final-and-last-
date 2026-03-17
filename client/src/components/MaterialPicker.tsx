@@ -22,6 +22,8 @@ type Material = {
   tax_code_value?: string;
   shop_name?: string;
   unit?: string;
+  hsn_code?: string;
+  sac_code?: string;
   rate?: number;
   created_at: string;
   updated_at: string;
@@ -94,13 +96,17 @@ export default function MaterialPicker({
       const category = material.category?.toLowerCase() || "";
       const subcategory = material.subcategory?.toLowerCase() || "";
       const shopName = material.shop_name?.toLowerCase() || "";
+      const hsn = material.hsn_code?.toLowerCase() || "";
+      const sac = material.sac_code?.toLowerCase() || "";
 
       return (
         name.includes(query) ||
         code.includes(query) ||
         category.includes(query) ||
         subcategory.includes(query) ||
-        shopName.includes(query)
+        shopName.includes(query) ||
+        hsn.includes(query) ||
+        sac.includes(query)
       );
     });
 
@@ -173,6 +179,12 @@ export default function MaterialPicker({
                         <div className="text-[11px] text-gray-500">
                           {material.category} {material.subcategory && ` → ${material.subcategory}`}
                         </div>
+                      )}
+                      {material.hsn_code && (
+                        <div className="text-[10px] bg-amber-50 text-amber-700 px-1 rounded">HSN: {material.hsn_code}</div>
+                      )}
+                      {material.sac_code && (
+                        <div className="text-[10px] bg-blue-50 text-blue-700 px-1 rounded">SAC: {material.sac_code}</div>
                       )}
                     </div>
 
