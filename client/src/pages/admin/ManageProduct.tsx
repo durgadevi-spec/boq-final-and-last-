@@ -21,7 +21,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 
 type Product = { id: string; name: string; subcategory: string; created_at: string; created_by?: string };
 type Material = { id: string; name: string; unit: string; rate: number; category: string; subcategory: string; description?: string; shop_name?: string; shop_id?: string; shopId?: string; code?: string; technicalspecification?: string; created_at?: string };
-type SelectedMaterial = Material & { qty: number; baseQty: number; wastagePct?: number; amount: number; rate: number; supplyRate: number; installRate: number; location: string; applyWastage: boolean };
+type SelectedMaterial = Material & { qty: number; baseQty: number; wastagePct?: number; amount: number; rate: number; supplyRate: number; installRate: number; location: string; applyWastage: boolean; applyRounding: boolean };
 
 const ALL = "__ALL__";
 
@@ -228,7 +228,7 @@ export default function ManageProduct() {
                 const ex = existingMap.get(m.id);
                 if (ex) return ex;
                 const rate = Number(m.rate) || 0;
-                return { ...m, qty: 1, baseQty: 1, wastagePct: undefined, amount: rate, rate, supplyRate: rate, installRate: 0, location: m.technicalspecification || m.name || "", description: m.technicalspecification || m.name || "", applyWastage: true, shop_id: m.shop_id || m.shopId, shopId: m.shop_id || m.shopId };
+                return { ...m, qty: 1, baseQty: 1, wastagePct: undefined, amount: rate, rate, supplyRate: rate, installRate: 0, location: m.technicalspecification || m.name || "", description: m.technicalspecification || m.name || "", applyWastage: true, applyRounding: true, shop_id: m.shop_id || m.shopId, shopId: m.shop_id || m.shopId };
             }));
         }
         setStep(step + 1);
@@ -237,7 +237,7 @@ export default function ManageProduct() {
     const buildPayloadItems = () => boqResults.computed.map(m => ({
         materialId: m.id, materialName: m.name, unit: m.unit, qty: m.roundOffQty, rate: m.rate,
         supplyRate: m.supplyRate, installRate: m.installRate, location: m.location, amount: m.lineTotal,
-        baseQty: m.baseQty, wastagePct: m.wastagePct ?? null, applyWastage: m.applyWastage, shop_name: m.shop_name, shop_id: m.shop_id || m.shopId
+        baseQty: m.baseQty, wastagePct: m.wastagePct ?? null, applyWastage: m.applyWastage, applyRounding: m.applyRounding, shop_name: m.shop_name, shop_id: m.shop_id || m.shopId
     }));
 
     const buildPayload = (extra?: object) => ({
@@ -291,6 +291,7 @@ export default function ManageProduct() {
         location: item.location || "Main Area", amount: Number(item.amount),
         rejection_reason: item.rejection_reason || null,
         applyWastage: item.apply_wastage !== undefined ? Boolean(item.apply_wastage) : (item.applyWastage !== undefined ? Boolean(item.applyWastage) : true),
+        applyRounding: item.apply_rounding !== undefined ? Boolean(item.apply_rounding) : (item.applyRounding !== undefined ? Boolean(item.applyRounding) : true),
         shop_name: item.shop_name, shop_id: item.shop_id || item.shopId, shopId: item.shop_id || item.shopId, category: "", subcategory: ""
     }));
 
@@ -402,7 +403,7 @@ export default function ManageProduct() {
                 const ex = existingMap.get(m.id);
                 if (ex) return ex;
                 const rate = Number(m.rate) || 0;
-                return { ...m, qty: 1, baseQty: 1, wastagePct: undefined, amount: rate, rate, supplyRate: rate, installRate: 0, location: m.technicalspecification || m.name || "", description: m.technicalspecification || m.name || "", applyWastage: true, shop_id: m.shop_id || m.shopId, shopId: m.shop_id || m.shopId } as SelectedMaterial;
+                return { ...m, qty: 1, baseQty: 1, wastagePct: undefined, amount: rate, rate, supplyRate: rate, installRate: 0, location: m.technicalspecification || m.name || "", description: m.technicalspecification || m.name || "", applyWastage: true, applyRounding: true, shop_id: m.shop_id || m.shopId, shopId: m.shop_id || m.shopId } as SelectedMaterial;
             }));
         }
     }, [selectedMaterials, step]);
@@ -1008,7 +1009,7 @@ export default function ManageProduct() {
                                                                                 onClick={() => {
                                                                                     if (configMaterials.some(m => m.id === material.id)) { toast({ title: "Already Added", description: "This material is already in your configuration.", variant: "destructive" }); return; }
                                                                                     const rate = Number(material.rate) || 0;
-                                                                                    const newItem: SelectedMaterial = { ...material, qty: 1, baseQty: 1, wastagePct: wastagePctDefault, amount: rate, rate, supplyRate: rate, installRate: 0, location: material.technicalspecification || material.name || "", description: material.technicalspecification || material.name || "", applyWastage: true, shop_id: material.shop_id || material.shopId, shopId: material.shop_id || material.shopId };
+                                                                                    const newItem: SelectedMaterial = { ...material, qty: 1, baseQty: 1, wastagePct: wastagePctDefault, amount: rate, rate, supplyRate: rate, installRate: 0, location: material.technicalspecification || material.name || "", description: material.technicalspecification || material.name || "", applyWastage: true, applyRounding: true, shop_id: material.shop_id || material.shopId, shopId: material.shop_id || material.shopId };
                                                                                     setConfigMaterials(prev => [...prev, newItem]);
                                                                                     setSelectedMaterials(prev => [...prev, material]);
                                                                                     toast({ title: "Material Added", description: `${material.name} added to configuration.` });
@@ -1043,6 +1044,12 @@ export default function ManageProduct() {
                                                                     <Checkbox checked={configMaterials.length > 0 && configMaterials.every(m => m.applyWastage)} onCheckedChange={checked => setConfigMaterials(prev => prev.map(m => ({ ...m, applyWastage: !!checked })))} />
                                                                 </div>
                                                             </TableHead>
+                                                            <TableHead className="w-[70px] font-bold">
+                                                                <div className="flex flex-col items-center gap-1">
+                                                                    <span className="text-[10px]">Round Off</span>
+                                                                    <Checkbox checked={configMaterials.length > 0 && configMaterials.every(m => m.applyRounding)} onCheckedChange={checked => setConfigMaterials(prev => prev.map(m => ({ ...m, applyRounding: !!checked })))} />
+                                                                </div>
+                                                            </TableHead>
                                                             <TableHead className="w-[80px] font-bold">Wastage %</TableHead>
                                                             <TableHead className="w-[80px] font-bold">Wastage Qty</TableHead>
                                                             <TableHead className="w-[90px] font-bold">Total Qty</TableHead>
@@ -1074,6 +1081,7 @@ export default function ManageProduct() {
                                                                 <>
                                                                     <TableCell className="text-[10px] font-bold">₹{baseAmt.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</TableCell>
                                                                     <TableCell className="text-center"><Checkbox checked={m.applyWastage} onCheckedChange={checked => updateConfig(m.id!, "applyWastage", checked)} /></TableCell>
+                                                                    <TableCell className="text-center"><Checkbox checked={m.applyRounding} onCheckedChange={checked => updateConfig(m.id!, "applyRounding", checked)} /></TableCell>
                                                                     <TableCell><Input type="number" value={m.wastagePct ?? ""} onChange={e => updateConfig(m.id!, "wastagePct", e.target.value ? Number(e.target.value) : undefined)} placeholder="Global" className="h-8 border-orange-200 text-[10px] px-2 font-bold w-full" /></TableCell>
                                                                     <TableCell className="text-[10px] font-bold text-orange-600">{m.wastageQty.toFixed(2)}</TableCell>
                                                                     <TableCell className="text-[10px] font-bold">{m.roundOffQty.toFixed(2)}</TableCell>
@@ -1085,12 +1093,12 @@ export default function ManageProduct() {
                                                     );
                                                 })}
                                                 <TableRow className="bg-muted/20 font-black">
-                                                    <TableCell colSpan={compactMode ? 9 : 14} className="text-right py-3 pr-4">Total (Incl. Wastage)</TableCell>
+                                                    <TableCell colSpan={compactMode ? 9 : 15} className="text-right py-3 pr-4">Total (Incl. Wastage)</TableCell>
                                                     <TableCell className="text-[11px] text-primary">₹{totalCost.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</TableCell>
                                                     {!compactMode && <TableCell></TableCell>}
                                                 </TableRow>
                                                 <TableRow className="bg-primary/5 font-black border-t-2 border-primary/20">
-                                                    <TableCell colSpan={compactMode ? 9 : 14} className="text-right py-4 pr-4 text-primary uppercase tracking-widest text-xs">Rate per {requiredUnitType}</TableCell>
+                                                    <TableCell colSpan={compactMode ? 9 : 15} className="text-right py-4 pr-4 text-primary uppercase tracking-widest text-xs">Rate per {requiredUnitType}</TableCell>
                                                     <TableCell className="text-sm text-primary font-black underline decoration-primary decoration-2 underline-offset-8">₹{(totalCost / (baseRequiredQty || 1)).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</TableCell>
                                                     {!compactMode && <TableCell></TableCell>}
                                                 </TableRow>
