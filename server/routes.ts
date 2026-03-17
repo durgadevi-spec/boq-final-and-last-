@@ -3729,8 +3729,9 @@ export async function registerRoutes(
     authMiddleware,
     async (req: Request, res: Response) => {
       try {
-        const { name, client, budget, location, client_address, gst_no, project_value } = req.body;
-        console.log('/api/boq-projects POST body ->', { name, client, budget, location, client_address, gst_no, project_value });
+        const { name, client, budget, location, client_address, gst_no, project_value, project_status } = req.body;
+        console.log('/api/boq-projects POST body ->', { name, client, budget, location, client_address, gst_no, project_value, project_status });
+
 
         if (!name) {
           res.status(400).json({ message: "Project name is required" });
@@ -3740,10 +3741,11 @@ export async function registerRoutes(
         const projectId = `proj-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
 
         await query(
-          `INSERT INTO boq_projects (id, name, client, budget, location, client_address, gst_no, project_value, status, created_at, updated_at)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, NOW(), NOW())`,
-          [projectId, name.trim(), client || "", budget || "", location || null, client_address || null, gst_no || null, project_value || null, "draft"],
+          `INSERT INTO boq_projects (id, name, client, budget, location, client_address, gst_no, project_value, project_status, status, created_at, updated_at)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, NOW(), NOW())`,
+          [projectId, name.trim(), client || "", budget || "", location || null, client_address || null, gst_no || null, project_value || null, project_status || 'started', "draft"],
         );
+
 
         res.json({
           id: projectId,
@@ -3986,15 +3988,22 @@ export async function registerRoutes(
         let projectName: string | null = null;
         let projectClient: string | null = null;
         let projectLocation: string | null = null;
+        let projectClientAddress: string | null = null;
+        let projectGstNo: string | null = null;
+        let projectVal: string | null = null;
         try {
-          const proj = await query(`SELECT name, client, location FROM boq_projects WHERE id = $1`, [project_id]);
+          const proj = await query(`SELECT name, client, location, client_address, gst_no, project_value FROM boq_projects WHERE id = $1`, [project_id]);
           projectName = proj.rows[0]?.name ?? null;
           projectClient = proj.rows[0]?.client ?? null;
           projectLocation = proj.rows[0]?.location ?? null;
+          projectClientAddress = proj.rows[0]?.client_address ?? null;
+          projectGstNo = proj.rows[0]?.gst_no ?? null;
+          projectVal = proj.rows[0]?.project_value ?? null;
         } catch (err) {
           // non-fatal: proceed with nulls if lookup fails
-          console.warn("[db] Could not fetch project name/client/location:", (err as any)?.message || err);
+          console.warn("[db] Could not fetch project name/client/location etc:", (err as any)?.message || err);
         }
+
 
         // Create new version (store project name, client, location for easier querying/version display)
         // Also copy column_config from previous version if expanding from one
@@ -4007,10 +4016,11 @@ export async function registerRoutes(
         }
 
         await query(
-          `INSERT INTO boq_versions (id, project_id, project_name, project_client, project_location, version_number, status, type, column_config, created_at, updated_at)
-           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, NOW(), NOW())`,
-          [versionId, project_id, projectName, projectClient, projectLocation, nextVersion, "draft", type, initialColumnConfig],
+          `INSERT INTO boq_versions (id, project_id, project_name, project_client, project_location, project_client_address, project_gst_no, project_value, version_number, status, type, column_config, created_at, updated_at)
+           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, NOW(), NOW())`,
+          [versionId, project_id, projectName, projectClient, projectLocation, projectClientAddress, projectGstNo, projectVal, nextVersion, "draft", type, initialColumnConfig],
         );
+
 
         // Copy items from previous version if requested
         if (copy_from_version) {
@@ -4022,17 +4032,19 @@ export async function registerRoutes(
           for (const item of itemsResult.rows) {
             const newItemId = `item-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
             await query(
-              `INSERT INTO boq_items (id, project_id, estimator, table_data, version_id, sort_order, created_at)
-               VALUES ($1, $2, $3, $4, $5, $6, NOW())`,
+              `INSERT INTO boq_items (id, project_id, estimator, table_data, version_id, sort_order, user_added, created_at)
+               VALUES ($1, $2, $3, $4, $5, $6, $7, NOW())`,
               [
                 newItemId,
                 project_id,
                 item.estimator,
                 item.table_data,
                 versionId,
-                item.sort_order, // Copy sort_order
+                item.sort_order,
+                item.user_added ?? true,
               ],
             );
+
           }
         }
 
