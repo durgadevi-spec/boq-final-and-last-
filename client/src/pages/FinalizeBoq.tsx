@@ -3247,7 +3247,7 @@ export default function FinalizeBoq() {
                             )}
                             {!hiddenPredefinedCols.override_total && (
                               <td className="border-r px-2 py-1.5 text-right font-semibold text-gray-800 bg-gray-50 align-middle text-[10px] w-32">
-                                ₹{((parseFloat(overrideRates[boqItem.id] || "0") || 0) * (productQuantities[boqItem.id] !== undefined ? parseFloat(productQuantities[boqItem.id]) || 0 : (tableData.materialLines && tableData.targetRequiredQty !== undefined ? Number(tableData.targetRequiredQty) : Number(currentStep11Items[0]?.qty || 0)))).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                                ₹{((parseFloat(overrideRates[boqItem.id] || "0") || 0) * (productQuantities[boqItem.id] !== undefined ? parseFloat(productQuantities[boqItem.id]) || 0 : (tableData.targetRequiredQty || currentStep11Items[0]?.qty || 0))).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                               </td>
                             )}
                             {/* Custom columns */}
@@ -3256,35 +3256,29 @@ export default function FinalizeBoq() {
                               const displayQty = manualQtyStr !== undefined ? (parseFloat(manualQtyStr) || 0) : (tableData.targetRequiredQty || currentStep11Items[0]?.qty || 0);
                               const baseTotalValue = rateSqft * displayQty;
 
-                              let itemTotal = (parseFloat(overrideRates[boqItem.id] || "0") || 0) > 0
+                              let itemRunningTotal = (parseFloat(overrideRates[boqItem.id] || "0") || 0) > 0
                                 ? ((parseFloat(overrideRates[boqItem.id] || "0") || 0) * displayQty)
                                 : baseTotalValue;
                               let accumulator = 0;
                               const rowCalculatedValues: { [colName: string]: number } = {};
 
-                              return allCols.filter(c => !c.hideColumn).map((col, idx) => {
-                                const realIdx = allCols.findIndex(c => c.name === col.name);
-                                if (col.isTotal) {
-                                  itemTotal += accumulator;
+                              // Calculate ALL columns first to ensure math remains correct even if some are hidden
+                              const allCells = allCols.map((col, idx) => {
+                                let valNum = 0;
+                                let isTotalColumn = col.isTotal;
+
+                                if (isTotalColumn) {
+                                  itemRunningTotal += accumulator;
                                   accumulator = 0;
-                                  rowCalculatedValues[col.name] = itemTotal;
-                                  return (
-                                    <td key={`${col.name}-${idx}`} className="border-r px-2 py-1.5 text-right font-semibold text-green-900 bg-green-100/40 text-[10px]">
-                                      ₹{itemTotal.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                                    </td>
-                                  );
+                                  rowCalculatedValues[col.name] = itemRunningTotal;
+                                  valNum = itemRunningTotal;
                                 } else {
                                   const itemColList = customColumns[boqItem.id] || [];
                                   const itemCol = itemColList.find((c: any) => c.name === col.name) || col;
                                   const baseSource = (itemCol as any).baseSource;
                                   const currentBaseSource = baseSource || "Total Value (₹)";
                                   const isCalculated = currentBaseSource && currentBaseSource !== "manual";
-                                  let valNum = 0;
-                                  const multiplierSource = (itemCol as any).multiplierSource || "manual";
-                                  const manualMultiplier = (itemCol as any).percentageValue || 0;
-                                  const operator = (itemCol as any).operator || "%";
-                                  let multiplierVal = 0;
-
+                                  
                                   if (isCalculated) {
                                     const _oRate = parseFloat(overrideRates[boqItem.id] || "0") || 0;
                                     const _ctx: SrcCtx = {
@@ -3293,7 +3287,10 @@ export default function FinalizeBoq() {
                                       rowCalc: rowCalculatedValues, customVals: customColumnValues[boqItem.id]?.[0] || {},
                                     };
                                     const baseVal = resolveSource(baseSource, _ctx);
-                                    multiplierVal = multiplierSource === "manual" ? manualMultiplier : resolveSource(multiplierSource, _ctx);
+                                    const multiplierSource = (itemCol as any).multiplierSource || "manual";
+                                    const manualMultiplier = (itemCol as any).percentageValue || 0;
+                                    const operator = (itemCol as any).operator || "%";
+                                    const multiplierVal = multiplierSource === "manual" ? manualMultiplier : resolveSource(multiplierSource, _ctx);
                                     valNum = applyOperator(baseVal, multiplierVal, operator);
                                   } else {
                                     valNum = parseFloat(customColumnValues[boqItem.id]?.[0]?.[col.name] || "0") || 0;
@@ -3301,7 +3298,24 @@ export default function FinalizeBoq() {
 
                                   rowCalculatedValues[col.name] = valNum;
                                   accumulator += valNum;
+                                }
+
+                                if (col.hideColumn) return null;
+
+                                // Render the cell only if not hidden
+                                if (isTotalColumn) {
+                                  return (
+                                    <td key={`${col.name}-${idx}`} className="border-r px-2 py-1.5 text-right font-semibold text-green-900 bg-green-100/40 text-[10px]">
+                                      ₹{valNum.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                                    </td>
+                                  );
+                                } else {
+                                  const itemColList = customColumns[boqItem.id] || [];
+                                  const itemCol = itemColList.find((c: any) => c.name === col.name) || col;
                                   const savedVal = customColumnValues[boqItem.id]?.[0]?.[col.name];
+                                  const currentBaseSource = (itemCol as any).baseSource || "Total Value (₹)";
+                                  const isCalculated = currentBaseSource && currentBaseSource !== "manual";
+
                                   const displayVal = isCalculated
                                     ? valNum.toFixed(2)
                                     : ((savedVal !== undefined && savedVal !== null && savedVal !== "") ? String(savedVal) : "");
@@ -3311,86 +3325,88 @@ export default function FinalizeBoq() {
                                   return (
                                     <td key={`${col.name}-${idx}`} className="border-r px-2 py-1 bg-transparent relative group/cell align-middle text-[11px] min-w-[180px]">
                                       <div className="flex flex-col h-full min-h-[45px] justify-between">
-                                        {!col.isTotal && (
-                                          <div className="absolute left-1 top-1 z-20 pointer-events-none group-hover/cell:pointer-events-auto focus-within:pointer-events-auto">
-                                            <div className="flex items-center gap-1 opacity-0 group-hover/cell:opacity-100 focus-within:opacity-100 transition-opacity bg-white/95 p-1 rounded-md shadow-md border border-purple-200">
-                                              <select
-                                                className="bg-white border border-purple-300 rounded text-[10px] font-semibold text-purple-700 outline-none h-6 px-1 cursor-pointer"
-                                                value={(itemCol as any).multiplierSource || "manual"}
+                                        <div className="absolute left-1 top-1 z-20 pointer-events-none group-hover/cell:pointer-events-auto focus-within:pointer-events-auto">
+                                          <div className="flex items-center gap-1 opacity-0 group-hover/cell:opacity-100 focus-within:opacity-100 transition-opacity bg-white/95 p-1 rounded-md shadow-md border border-purple-200">
+                                            <select
+                                              className="bg-white border border-purple-300 rounded text-[10px] font-semibold text-purple-700 outline-none h-6 px-1 cursor-pointer"
+                                              value={(itemCol as any).multiplierSource || "manual"}
+                                              disabled={isVersionSubmitted}
+                                              onChange={(e) => {
+                                                handleItemCalculation(boqItem.id, col.name, itemMultiplier, itemOp, e.target.value);
+                                              }}
+                                            >
+                                              <option value="manual">Val</option>
+                                              <option value="Rate / Unit">G: Rate</option>
+                                              <option value="Unit">H: Unit</option>
+                                              <option value="Qty">I: Qty</option>
+                                              <option value="Total Value (₹)">J: Total</option>
+                                              <option value="Override Rate">K: O.Rate</option>
+                                              <option value="Override Total">L: O.Total</option>
+                                              {allCols.filter(c => c.name !== col.name).map((c) => {
+                                                const visibleCols = allCols.filter(vc => !vc.hideColumn);
+                                                const vIdx = visibleCols.findIndex(vc => vc.name === c.name);
+                                                return (
+                                                  <option key={c.name} value={c.name}>
+                                                    {getExcelColumnName(vIdx + 12)}: {c.name.substring(0, 8)}
+                                                  </option>
+                                                );
+                                              })}
+                                            </select>
+
+                                            <select
+                                              className="bg-white border border-purple-300 rounded text-[10px] font-semibold text-purple-700 outline-none h-6 px-1 cursor-pointer"
+                                              value={(itemCol as any).baseSource || "Total Value (₹)"}
+                                              disabled={isVersionSubmitted}
+                                              onChange={(e) => {
+                                                handleItemCalculation(boqItem.id, col.name, itemMultiplier, itemOp, (itemCol as any).multiplierSource || "manual", e.target.value);
+                                              }}
+                                            >
+                                              <option value="manual">Fixed Value</option>
+                                              <option value="Total Value (₹)">J: Total</option>
+
+                                              <option value="Rate / Unit">G: Rate</option>
+                                              <option value="Qty">I: Qty</option>
+                                              <option value="Override Rate">K: O.Rate</option>
+                                              <option value="Override Total">L: O.Total</option>
+                                              {allCols.filter(c => c.name !== col.name).map((c) => {
+                                                const visibleCols = allCols.filter(vc => !vc.hideColumn);
+                                                const vIdx = visibleCols.findIndex(vc => vc.name === c.name);
+                                                return (
+                                                  <option key={c.name} value={c.name}>
+                                                    {getExcelColumnName(vIdx + 12)}: {c.name.substring(0, 8)}
+                                                  </option>
+                                                );
+                                              })}
+                                            </select>
+
+                                            {((itemCol as any).multiplierSource || "manual") === "manual" && (
+                                              <input
+                                                type="number"
+                                                className="w-16 h-6 bg-white border border-purple-400 rounded-md px-1.5 text-[11px] font-semibold text-purple-800 outline-none text-right shadow-sm focus:ring-1 ring-purple-600/30"
+                                                value={itemMultiplier}
                                                 disabled={isVersionSubmitted}
                                                 onChange={(e) => {
-                                                  handleItemCalculation(boqItem.id, col.name, itemMultiplier, itemOp, e.target.value);
+                                                  const newVal = parseFloat(e.target.value) || 0;
+                                                  handleItemCalculation(boqItem.id, col.name, newVal, itemOp, (itemCol as any).multiplierSource || "manual", (itemCol as any).baseSource || "Total Value (₹)");
                                                 }}
-                                              >
-                                                <option value="manual">Val</option>
-                                                <option value="Rate / Unit">G: Rate</option>
-                                                <option value="Unit">H: Unit</option>
-                                                <option value="Qty">I: Qty</option>
-                                                <option value="Total Value (₹)">J: Total</option>
-                                                <option value="Override Rate">K: O.Rate</option>
-                                                <option value="Override Total">L: O.Total</option>
-                                                {allCols.filter(c => c.name !== col.name).map((c) => {
-                                                  return (
-                                                    <option key={c.name} value={c.name}>
-                                                      {getExcelColumnName(allCols.filter(vc => !vc.hideColumn).findIndex(vc => vc.name === c.name) + 12)}: {c.name.substring(0, 8)}
-                                                    </option>
-                                                  );
-                                                })}
-                                              </select>
+                                              />
+                                            )}
 
-                                              <select
-                                                className="bg-white border border-purple-300 rounded text-[10px] font-semibold text-purple-700 outline-none h-6 px-1 cursor-pointer"
-                                                value={(itemCol as any).baseSource || "Total Value (₹)"}
-                                                disabled={isVersionSubmitted}
-                                                onChange={(e) => {
-                                                  handleItemCalculation(boqItem.id, col.name, itemMultiplier, itemOp, (itemCol as any).multiplierSource || "manual", e.target.value);
-                                                }}
-                                              >
-                                                <option value="manual">Fixed Value</option>
-                                                <option value="Total Value (₹)">J: Total</option>
-
-                                                <option value="Rate / Unit">G: Rate</option>
-                                                <option value="Qty">I: Qty</option>
-                                                <option value="Override Rate">K: O.Rate</option>
-                                                <option value="Override Total">L: O.Total</option>
-                                                {allCols.filter(c => c.name !== col.name).map((c) => {
-                                                  return (
-                                                    <option key={c.name} value={c.name}>
-                                                      {getExcelColumnName(allCols.filter(vc => !vc.hideColumn).findIndex(vc => vc.name === c.name) + 12)}: {c.name.substring(0, 8)}
-                                                    </option>
-                                                  );
-                                                })}
-                                              </select>
-
-                                              {((itemCol as any).multiplierSource || "manual") === "manual" && (
-                                                <input
-                                                  type="number"
-                                                  className="w-16 h-6 bg-white border border-purple-400 rounded-md px-1.5 text-[11px] font-semibold text-purple-800 outline-none text-right shadow-sm focus:ring-1 ring-purple-600/30"
-                                                  value={itemMultiplier}
-                                                  disabled={isVersionSubmitted}
-                                                  onChange={(e) => {
-                                                    const newVal = parseFloat(e.target.value) || 0;
-                                                    handleItemCalculation(boqItem.id, col.name, newVal, itemOp, (itemCol as any).multiplierSource || "manual", (itemCol as any).baseSource || "Total Value (₹)");
-                                                  }}
-                                                />
-                                              )}
-
-                                              <select
-                                                className="bg-white border border-purple-300 rounded text-[10px] font-semibold text-purple-700 outline-none h-6 px-1 cursor-pointer"
-                                                value={itemOp}
-                                                disabled={isVersionSubmitted}
-                                                onChange={(e) => {
-                                                  handleItemCalculation(boqItem.id, col.name, itemMultiplier, e.target.value, (itemCol as any).multiplierSource || "manual", (itemCol as any).baseSource || "Total Value (₹)");
-                                                }}
-                                              >
-                                                <option value="%">%</option>
-                                                <option value="*">×</option>
-                                                <option value="/">÷</option>
-                                                <option value="+">+</option>
-                                              </select>
-                                            </div>
+                                            <select
+                                              className="bg-white border border-purple-300 rounded text-[10px] font-semibold text-purple-700 outline-none h-6 px-1 cursor-pointer"
+                                              value={itemOp}
+                                              disabled={isVersionSubmitted}
+                                              onChange={(e) => {
+                                                handleItemCalculation(boqItem.id, col.name, itemMultiplier, e.target.value, (itemCol as any).multiplierSource || "manual", (itemCol as any).baseSource || "Total Value (₹)");
+                                              }}
+                                            >
+                                              <option value="%">%</option>
+                                              <option value="*">×</option>
+                                              <option value="/">÷</option>
+                                              <option value="+">+</option>
+                                            </select>
                                           </div>
-                                        )}
+                                        </div>
 
                                         <input
                                           type="number"
@@ -3407,13 +3423,14 @@ export default function FinalizeBoq() {
                                           className={`w-full h-7 border-transparent rounded px-1 py-0.5 text-[11px] outline-none bg-transparent text-right font-bold transition-colors text-gray-800`}
                                           placeholder="0.00"
                                         />
-
                                         {/* Row-level badges removed per user request */}
                                       </div>
                                     </td>
                                   );
                                 }
                               });
+
+                              return allCells;
                             })()}
                           </Reorder.Item>
                         );
