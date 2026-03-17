@@ -1611,7 +1611,14 @@ export default function FinalizeBoq() {
       ...allCols.map(c => c.name)
     ];
 
-    setSelectedExportCols(potentialCols);
+    const defaultSelection = potentialCols.filter(c => {
+      const standardColsUntilQty = ["S.No", "Product / Material", "Description / Location", "HSN", "SAC", "Unit", "Qty"];
+      if (standardColsUntilQty.includes(c)) return true;
+      if (c === "Supply Rate" || c === "Supply Amount") return true;
+      return false;
+    });
+
+    setSelectedExportCols(defaultSelection);
     setIsExportDialogOpen(true);
   };
 
@@ -1654,7 +1661,9 @@ export default function FinalizeBoq() {
 
         const rowValues: { [colName: string]: any } = {};
         const rowCalculatedValues: { [colName: string]: number } = {};
-        let currentRunningTotal = totalVal;
+        const overrideRateVal = parseFloat(overrideRates[boqItem.id] || "0") || 0;
+        const overrideTotalVal = overrideRateVal * displayQty;
+        let currentRunningTotal = overrideRateVal > 0 ? overrideTotalVal : totalVal;
         let accumulator = 0;
 
         const allPotentialColsInOrder = [
@@ -1840,7 +1849,14 @@ export default function FinalizeBoq() {
       ...allCols.map(c => c.name)
     ];
 
-    setSelectedPdfExportCols(potentialPdfCols);
+    const defaultPdfSelection = potentialPdfCols.filter(c => {
+      const standardPdfColsUntilQty = ["S.No", "Product / Material", "Description", "HSN", "SAC", "Unit", "Qty"];
+      if (standardPdfColsUntilQty.includes(c)) return true;
+      if (c === "Supply Rate" || c === "Supply Amount") return true;
+      return false;
+    });
+
+    setSelectedPdfExportCols(defaultPdfSelection);
     setIsPdfExportDialogOpen(true);
   };
 
@@ -1898,7 +1914,9 @@ export default function FinalizeBoq() {
         );
 
         const customVals: string[] = [];
-        let runningTotal = totalVal;
+        const overrideRateVal = parseFloat(overrideRates[boqItem.id] || "0") || 0;
+        const overrideTotalVal = overrideRateVal * displayQty;
+        let runningTotal = overrideRateVal > 0 ? overrideTotalVal : totalVal;
         let accumulator = 0;
         const rowCalculatedValues: { [colName: string]: number } = {};
 
