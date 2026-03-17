@@ -1648,6 +1648,15 @@ export default function FinalizeBoq() {
 
       const sheetData: any[] = [];
 
+      // Add Project Information Headers
+      sheetData.push(["PROJECT:", selectedProject?.name || "-"]);
+      sheetData.push(["CLIENT:", selectedProject?.client || "-"]);
+      if (activeVersion) {
+        sheetData.push(["VERSION:", `V${activeVersion.version_number} (${activeVersion.type === 'bom' ? 'BOQ' : 'BOM'})`]);
+      }
+      sheetData.push(["DATE:", new Date().toLocaleDateString()]);
+      sheetData.push([]); // Spacer row
+
       const headers = selectedExportCols.map(colName => colName);
       sheetData.push(headers);
 
@@ -1842,7 +1851,8 @@ export default function FinalizeBoq() {
       }
       // ─────────────────────────────────────────────────────────────────────────
 
-      const filename = `${selectedProject?.name || "BOQ"}_${activeVersion ? `V${activeVersion.version_number}` : "draft"}_${activeVersion?.type === 'bom' ? 'BOQ' : 'BOM'}.xlsx`;
+      const typeStr = activeVersion ? activeVersion.type.toUpperCase() : "BOM";
+      const filename = `${selectedProject?.name || "BOQ"}_${activeVersion ? `V${activeVersion.version_number}` : "draft"}_${typeStr}.xlsx`;
       XLSX.writeFile(wb, filename, { cellStyles: true });
 
       setIsExportDialogOpen(false);
@@ -2226,7 +2236,8 @@ export default function FinalizeBoq() {
         doc.text(lines, 10, finalY + 6);
       }
 
-      const filename = `${projNameStr}_${activeVersion ? `V${activeVersion.version_number}` : "draft"}_${activeVersion?.type === 'bom' ? 'BOQ' : 'BOM'}.pdf`;
+      const typeStr = activeVersion ? activeVersion.type.toUpperCase() : "BOM";
+      const filename = `${projNameStr}_${activeVersion ? `V${activeVersion.version_number}` : "draft"}_${typeStr}.pdf`;
       doc.save(filename);
       toast({ title: "Success", description: `Downloaded ${filename}` });
     } catch (err) {
