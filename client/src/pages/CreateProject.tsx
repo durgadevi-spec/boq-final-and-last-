@@ -6,7 +6,9 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
+import { Checkbox } from "@/components/ui/checkbox";
 import { useToast } from "@/hooks/use-toast";
+
 import {
   Building2,
   MapPin,
@@ -40,24 +42,111 @@ export default function CreateProject() {
   const [editingProjectName, setEditingProjectName] = useState<string>("");
   const [editingProjectData, setEditingProjectData] = useState<any | null>(null);
 
+  // Clone dialog state
+  const [isCloneOpen, setIsCloneOpen] = useState(false);
+  const [cloneSourceProject, setCloneSourceProject] = useState<any | null>(null);
+  const [cloneNewName, setCloneNewName] = useState("");
+  const [cloneBomVersions, setCloneBomVersions] = useState<any[]>([]);
+  const [cloneBoqVersions, setCloneBoqVersions] = useState<any[]>([]);
+  const [cloneSelectedBoms, setCloneSelectedBoms] = useState<Set<string>>(new Set());
+  const [cloneSelectedBoqs, setCloneSelectedBoqs] = useState<Set<string>>(new Set());
+  const [isCloning, setIsCloning] = useState(false);
+
   const { toast } = useToast();
   const [projects, setProjects] = useState<any[]>([]);
 
-  const handleClone = (p: any) => {
-    setName(p.name ? `Copy of ${p.name}` : "");
-    setClient(p.client || "");
-    setBudget(p.budget || "");
-    setLocation(p.location || "");
-    setClientAddress(p.client_address || "");
-    setGstNo(p.gst_no || "");
-    setProjectValue(p.project_value || "");
-    setTemplateProjectId("none");
-    setSelectedVersionId("none");
-    // Scroll to form
-    setTimeout(() => {
-      createFormRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
-    }, 100);
+
+  const handleClone = async (p: any) => {
+    setCloneSourceProject(p);
+    setCloneNewName(p.name ? `Copy of ${p.name}` : "");
+    setCloneSelectedBoms(new Set());
+    setCloneSelectedBoqs(new Set());
+    setIsCloneOpen(true);
+    setCloneBomVersions([]);
+    setCloneBoqVersions([]);
+
+    try {
+      const [bomRes, boqRes] = await Promise.all([
+        apiFetch(`/api/boq-versions/${encodeURIComponent(p.id)}?type=bom`),
+        apiFetch(`/api/boq-versions/${encodeURIComponent(p.id)}?type=boq`)
+      ]);
+      if (bomRes.ok) {
+        const bomData = await bomRes.json();
+        setCloneBomVersions(bomData.versions || []);
+      }
+      if (boqRes.ok) {
+        const boqData = await boqRes.json();
+        setCloneBoqVersions(boqData.versions || []);
+      }
+    } catch (e) {
+      console.warn("Failed to load versions for cloning", e);
+    }
   };
+
+  const executeClone = async () => {
+    if (!cloneSourceProject || !cloneNewName.trim()) return;
+    setIsCloning(true);
+
+    try {
+      // 1. Create the new project
+      const projRes = await apiFetch("/api/boq-projects", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name: cloneNewName.trim(),
+          client: cloneSourceProject.client || "",
+          budget: cloneSourceProject.budget || "",
+          location: cloneSourceProject.location || "",
+          client_address: cloneSourceProject.client_address || "",
+          gst_no: cloneSourceProject.gst_no || "",
+          project_value: cloneSourceProject.project_value || "",
+          base_version_id: null,
+          project_status: cloneSourceProject.project_status || "started"
+        }),
+      });
+
+      if (!projRes.ok) throw new Error("Failed to create project");
+      const newProject = await projRes.json();
+
+      // 2. Clone selected BOM versions sequentially
+      for (const versionId of Array.from(cloneSelectedBoms)) {
+        const res = await apiFetch(`/api/boq-versions`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            project_id: newProject.id,
+            type: "bom",
+            copy_from_version: versionId
+          }),
+        });
+        if (!res.ok) console.error(`Failed to clone BOM version ${versionId}`);
+      }
+
+      // 3. Clone selected BOQ versions sequentially
+      for (const versionId of Array.from(cloneSelectedBoqs)) {
+        const res = await apiFetch(`/api/boq-versions`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            project_id: newProject.id,
+            type: "boq",
+            copy_from_version: versionId
+          }),
+        });
+        if (!res.ok) console.error(`Failed to clone BOQ version ${versionId}`);
+      }
+
+      setProjects(prev => [newProject, ...prev]);
+      setIsCloneOpen(false);
+      toast({ title: "Success", description: "Project cloned successfully with selected versions" });
+    } catch (err) {
+      console.error("Clone failed", err);
+      toast({ title: "Error", description: "Failed to clone project", variant: "destructive" });
+    } finally {
+      setIsCloning(false);
+    }
+  };
+
 
   const [expanded, setExpanded] = useState<Record<string, boolean>>({});
   const [projectVersions, setProjectVersions] = useState<Record<string, any[]>>(
@@ -765,6 +854,100 @@ export default function CreateProject() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      <Dialog open={isCloneOpen} onOpenChange={setIsCloneOpen}>
+        <DialogContent className="max-w-md bg-white">
+          <DialogHeader className="border-b border-slate-100 pb-3 mb-3">
+            <DialogTitle className="text-xl font-bold text-slate-900 flex items-center gap-2">
+              <Copy className="w-5 h-5 text-blue-600" />
+              Clone Project
+            </DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4 py-2">
+            <div className="space-y-1.5">
+              <Label className="text-xs font-bold text-slate-700 uppercase">New Project Name</Label>
+              <Input
+                value={cloneNewName}
+                onChange={(e) => setCloneNewName(e.target.value)}
+                placeholder="Name for the cloned project"
+                className="font-semibold text-slate-900 border-slate-300 focus:border-blue-500 focus:ring-1 focus:ring-blue-500 rounded-md h-10"
+              />
+            </div>
+            
+            <div className="space-y-3">
+              <Label className="text-xs font-bold text-slate-700 uppercase">Select BOM Versions to Clone</Label>
+              <div className="max-h-32 overflow-y-auto space-y-2 border rounded-md p-2 bg-slate-50">
+                {cloneBomVersions.length === 0 ? (
+                  <p className="text-xs text-slate-400 italic">No BOM versions found</p>
+                ) : (
+                  cloneBomVersions.map((v) => (
+                    <div key={v.id} className="flex items-center gap-2">
+                      <Checkbox 
+                        id={`bom-${v.id}`}
+                        checked={cloneSelectedBoms.has(v.id)}
+                        onCheckedChange={(checked) => {
+                          const next = new Set(cloneSelectedBoms);
+                          if (checked) next.add(v.id);
+                          else next.delete(v.id);
+                          setCloneSelectedBoms(next);
+                        }}
+                      />
+                      <label htmlFor={`bom-${v.id}`} className="text-xs font-medium cursor-pointer">
+                        Version {v.version_number} ({v.status})
+                      </label>
+                    </div>
+                  ))
+                )}
+              </div>
+            </div>
+
+            <div className="space-y-3">
+              <Label className="text-xs font-bold text-slate-700 uppercase">Select BOQ Versions to Clone</Label>
+              <div className="max-h-32 overflow-y-auto space-y-2 border rounded-md p-2 bg-slate-50">
+                {cloneBoqVersions.length === 0 ? (
+                  <p className="text-xs text-slate-400 italic">No BOQ versions found</p>
+                ) : (
+                  cloneBoqVersions.map((v) => (
+                    <div key={v.id} className="flex items-center gap-2">
+                      <Checkbox 
+                        id={`boq-${v.id}`}
+                        checked={cloneSelectedBoqs.has(v.id)}
+                        onCheckedChange={(checked) => {
+                          const next = new Set(cloneSelectedBoqs);
+                          if (checked) next.add(v.id);
+                          else next.delete(v.id);
+                          setCloneSelectedBoqs(next);
+                        }}
+                      />
+                      <label htmlFor={`boq-${v.id}`} className="text-xs font-medium cursor-pointer">
+                        Version {v.version_number} ({v.status})
+                      </label>
+                    </div>
+                  ))
+                )}
+              </div>
+            </div>
+
+            <div className="text-[11px] text-slate-600 p-3 bg-blue-50/50 rounded-lg border border-blue-100/50 leading-relaxed shadow-sm">
+              <div className="flex items-center gap-2 mb-1.5">
+                <div className="w-1.5 h-1.5 rounded-full bg-blue-500" />
+                <span className="font-bold text-blue-900 uppercase tracking-tight">Cloning Details</span>
+              </div>
+              <p>Cloning will create a new project duplicating all metadata (Client, Budget, Location, etc).</p>
+              <p className="mt-1">Each selected version will be copied over to the new project. If multiple are selected, they will all be added.</p>
+            </div>
+          </div>
+          <DialogFooter className="mt-6 border-t border-slate-100 pt-4">
+            <Button variant="outline" onClick={() => setIsCloneOpen(false)} disabled={isCloning} className="border-slate-300">
+              Cancel
+            </Button>
+            <Button onClick={executeClone} disabled={isCloning || !cloneNewName.trim()} className="bg-blue-600 hover:bg-blue-700 text-white shadow-md shadow-blue-200">
+              {isCloning ? "Cloning Project..." : "Clone Project"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </Layout>
   );
 }
+
