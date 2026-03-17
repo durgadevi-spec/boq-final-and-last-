@@ -1992,7 +1992,10 @@ export default function FinalizeBoq() {
 
       allCols.forEach((col: any, idx) => {
         if (selectedPdfExportCols.includes(col.name)) {
-          footerRow.push(col.hideTotal ? "" : fmtNum(calculatedColumnTotals.totals[idx] || 0));
+          // Hide totals only for supply/install/labour RATE columns in PDF footer
+            const lower = String(col.name || "").toLowerCase();
+            const isRateCol = lower.includes("rate") && (lower.includes("supply") || lower.includes("labour") || lower.includes("install"));
+            footerRow.push(col.hideTotal || isRateCol ? "" : fmtNum(calculatedColumnTotals.totals[idx] || 0));
         }
       });
 
