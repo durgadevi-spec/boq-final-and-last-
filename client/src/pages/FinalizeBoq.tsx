@@ -431,9 +431,13 @@ export default function FinalizeBoq() {
   const activeVersion = [...bomVersions, ...boqVersions].find(v => v.id === activeVersionId);
 
   const [isExportDialogOpen, setIsExportDialogOpen] = useState(false);
-  const [selectedExportCols, setSelectedExportCols] = useState<string[]>([]);
+  const [selectedExportCols, setSelectedExportCols] = useState<string[]>(() => {
+    try { const saved = localStorage.getItem('finalize_excel_export_cols'); return saved ? JSON.parse(saved) : []; } catch { return []; }
+  });
   const [isPdfExportDialogOpen, setIsPdfExportDialogOpen] = useState(false);
-  const [selectedPdfExportCols, setSelectedPdfExportCols] = useState<string[]>([]);
+  const [selectedPdfExportCols, setSelectedPdfExportCols] = useState<string[]>(() => {
+    try { const saved = localStorage.getItem('finalize_pdf_export_cols'); return saved ? JSON.parse(saved) : []; } catch { return []; }
+  });
   const [hiddenPredefinedCols, setHiddenPredefinedCols] = useState<Record<string, boolean>>({});
 
   const handleToggleColumnTotalVisibility = async (colName: string, hide: boolean) => {
@@ -1618,7 +1622,20 @@ export default function FinalizeBoq() {
       return false;
     });
 
-    setSelectedExportCols(defaultSelection);
+    // Load persisted selection from localStorage; fall back to defaults
+    try {
+      const saved = localStorage.getItem('finalize_excel_export_cols');
+      if (saved) {
+        const parsed: string[] = JSON.parse(saved);
+        // Filter to only cols that are currently valid
+        const valid = parsed.filter(c => potentialCols.includes(c));
+        setSelectedExportCols(valid.length > 0 ? valid : defaultSelection);
+      } else {
+        setSelectedExportCols(defaultSelection);
+      }
+    } catch {
+      setSelectedExportCols(defaultSelection);
+    }
     setIsExportDialogOpen(true);
   };
 
@@ -1825,7 +1842,7 @@ export default function FinalizeBoq() {
       }
       // ─────────────────────────────────────────────────────────────────────────
 
-      const filename = `${selectedProject?.name || "BOQ"}_${activeVersion ? `V${activeVersion.version_number}` : "draft"}_${activeVersion?.type === 'boq' ? 'BOQ' : 'BOM'}.xlsx`;
+      const filename = `${selectedProject?.name || "BOQ"}_${activeVersion ? `V${activeVersion.version_number}` : "draft"}_${activeVersion?.type === 'bom' ? 'BOQ' : 'BOM'}.xlsx`;
       XLSX.writeFile(wb, filename, { cellStyles: true });
 
       setIsExportDialogOpen(false);
@@ -1856,7 +1873,19 @@ export default function FinalizeBoq() {
       return false;
     });
 
-    setSelectedPdfExportCols(defaultPdfSelection);
+    // Load persisted selection from localStorage; fall back to defaults
+    try {
+      const saved = localStorage.getItem('finalize_pdf_export_cols');
+      if (saved) {
+        const parsed: string[] = JSON.parse(saved);
+        const valid = parsed.filter(c => potentialPdfCols.includes(c));
+        setSelectedPdfExportCols(valid.length > 0 ? valid : defaultPdfSelection);
+      } else {
+        setSelectedPdfExportCols(defaultPdfSelection);
+      }
+    } catch {
+      setSelectedPdfExportCols(defaultPdfSelection);
+    }
     setIsPdfExportDialogOpen(true);
   };
 
@@ -2072,6 +2101,11 @@ export default function FinalizeBoq() {
       doc.setFont("helvetica", "normal");
       doc.text(`Client: ${selectedProject?.client || "-"}`, metaX, headerBoxY + 13, { align: "right" });
       doc.text(`Date: ${new Date().toLocaleDateString()}`, metaX, headerBoxY + 19, { align: "right" });
+      if (activeVersion) {
+        doc.setFont("helvetica", "bold");
+        doc.text(`Version: V${activeVersion.version_number}`, metaX, headerBoxY + 25, { align: "right" });
+        doc.setFont("helvetica", "normal");
+      }
 
       const colStyles: any = {};
       selectedPdfExportCols.forEach((col, i) => {
@@ -2192,7 +2226,7 @@ export default function FinalizeBoq() {
         doc.text(lines, 10, finalY + 6);
       }
 
-      const filename = `${projNameStr}_${activeVersion ? `V${activeVersion.version_number}` : "draft"}_${activeVersion?.type === 'boq' ? 'BOQ' : 'BOM'}.pdf`;
+      const filename = `${projNameStr}_${activeVersion ? `V${activeVersion.version_number}` : "draft"}_${activeVersion?.type === 'bom' ? 'BOQ' : 'BOM'}.pdf`;
       doc.save(filename);
       toast({ title: "Success", description: `Downloaded ${filename}` });
     } catch (err) {
@@ -2611,17 +2645,22 @@ export default function FinalizeBoq() {
                       if (checked) {
                         setSelectedExportCols(prev => {
                           const next = [...prev, col.name];
-                          // maintain table order
                           const order = [
                             "S.No", "Product / Material", "Description / Location",
                             "HSN", "SAC", "Unit", "Qty", "Rate / Unit", "Total Value (₹)",
                             "Override Rate", "Override Total",
                             ...allCols.map(c => c.name)
                           ];
-                          return order.filter(o => next.includes(o));
+                          const result = order.filter(o => next.includes(o));
+                          try { localStorage.setItem('finalize_excel_export_cols', JSON.stringify(result)); } catch {}
+                          return result;
                         });
                       } else {
-                        setSelectedExportCols(prev => prev.filter(c => c !== col.name));
+                        setSelectedExportCols(prev => {
+                          const result = prev.filter(c => c !== col.name);
+                          try { localStorage.setItem('finalize_excel_export_cols', JSON.stringify(result)); } catch {}
+                          return result;
+                        });
                       }
                     }}
                   />
@@ -2679,10 +2718,16 @@ export default function FinalizeBoq() {
                             "Override Rate", "Override Total",
                             ...allCols.map(c => c.name)
                           ];
-                          return order.filter(o => next.includes(o));
+                          const result = order.filter(o => next.includes(o));
+                          try { localStorage.setItem('finalize_pdf_export_cols', JSON.stringify(result)); } catch {}
+                          return result;
                         });
                       } else {
-                        setSelectedPdfExportCols(prev => prev.filter(c => c !== col.name));
+                        setSelectedPdfExportCols(prev => {
+                          const result = prev.filter(c => c !== col.name);
+                          try { localStorage.setItem('finalize_pdf_export_cols', JSON.stringify(result)); } catch {}
+                          return result;
+                        });
                       }
                     }}
                   />
