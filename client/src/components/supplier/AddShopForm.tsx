@@ -29,6 +29,16 @@ const COUNTRY_CODES = [
   { code: "+49", country: "Germany" },
 ];
 
+const INDIAN_STATES = [
+  "Andhra Pradesh", "Arunachal Pradesh", "Assam", "Bihar", "Chhattisgarh",
+  "Goa", "Gujarat", "Haryana", "Himachal Pradesh", "Jharkhand", "Karnataka",
+  "Kerala", "Madhya Pradesh", "Maharashtra", "Manipur", "Meghalaya", "Mizoram",
+  "Nagaland", "Odisha", "Punjab", "Rajasthan", "Sikkim", "Tamil Nadu",
+  "Telangana", "Tripura", "Uttar Pradesh", "Uttarakhand", "West Bengal",
+  "Andaman and Nicobar Islands", "Chandigarh", "Dadra and Nagar Haveli and Daman and Diu",
+  "Delhi", "Jammu and Kashmir", "Ladakh", "Lakshadweep", "Puducherry"
+];
+
 const Required = () => <span className="text-red-500 ml-1">*</span>;
 
 interface AddShopFormProps {
@@ -45,10 +55,12 @@ export function AddShopForm({ onShopAdded }: AddShopFormProps) {
     city: "",
     phoneCountryCode: "+91",
     contactNumber: "",
-    state: "",
-    country: "",
+    state: "Tamil Nadu",
+    country: "India",
     pincode: "",
     gstNo: "",
+    new_location: "",
+    terms_and_conditions: "",
   });
 
   const handleInputChange = (field: string, value: string) => {
@@ -70,7 +82,7 @@ export function AddShopForm({ onShopAdded }: AddShopFormProps) {
     if (!formData.location.trim() || !formData.city.trim()) {
       toast({
         title: "Error",
-        description: "Location and city are required",
+        description: "Address and city are required",
         variant: "destructive",
       });
       return;
@@ -116,10 +128,12 @@ export function AddShopForm({ onShopAdded }: AddShopFormProps) {
         city: "",
         phoneCountryCode: "+91",
         contactNumber: "",
-        state: "",
-        country: "",
+        state: "Tamil Nadu",
+        country: "India",
         pincode: "",
         gstNo: "",
+        new_location: "",
+        terms_and_conditions: "",
       });
 
       if (onShopAdded) {
@@ -201,11 +215,11 @@ export function AddShopForm({ onShopAdded }: AddShopFormProps) {
                 />
               </div>
 
-              {/* Location and City */}
+              {/* Address and City */}
               <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
                 <div>
                   <Label htmlFor="location">
-                    Address/Location
+                    Address
                     <Required />
                   </Label>
                   <Input
@@ -237,18 +251,55 @@ export function AddShopForm({ onShopAdded }: AddShopFormProps) {
                 </div>
               </div>
 
+              {/* New Location and Pincode */}
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+                <div>
+                  <Label htmlFor="new_location">Location</Label>
+                  <Input
+                    id="new_location"
+                    type="text"
+                    placeholder="Enter additional location info"
+                    value={formData.new_location}
+                    onChange={(e) =>
+                      handleInputChange("new_location", e.target.value)
+                    }
+                    className="mt-2"
+                  />
+                </div>
+                <div>
+                  <Label htmlFor="pincode">Pin Code</Label>
+                  <Input
+                    id="pincode"
+                    type="text"
+                    placeholder="Enter pin code"
+                    value={formData.pincode}
+                    onChange={(e) =>
+                      handleInputChange("pincode", e.target.value)
+                    }
+                    className="mt-2"
+                  />
+                </div>
+              </div>
+
               {/* State and Country */}
               <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
                 <div>
                   <Label htmlFor="state">State</Label>
-                  <Input
-                    id="state"
-                    type="text"
-                    placeholder="Enter state"
+                  <Select
                     value={formData.state}
-                    onChange={(e) => handleInputChange("state", e.target.value)}
-                    className="mt-2"
-                  />
+                    onValueChange={(value) => handleInputChange("state", value)}
+                  >
+                    <SelectTrigger className="mt-2">
+                      <SelectValue placeholder="Select state" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {INDIAN_STATES.map((state) => (
+                        <SelectItem key={state} value={state}>
+                          {state}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
                 </div>
                 <div>
                   <Label htmlFor="country">Country</Label>
@@ -263,21 +314,6 @@ export function AddShopForm({ onShopAdded }: AddShopFormProps) {
                     className="mt-2"
                   />
                 </div>
-              </div>
-
-              {/* Pincode */}
-              <div>
-                <Label htmlFor="pincode">Pin Code</Label>
-                <Input
-                  id="pincode"
-                  type="text"
-                  placeholder="Enter pin code"
-                  value={formData.pincode}
-                  onChange={(e) =>
-                    handleInputChange("pincode", e.target.value)
-                  }
-                  className="mt-2"
-                />
               </div>
 
               {/* Contact Number */}
@@ -326,6 +362,21 @@ export function AddShopForm({ onShopAdded }: AddShopFormProps) {
                   placeholder="Enter GST number (optional)"
                   value={formData.gstNo}
                   onChange={(e) => handleInputChange("gstNo", e.target.value)}
+                  className="mt-2"
+                />
+              </div>
+
+              {/* Terms and Conditions */}
+              <div>
+                <Label htmlFor="terms_and_conditions">Terms and Conditions</Label>
+                <Input
+                  id="terms_and_conditions"
+                  type="text"
+                  placeholder="Enter terms and conditions"
+                  value={formData.terms_and_conditions}
+                  onChange={(e) =>
+                    handleInputChange("terms_and_conditions", e.target.value)
+                  }
                   className="mt-2"
                 />
               </div>
