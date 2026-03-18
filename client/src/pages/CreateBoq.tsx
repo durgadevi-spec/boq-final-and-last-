@@ -363,19 +363,20 @@ function BoqItemCard({ boqItem, boqIdx, isVersionSubmitted, expandedProductIds, 
   const [localItems, setLocalItems] = useState<any[]>([]);
   const [reorderInit, setReorderInit] = useState(false);
 
+  const calculationTarget = localTarget || 1;
   let displayLines: any[] = step11Items;
   let isEngineBased = false;
 
   if (tableData.materialLines && tableData.targetRequiredQty !== undefined) {
     isEngineBased = true;
-    const boqResult = computeBoq(tableData.configBasis, tableData.materialLines, tableData.targetRequiredQty);
+    const boqResult = computeBoq(tableData.configBasis, tableData.materialLines, calculationTarget);
     const computedLines = boqResult.computed.map((line: any, idx: number) => {
       const itemKey = `${boqItem.id}-engine-${idx}`;
       const qty = Number(getEditedValue(itemKey, "qty", line.perUnitQty));
       const sRate = Number(getEditedValue(itemKey, "supply_rate", line.supplyRate));
       const iRate = Number(getEditedValue(itemKey, "install_rate", line.installRate));
       const rate = Number(getEditedValue(itemKey, "rate", sRate + iRate)) || (sRate + iRate);
-      const reqQty = Number((qty * (tableData.targetRequiredQty || 1)).toFixed(2));
+      const reqQty = Number((qty * calculationTarget).toFixed(2));
       const roundOff = line.applyRounding !== false ? Math.ceil(reqQty) : reqQty;
       return {
         title: line.name, description: line.name, unit: line.unit, shop_name: line.shop_name,
@@ -397,11 +398,14 @@ function BoqItemCard({ boqItem, boqIdx, isVersionSubmitted, expandedProductIds, 
   } else {
     displayLines = step11Items.map((it: any, s11Idx: number) => {
       const itemKey = it.itemKey || `${boqItem.id}-${s11Idx}`;
-      const qty = Number(getEditedValue(itemKey, "qty", it.qty ?? 0)) || 0;
+      const baseQty = Number(getEditedValue(itemKey, "qty", it.qty ?? 0)) || 0;
       const sRate = Number(getEditedValue(itemKey, "supply_rate", it.supply_rate ?? 0)) || 0;
       const iRate = Number(getEditedValue(itemKey, "install_rate", it.install_rate ?? 0)) || 0;
       const rate = Number(getEditedValue(itemKey, "rate", sRate + iRate)) || (sRate + iRate);
-      return { ...it, itemKey, _s11Idx: s11Idx, qty, rateSqft: rate, amount: Number((qty * rate).toFixed(2)) };
+      
+      // For semi-manual products, treat the quantity as "Qty per Unit" if Target is defined/editable
+      const scaledQty = Number((baseQty * calculationTarget).toFixed(2));
+      return { ...it, itemKey, _s11Idx: s11Idx, qtyPerSqf: baseQty, qty: scaledQty, rateSqft: rate, amount: Number((scaledQty * rate).toFixed(2)) };
     });
   }
 
@@ -410,7 +414,7 @@ function BoqItemCard({ boqItem, boqIdx, isVersionSubmitted, expandedProductIds, 
     setLocalItems(displayLines);
     setReorderInit(true);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [step11Items.length, isEngineBased, boqItem.id, tableData.materialLines?.length, boqItem.table_data]);
+  }, [step11Items.length, isEngineBased, boqItem.id, tableData.materialLines?.length, boqItem.table_data, calculationTarget]);
 
   // use localItems for rendering always (gives immediate reorder feedback)
   const renderLines = (reorderInit ? localItems : displayLines);
@@ -458,7 +462,8 @@ function BoqItemCard({ boqItem, boqIdx, isVersionSubmitted, expandedProductIds, 
 
 
   const totalAmount = displayLines.reduce((sum: number, it: any) => sum + (Number(it.amount) || 0), 0);
-  const ratePerUnit = totalAmount / (tableData.targetRequiredQty || (Number(displayLines[0]?.qty) || Number(step11Items[0]?.qty) || 1));
+  const grandTotalValue = totalAmount; // Primary source of truth
+  const ratePerUnit = calculationTarget > 0 ? grandTotalValue / calculationTarget : 0;
 
   return (
     <div
@@ -489,11 +494,7 @@ function BoqItemCard({ boqItem, boqIdx, isVersionSubmitted, expandedProductIds, 
               <div className="flex flex-col bg-white border border-slate-200 rounded-md px-3 py-1.5 shadow-sm">
                 <span className="text-[10px] leading-none text-slate-400 font-bold uppercase tracking-tight mb-1">Grand Total</span>
                 <span className="text-sm font-extrabold text-slate-900">
-                  ₹{(() => {
-                    const targetQty = tableData.targetRequiredQty || (Number(displayLines[0]?.qty) || Number(step11Items[0]?.qty) || 1);
-                    const displayRate = Number(ratePerUnit.toFixed(2));
-                    return (targetQty * displayRate).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-                  })()}
+                  ₹{grandTotalValue.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                 </span>
               </div>
             </div>
@@ -531,8 +532,7 @@ function BoqItemCard({ boqItem, boqIdx, isVersionSubmitted, expandedProductIds, 
                 }}
               />
             </div>
-            {isEngineBased && (
-              <div className="flex items-center gap-2 text-[11px] text-gray-600 font-medium whitespace-nowrap">
+            <div className="flex items-center gap-2 text-[11px] text-gray-600 font-medium whitespace-nowrap">
                 Project Target: 
                 <div className="flex items-center gap-1 group/target">
                   <Input
@@ -543,8 +543,9 @@ function BoqItemCard({ boqItem, boqIdx, isVersionSubmitted, expandedProductIds, 
                     disabled={isVersionSubmitted || tableData.is_finalized}
                     onBlur={async (e) => {
                       const newVal = parseFloat(e.target.value);
-                      if (isNaN(newVal) || newVal === tableData.targetRequiredQty || newVal <= 0) {
-                        setLocalTarget(tableData.targetRequiredQty || 0);
+                      const currentVal = tableData.targetRequiredQty ?? 1;
+                      if (isNaN(newVal) || newVal === currentVal || newVal <= 0) {
+                        setLocalTarget(currentVal);
                         return;
                       }
                       
@@ -563,12 +564,12 @@ function BoqItemCard({ boqItem, boqIdx, isVersionSubmitted, expandedProductIds, 
                           toast({ title: "Updated", description: `Project target updated to ${newVal} ${tableData.configBasis?.requiredUnitType || "Unit"}` });
                         } else {
                           toast({ title: "Error", description: "Failed to save project target", variant: "destructive" });
-                          setLocalTarget(tableData.targetRequiredQty || 0);
+                          setLocalTarget(currentVal);
                         }
                       } catch (err) {
                         console.error("Failed to update target qty", err);
                         toast({ title: "Error", description: "Failed to connect to server", variant: "destructive" });
-                        setLocalTarget(tableData.targetRequiredQty || 0);
+                        setLocalTarget(currentVal);
                       }
                     }}
                     onKeyDown={(e) => {
@@ -580,7 +581,6 @@ function BoqItemCard({ boqItem, boqIdx, isVersionSubmitted, expandedProductIds, 
                   <span className="text-blue-600 font-bold">{tableData.configBasis?.requiredUnitType || "Unit"}</span>
                 </div>
               </div>
-            )}
           </div>
         </div>
 
@@ -655,7 +655,7 @@ function BoqItemCard({ boqItem, boqIdx, isVersionSubmitted, expandedProductIds, 
                   <td className="border px-2 py-1"></td>
                 </tr>
                 {(() => {
-                  const targetQty = tableData.targetRequiredQty || (Number(displayLines[0]?.qty) || Number(step11Items[0]?.qty) || 1);
+                  const targetQty = calculationTarget;
                   const displayRate = Number(ratePerUnit.toFixed(2));
                   const logicalTotal = targetQty * displayRate;
                   const roundOff = logicalTotal - totalAmount;
@@ -673,11 +673,7 @@ function BoqItemCard({ boqItem, boqIdx, isVersionSubmitted, expandedProductIds, 
                 <tr className="font-bold bg-blue-50/20 text-blue-900">
                   <td colSpan={10} className="border px-2 py-1.5 text-right uppercase tracking-wider text-[10px]">Grand Total</td>
                   <td className="border px-2 py-1.5 text-right bg-blue-50/30">
-                    ₹{(() => {
-                      const targetQty = tableData.targetRequiredQty || (Number(displayLines[0]?.qty) || Number(step11Items[0]?.qty) || 1);
-                      const displayRate = Number(ratePerUnit.toFixed(2));
-                      return (targetQty * displayRate).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-                    })()}
+                    ₹{grandTotalValue.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                   </td>
                   <td className="border px-2 py-1.5"></td>
                 </tr>
@@ -1293,12 +1289,22 @@ export default function CreateBom() {
   const buildDisplayLines = (boqItem: BOMItem) => {
     const td = parseTableData(boqItem.table_data);
     const step11 = Array.isArray(td.step11_items) ? td.step11_items : [];
+    const target = td.targetRequiredQty || 1;
     if (td.materialLines && td.targetRequiredQty !== undefined) {
-      return computeBoq(td.configBasis, td.materialLines, td.targetRequiredQty).computed.map((l: any) => ({ title: l.name, description: l.name, unit: l.unit, qty: l.scaledQty, supply_rate: l.supplyRate, install_rate: l.installRate, supply_amount: l.supplyAmount, install_amount: l.installAmount, shop_name: l.shop_name }));
+      return computeBoq(td.configBasis, td.materialLines, target).computed.map((l: any) => ({ title: l.name, description: l.name, unit: l.unit, qty: l.scaledQty, supply_rate: l.supplyRate, install_rate: l.installRate, supply_amount: l.supplyAmount, install_amount: l.installAmount, shop_name: l.shop_name }));
     }
     return step11.map((it: any, idx: number) => {
       const key = `${boqItem.id}-${idx}`;
-      return { ...it, qty: getEditedValue(key, "qty", it.qty ?? 0), supply_rate: getEditedValue(key, "supply_rate", it.supply_rate ?? 0), install_rate: getEditedValue(key, "install_rate", it.install_rate ?? 0), description: getEditedValue(key, "description", it.description ?? ""), unit: getEditedValue(key, "unit", it.unit ?? "") };
+      const baseQty = Number(getEditedValue(key, "qty", it.qty ?? 0)) || 0;
+      const scaledQty = Number((baseQty * target).toFixed(2));
+      return { 
+        ...it, 
+        qty: scaledQty,
+        supply_rate: getEditedValue(key, "supply_rate", it.supply_rate ?? 0), 
+        install_rate: getEditedValue(key, "install_rate", it.install_rate ?? 0), 
+        description: getEditedValue(key, "description", it.description ?? ""), 
+        unit: getEditedValue(key, "unit", it.unit ?? "") 
+      };
     });
   };
 
@@ -1361,9 +1367,11 @@ export default function CreateBom() {
           }).filter(Boolean);
           displayLines = [...computedLines, ...manualStep11];
         } else {
+          const target = tableData.targetRequiredQty || 1;
           displayLines = step11Items.map((it: any, s11Idx: number) => {
             const itemKey = it.itemKey || `${boqItem.id}-${s11Idx}`;
-            const qty = Number(getEditedValue(itemKey, "qty", it.qty ?? 0)) || 0;
+            const baseQty = Number(getEditedValue(itemKey, "qty", it.qty ?? 0)) || 0;
+            const scaledQty = Number((baseQty * target).toFixed(2));
             const sRate = Number(getEditedValue(itemKey, "supply_rate", it.supply_rate ?? 0)) || 0;
             const iRate = Number(getEditedValue(itemKey, "install_rate", it.install_rate ?? 0)) || 0;
             const rate = Number(getEditedValue(itemKey, "rate", sRate + iRate)) || (sRate + iRate);
@@ -1371,8 +1379,8 @@ export default function CreateBom() {
             const u = getEditedValue(itemKey, "unit", it.unit || "nos");
             return {
               ...it, itemKey, _s11Idx: s11Idx,
-              qtyPerSqf: qty, requiredQty: qty, roundOff: "-", description: desc, unit: u,
-              rateSqft: rate, amount: Number((qty * rate).toFixed(2))
+              qtyPerSqf: baseQty, requiredQty: scaledQty, roundOff: "-", description: desc, unit: u,
+              rateSqft: rate, amount: Number((scaledQty * rate).toFixed(2))
             };
           });
         }
@@ -1396,20 +1404,21 @@ export default function CreateBom() {
         });
 
         // Calculate logical rounding
-        const targetQty = tableData.targetRequiredQty || (displayLines[0]?.qty ?? 1);
-        const productRate = productTotal / targetQty;
+        const targetQty = tableData.targetRequiredQty || 1;
+        const productGrandTotal = productTotal;
+        const productRate = targetQty > 0 ? productGrandTotal / targetQty : 0;
         const displayRate = Number(productRate.toFixed(2));
         const logicalTotal = targetQty * displayRate;
-        const roundOff = logicalTotal - productTotal;
+        const roundOff = logicalTotal - productGrandTotal;
 
         if (Math.abs(roundOff) >= 0.01) {
           exportData.push(["", "Round Off (Adjustment)", "", "", "", "", "", "", "", roundOff]);
         }
 
         // Product total row
-        exportData.push(["", "Grand Total", "", "", "", "", "", "", "", logicalTotal]);
+        exportData.push(["", "Grand Total", "", "", "", "", "", "", "", productGrandTotal]);
         exportData.push([]); // spacing
-        grandTotal += logicalTotal;
+        grandTotal += productGrandTotal;
       });
 
       // Grand total row
@@ -1545,14 +1554,16 @@ export default function CreateBom() {
           }).filter(Boolean);
           displayLines = [...computedLines, ...manualStep11];
         } else {
+          const target = td.targetRequiredQty || 1;
           displayLines = step11Items.map((it: any, idx: number) => {
             const key = it.itemKey || `${boqItem.id}-${idx}`;
-            const qty = Number(getEditedValue(key, "qty", it.qty ?? 0)) || 0;
+            const baseQty = Number(getEditedValue(key, "qty", it.qty ?? 0)) || 0;
+            const scaledQty = Number((baseQty * target).toFixed(2));
             const rate = Number(getEditedValue(key, "rate", (it.supply_rate ?? 0) + (it.install_rate ?? 0)));
             return {
               ...it, title: it.title, description: getEditedValue(key, "description", it.description || ""),
-              unit: getEditedValue(key, "unit", it.unit || "nos"), qtyPerSqf: qty, requiredQty: qty, roundOff: "-",
-              rate, amount: qty * rate
+              unit: getEditedValue(key, "unit", it.unit || "nos"), qtyPerSqf: baseQty, requiredQty: scaledQty, roundOff: "-",
+              rate, amount: scaledQty * rate
             };
           });
         }
@@ -1575,11 +1586,12 @@ export default function CreateBom() {
         });
 
         // Calculate logical rounding
-        const targetQty = td.targetRequiredQty || (displayLines[0]?.qty ?? 1);
-        const productRate = productTotal / targetQty;
+        const targetQty = td.targetRequiredQty || 1;
+        const productGrandTotal = productTotal;
+        const productRate = targetQty > 0 ? productGrandTotal / targetQty : 0;
         const displayRate = Number(productRate.toFixed(2));
         const logicalTotal = targetQty * displayRate;
-        const roundOff = logicalTotal - productTotal;
+        const roundOff = logicalTotal - productGrandTotal;
 
         if (Math.abs(roundOff) >= 0.01) {
           tableBody.push([
@@ -1593,10 +1605,10 @@ export default function CreateBom() {
         tableBody.push([
           { content: "", colSpan: 8, styles: { borderTop: [1, 0, 0, 0] } },
           { content: "Grand Total", styles: { fontStyle: 'bold', fillColor: [250, 250, 250] } },
-          { content: logicalTotal.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }), styles: { fontStyle: 'bold', fillColor: [250, 250, 250], halign: 'right' } }
+          { content: productGrandTotal.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }), styles: { fontStyle: 'bold', fillColor: [250, 250, 250], halign: 'right' } }
         ]);
 
-        grandTotal += logicalTotal;
+        grandTotal += productGrandTotal;
       });
 
       // Grand Total Row (Dark accent)
