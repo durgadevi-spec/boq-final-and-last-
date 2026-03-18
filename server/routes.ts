@@ -114,6 +114,10 @@ export async function registerRoutes(
     // Ensure type column exists on boq_versions for BOM vs BOQ distinction
     await query("ALTER TABLE boq_versions ADD COLUMN IF NOT EXISTS type VARCHAR(20) DEFAULT 'bom'");
     console.log("[migrations] boq_versions 'type' column ensured");
+    
+    // Ensure image column exists on products
+    await query(`ALTER TABLE products ADD COLUMN IF NOT EXISTS image TEXT`);
+    console.log("[migrations] products 'image' column ensured");
   } catch (err: unknown) {
     console.warn('[migrations] ensure alerts table failed (continuing):', (err as any)?.message || err);
   }
@@ -319,9 +323,15 @@ export async function registerRoutes(
     await query(
       `ALTER TABLE shops ADD COLUMN IF NOT EXISTS vendor_category VARCHAR(255)`,
     );
+    await query(
+      `ALTER TABLE shops ADD COLUMN IF NOT EXISTS new_location TEXT`,
+    );
+    await query(
+      `ALTER TABLE shops ADD COLUMN IF NOT EXISTS terms_and_conditions TEXT`,
+    );
   } catch (err: unknown) {
     console.warn(
-      "[migrations] ensure shops vendor_category column failed (continuing):",
+      "[migrations] ensure shops columns failed (continuing):",
       (err as any)?.message || err,
     );
   }
@@ -722,7 +732,10 @@ export async function registerRoutes(
     await query(
       `ALTER TABLE material_templates ADD COLUMN IF NOT EXISTS sac_code VARCHAR(50)`
     );
-    console.log("[db] material_templates tax/vendor/techspec/hsn/sac columns ensured");
+    await query(
+      `ALTER TABLE material_templates ADD COLUMN IF NOT EXISTS image TEXT`
+    );
+    console.log("[db] material_templates tax/vendor/techspec/hsn/sac/image columns ensured");
   } catch (err: unknown) {
     console.warn(
       "[db] Could not ensure material_templates columns:",
@@ -1436,25 +1449,28 @@ export async function registerRoutes(
         );
 
         const result = await query(
-          `INSERT INTO shops (id, name, location, phoneCountryCode, contactNumber, city, state, country, pincode, image, rating, categories, gstno, vendor_category, owner_id, approved, created_at)
-         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16, now()) RETURNING *`,
+          `INSERT INTO shops (id, name, location, phoneCountryCode, contactNumber, city, state, country, pincode, image, rating, categories, gstNo, vendor_category, owner_id, approved, new_location, terms_and_conditions, created_at)
+           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, now())
+           RETURNING *`,
           [
             id,
-            body.name || null,
-            body.location || null,
-            body.phoneCountryCode || null,
-            body.contactNumber || null,
+            body.name,
+            body.location || null, // This is "Address" in UI
+            body.phoneCountryCode || "+91",
+            body.contactNumber,
             body.city || null,
             body.state || null,
             body.country || null,
             body.pincode || null,
             body.image || null,
-            body.rating || null,
+            body.rating || 0,
             JSON.stringify(categories),
             body.gstNo || null,
-            body.vendorCategory || null,
+            body.vendor_category || null,
             req.user.id,
             false,
+            body.new_location || null,
+            body.terms_and_conditions || null,
           ],
         );
 
@@ -1677,6 +1693,8 @@ export async function registerRoutes(
         "rating": "rating",
         "gstNo": "gstno",
         "vendorCategory": "vendor_category",
+        "new_location": "new_location",
+        "terms_and_conditions": "terms_and_conditions",
       };
 
       for (const k of Object.keys(fieldMapping)) {
@@ -2158,7 +2176,7 @@ export async function registerRoutes(
     requireRole("admin", "software_team", "purchase_team"),
     async (req: Request, res: Response) => {
       try {
-        const { name, code, category, subcategory, vendorCategory, taxCodeType, taxCodeValue, hsnCode, sacCode, hsn_code, sac_code, technicalspecification, technicalSpecification } = req.body;
+        const { name, code, category, subcategory, vendorCategory, taxCodeType, taxCodeValue, hsnCode, sacCode, hsn_code, sac_code, technicalspecification, technicalSpecification, image } = req.body;
 
         if (!name || !name.trim()) {
           res.status(400).json({ message: "Template name is required" });
@@ -2172,10 +2190,10 @@ export async function registerRoutes(
 
         const id = randomUUID();
         const result = await query(
-          `INSERT INTO material_templates (id, name, code, category, subcategory, vendor_category, tax_code_type, tax_code_value, hsn_code, sac_code, technicalspecification, created_at, updated_at) 
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, NOW(), NOW()) 
+          `INSERT INTO material_templates (id, name, code, category, subcategory, vendor_category, tax_code_type, tax_code_value, hsn_code, sac_code, technicalspecification, image, created_at, updated_at) 
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, NOW(), NOW()) 
          RETURNING *`,
-          [id, name.trim(), code.trim(), category || null, subcategory || null, vendorCategory || null, taxCodeType || null, taxCodeValue || null, hsnCode || hsn_code || null, sacCode || sac_code || null, technicalSpecification || technicalspecification || null],
+          [id, name.trim(), code.trim(), category || null, subcategory || null, vendorCategory || null, taxCodeType || null, taxCodeValue || null, hsnCode || hsn_code || null, sacCode || sac_code || null, technicalSpecification || technicalspecification || null, image || null],
         );
 
         res.status(201).json({ template: result.rows[0] });
@@ -2196,8 +2214,8 @@ export async function registerRoutes(
         const id = req.params.id;
         console.log('[PUT /api/material-templates/:id] user:', (req as any).user);
         console.log('[PUT /api/material-templates/:id] params.id:', req.params.id);
-        console.log('[PUT /api/material-templates/:id] body:', req.body);
-        const { name, code, category, subcategory, vendorCategory, taxCodeType, taxCodeValue, hsnCode, sacCode, hsn_code, sac_code, technicalspecification, technicalSpecification, vendor_category, tax_code_type, tax_code_value } = req.body;
+        console.log('[PUT /api/material-templates/:id] body:', { ...req.body, image: req.body.image ? "present" : "absent" });
+        const { name, code, category, subcategory, vendorCategory, taxCodeType, taxCodeValue, hsnCode, sacCode, hsn_code, sac_code, technicalspecification, technicalSpecification, vendor_category, tax_code_type, tax_code_value, image } = req.body;
 
         // Only update fields that are provided
         const fields: string[] = [];
@@ -2243,6 +2261,10 @@ export async function registerRoutes(
         if (sacCode !== undefined || sac_code !== undefined) {
           fields.push(`sac_code = $${idx++}`);
           vals.push(sacCode || sac_code || null);
+        }
+        if (image !== undefined) {
+          fields.push(`image = $${idx++}`);
+          vals.push(image || null);
         }
 
         if (fields.length === 0) {
@@ -3202,8 +3224,8 @@ export async function registerRoutes(
     requireRole("admin", "software_team", "purchase_team", "pre_sales", "product_manager"),
     async (req: Request, res: Response) => {
       try {
-        const { name, subcategory, taxCodeType, taxCodeValue, hsn_code, sac_code } = req.body;
-        console.log('/api/products POST body ->', { name, subcategory, taxCodeType, taxCodeValue, hsn_code, sac_code });
+        const { name, subcategory, taxCodeType, taxCodeValue, hsn_code, sac_code, image } = req.body;
+        console.log('/api/products POST body ->', { name, subcategory, taxCodeType, taxCodeValue, hsn_code, sac_code, image: image ? "present" : "absent" });
 
         if (!name) {
           res.status(400).json({ message: "Product name is required" });
@@ -3217,11 +3239,11 @@ export async function registerRoutes(
 
         const result = await query(
           `
-        INSERT INTO products (name, subcategory, tax_code_type, tax_code_value, hsn_code, sac_code, created_by)
-        VALUES ($1, $2, $3, $4, $5, $6, $7)
+        INSERT INTO products (name, subcategory, tax_code_type, tax_code_value, hsn_code, sac_code, created_by, image)
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
         RETURNING *
       `,
-          [name, subcategory || null, taxCodeType || null, taxCodeValue || null, hsn_code || null, sac_code || null, req.user?.username || "unknown"],
+          [name, subcategory || null, taxCodeType || null, taxCodeValue || null, hsn_code || null, sac_code || null, req.user?.username || "unknown", image || null],
         );
         console.log('/api/products POST inserted ->', result.rows[0]);
 
@@ -3267,14 +3289,14 @@ export async function registerRoutes(
     async (req: Request, res: Response) => {
       try {
         const { id } = req.params;
-        const { name, subcategory, taxCodeType, taxCodeValue, hsn_code, sac_code, hsnCode, sacCode } = req.body;
+        const { name, subcategory, taxCodeType, taxCodeValue, hsn_code, sac_code, hsnCode, sacCode, image } = req.body;
 
         // Support both hsn_code (db style) and hsnCode (frontend style)
         // Prioritize camelCase (hsnCode/sacCode) if both are present to reflect latest frontend intent
         const finalHsnCode = hsnCode !== undefined ? hsnCode : hsn_code;
         const finalSacCode = sacCode !== undefined ? sacCode : sac_code;
 
-        console.log(`/api/products/${id} PUT body ->`, { name, subcategory, hsn_code: finalHsnCode, sac_code: finalSacCode });
+        console.log(`/api/products/${id} PUT body ->`, { name, subcategory, hsn_code: finalHsnCode, sac_code: finalSacCode, image: image ? "present" : "absent" });
 
         if (!name) {
           res.status(400).json({ message: "Product name is required" });
@@ -3289,11 +3311,11 @@ export async function registerRoutes(
         const result = await query(
           `
         UPDATE products 
-        SET name = $1, subcategory = $2, tax_code_type = $3, tax_code_value = $4, hsn_code = $5, sac_code = $6
+        SET name = $1, subcategory = $2, tax_code_type = $3, tax_code_value = $4, hsn_code = $5, sac_code = $6, image = $8
         WHERE id = $7
         RETURNING *
       `,
-          [name, subcategory, taxCodeType || null, taxCodeValue || null, finalHsnCode || null, finalSacCode || null, id],
+          [name, subcategory, taxCodeType || null, taxCodeValue || null, finalHsnCode || null, finalSacCode || null, id, image || null],
         );
         console.log(`/api/products/${id} PUT updated ->`, result.rows[0]);
 
@@ -7064,9 +7086,10 @@ export async function registerRoutes(
         `SELECT po.*, po.total as total_amount,
         p.name as project_name, p.client as project_client, p.location as project_location,
         COALESCE(po.vendor_name, s.name, po.vendor_id) as vendor_name,
-        s.location as vendor_location, s.city as vendor_city,
+        s.location as vendor_location, s.new_location as vendor_new_location, s.city as vendor_city,
         s.state as vendor_state, s.pincode as vendor_pincode, s.gstno as vendor_gstin,
-        s.contactnumber as vendor_phone, s.phonecountrycode as vendor_phone_code
+        s.contactnumber as vendor_phone, s.phonecountrycode as vendor_phone_code,
+        s.terms_and_conditions as vendor_terms
          FROM purchase_orders po
          LEFT JOIN boq_projects p ON po.project_id = p.id
          LEFT JOIN shops s ON(po.vendor_id:: text = s.id:: text OR TRIM(s.name) = TRIM(po.vendor_name))
