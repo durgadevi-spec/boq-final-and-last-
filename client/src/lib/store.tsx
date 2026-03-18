@@ -24,9 +24,9 @@ export interface User {
   name?: string;
   email?: string;
 }
-export interface Shop { id: string; name: string; location?: string; phoneCountryCode?: string; contactNumber?: string; city?: string; state?: string; country?: string; pincode?: string; image?: string; rating?: number; categories?: string[]; gstNo?: string; vendorCategory?: string; ownerId?: string; disabled?: boolean }
+export interface Shop { id: string; name: string; location?: string; phoneCountryCode?: string; contactNumber?: string; city?: string; state?: string; country?: string; pincode?: string; image?: string; rating?: number; categories?: string[]; gstNo?: string; vendorCategory?: string; ownerId?: string; disabled?: boolean; new_location?: string; terms_and_conditions?: string; }
 export interface Material { id: string; name: string; code: string; rate: number; shopId?: string; unit?: string; category?: string; brandName?: string; modelNumber?: string; subCategory?: string; product?: string; technicalSpecification?: string; dimensions?: string; finish?: string; metalType?: string; image?: string; attributes?: any; masterMaterialId?: string; disabled?: boolean; vendorCategory?: string; taxCodeType?: 'hsn' | 'sac'; taxCodeValue?: string; hsnCode?: string; sacCode?: string; created_at?: string; }
-export interface Product { id: string; name: string; subcategory?: string; category?: string; subcategory_name?: string; category_name?: string; hsnCode?: string; sacCode?: string; created_at?: string; created_by?: string }
+export interface Product { id: string; name: string; subcategory?: string; category?: string; subcategory_name?: string; category_name?: string; hsnCode?: string; sacCode?: string; image?: string; created_at?: string; created_by?: string }
 
 interface DataContextType {
   user: User | null;
