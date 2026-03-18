@@ -935,14 +935,21 @@ export default function FinalizeBoq() {
               for (const item of items) {
                 let td = item.table_data || {};
                 if (typeof td === "string") try { td = JSON.parse(td); } catch { td = {}; }
-                if (td.product_id && (!td.hsn_code && !td.sac_code)) {
+                if (td.product_id) {
                   const prod = productsById[td.product_id];
                   if (prod) {
-                    if (prod.hsn_code) td.hsn_code = prod.hsn_code;
-                    if (prod.sac_code) td.sac_code = prod.sac_code;
-                    if (prod.tax_code_value) {
-                      td.hsn_sac_code = prod.tax_code_value;
-                      td.hsn_sac_type = prod.tax_code_type || null;
+                    // Update missing HSN/SAC
+                    if (!td.hsn_code && !td.sac_code) {
+                      if (prod.hsn_code) td.hsn_code = prod.hsn_code;
+                      if (prod.sac_code) td.sac_code = prod.sac_code;
+                      if (prod.tax_code_value) {
+                        td.hsn_sac_code = prod.tax_code_value;
+                        td.hsn_sac_type = prod.tax_code_type || null;
+                      }
+                    }
+                    // Always try to attach image if it exists in the catalog but not in table_data
+                    if (prod.image && !td.image) {
+                      td.image = prod.image;
                     }
                     item.table_data = td;
                   }
@@ -1935,6 +1942,8 @@ export default function FinalizeBoq() {
 
       // 3. Prepare Body Rows
       const body: any[] = [];
+      const rowImages: { [rowIndex: number]: string } = {};
+      const productColIndex = selectedPdfExportCols.indexOf("Product / Material");
 
       boqItems.forEach((boqItem, boqIdx) => {
         let tableData = boqItem.table_data || {};
@@ -1946,6 +1955,10 @@ export default function FinalizeBoq() {
           ? (currentStep11Items[0]?.title || currentStep11Items[0]?.description || derivedProductName)
           : derivedProductName;
         const category = tableData.category || "";
+
+        if (tableData.image) {
+          rowImages[boqIdx] = tableData.image;
+        }
 
         const manualQtyStr = productQuantities[boqItem.id];
         const displayQty = manualQtyStr !== undefined
@@ -2150,7 +2163,7 @@ export default function FinalizeBoq() {
       // Per-column suggested widths (mm)
       const colBaseWidths: Record<string, number> = {
         "S.No": 8,
-        "Product / Material": 35,
+        "Product / Material": 55,
         "Description": 45,
         "HSN": 15,
         "SAC": 15,
@@ -2232,6 +2245,23 @@ export default function FinalizeBoq() {
         columnStyles: dynColStyles,
         tableLineColor: [0, 0, 0],
         tableLineWidth: 0.5,
+        didParseCell: (data: any) => {
+          if (data.section === 'body' && data.column.index === productColIndex && rowImages[data.row.index]) {
+            data.cell.styles.minCellHeight = 27; // At least 25mm + 2mm margin
+            data.cell.styles.cellPadding = { top: 1.5, right: 1.5, bottom: 1.5, left: 30 }; // 25mm + 5mm gap
+          }
+        },
+        didDrawCell: (data: any) => {
+          if (data.section === 'body' && data.column.index === productColIndex && rowImages[data.row.index]) {
+            try {
+              const base64Img = rowImages[data.row.index];
+              const format = base64Img.includes("png") ? "PNG" : "JPEG";
+              doc.addImage(base64Img, format, data.cell.x + 2, data.cell.y + 1, 25, 25);
+            } catch (e) {
+              console.warn("Failed to add image to PDF cell", e);
+            }
+          }
+        }
       });
 
       // 6. Terms and Conditions
@@ -3268,9 +3298,21 @@ export default function FinalizeBoq() {
                             )}
                             {!hiddenPredefinedCols.product && (
                               <td className="border-r px-1.5 py-1 font-medium text-gray-800 text-[10px] align-middle">
-                                <div className="flex flex-col gap-0.5">
-                                  <div className="font-bold leading-tight line-clamp-2">{productName}</div>
-                                  {category && <div className="text-[8px] text-blue-500 font-extrabold uppercase tracking-tighter">{category}</div>}
+                                <div className="flex items-center gap-2">
+                                  {tableData.image && (
+                                    <div className="flex-shrink-0">
+                                      <img
+                                        src={tableData.image}
+                                        alt={productName}
+                                        className="h-10 w-10 object-cover rounded border shadow-sm"
+                                        title="Product Image"
+                                      />
+                                    </div>
+                                  )}
+                                  <div className="flex flex-col gap-0.5">
+                                    <div className="font-bold leading-tight line-clamp-2">{productName}</div>
+                                    {category && <div className="text-[8px] text-blue-500 font-extrabold uppercase tracking-tighter">{category}</div>}
+                                  </div>
                                 </div>
                               </td>
                             )}
