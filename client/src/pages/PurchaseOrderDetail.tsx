@@ -59,6 +59,8 @@ interface PurchaseOrder {
     vendor_country?: string;
     vendor_pincode?: string;
     vendor_gstin?: string;
+    vendor_new_location?: string;
+    vendor_terms?: string;
     project_client?: string;
     project_location?: string;
     approval_comments?: string | null;
@@ -607,6 +609,7 @@ export default function PurchaseOrderDetail() {
                                     <div className="text-sm">
                                         <p className="font-bold text-slate-800">{po.vendor_name || "Vendor"}</p>
                                         {po.vendor_location && <p className="text-slate-600 truncate">{po.vendor_location}</p>}
+                                        {po.vendor_new_location && <p className="text-xs text-slate-500 italic truncate">Landmark/Loc: {po.vendor_new_location}</p>}
                                         <p className="text-slate-600">
                                             {[po.vendor_city, po.vendor_state, po.vendor_pincode].filter(Boolean).join(', ')}
                                         </p>
@@ -684,7 +687,9 @@ export default function PurchaseOrderDetail() {
                                     <TableRow className="bg-slate-100 border-b border-slate-300">
                                         <TableHead className="text-slate-700 font-semibold w-12 text-center text-[10px] py-1">#</TableHead>
                                         <TableHead className="text-slate-700 font-semibold text-[10px] py-1">Item Details</TableHead>
-                                        <TableHead className="text-slate-700 font-semibold text-[10px] text-center py-1">HSN/SAC</TableHead>
+                                        <TableHead className="text-slate-700 font-semibold text-[10px] text-center py-1">Unit</TableHead>
+                                        <TableHead className="text-slate-700 font-semibold text-[10px] text-center py-1">HSN</TableHead>
+                                        <TableHead className="text-slate-700 font-semibold text-[10px] text-center py-1">SAC</TableHead>
                                         <TableHead className="text-slate-700 font-semibold text-[10px] text-center py-1 bg-slate-200/50">Original Qty</TableHead>
                                         <TableHead className="text-slate-700 font-semibold text-[10px] text-center py-1">Ordered Qty</TableHead>
                                         <TableHead className="text-slate-700 font-semibold text-[10px] text-center py-1">Change</TableHead>
@@ -723,9 +728,10 @@ export default function PurchaseOrderDetail() {
                                                         <div className="text-[11px] font-medium text-slate-800 uppercase">{item.item || item.item_name}</div>
                                                     </div>
                                                     {item.description && <div className="text-[10px] text-slate-400 mt-0.5 line-clamp-1">{item.description}</div>}
-                                                    {item.unit && <div className="text-[9px] text-slate-400">Unit: {item.unit}</div>}
                                                 </TableCell>
-                                                <TableCell className="text-center text-[11px] text-slate-600 py-2">{item.hsn_code || item.sac_code || "—"}</TableCell>
+                                                <TableCell className="text-center text-[11px] text-slate-600 py-2">{item.unit || "—"}</TableCell>
+                                                <TableCell className="text-center text-[11px] text-slate-600 py-2">{item.hsn_code || "—"}</TableCell>
+                                                <TableCell className="text-center text-[11px] text-slate-600 py-2">{item.sac_code || "—"}</TableCell>
 
                                                 {/* Original Qty Column */}
                                                 <TableCell className="text-center text-[11px] py-1 bg-slate-50 font-medium text-slate-500">
@@ -850,9 +856,19 @@ export default function PurchaseOrderDetail() {
                                                 onChange={(e) => setComment(e.target.value)}
                                             />
                                         ) : (
-                                            po.comments || po.approval_comments ? (
-                                                <div className="text-[11px] text-slate-600 whitespace-pre-wrap bg-slate-50/70 p-4 rounded-md border border-slate-100 italic leading-relaxed">
-                                                    {po.comments || po.approval_comments}
+                                            po.comments || po.approval_comments || po.vendor_terms ? (
+                                                <div className="space-y-4">
+                                                    {(po.comments || po.approval_comments) && (
+                                                        <div className="text-[11px] text-slate-600 whitespace-pre-wrap bg-slate-50/70 p-4 rounded-md border border-slate-100 italic leading-relaxed">
+                                                            {po.comments || po.approval_comments}
+                                                        </div>
+                                                    )}
+                                                    {po.vendor_terms && (
+                                                        <div className="text-[11px] text-slate-600 whitespace-pre-wrap bg-blue-50/40 p-4 rounded-md border border-blue-100/50 leading-relaxed">
+                                                            <p className="font-bold text-blue-800 mb-1 uppercase text-[9px] tracking-wider">Shop Terms & Conditions:</p>
+                                                            {po.vendor_terms}
+                                                        </div>
+                                                    )}
                                                 </div>
                                             ) : null
                                         )}
