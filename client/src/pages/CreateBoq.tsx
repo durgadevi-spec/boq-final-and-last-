@@ -342,7 +342,14 @@ function BoqItemCard({ boqItem, boqIdx, isVersionSubmitted, expandedProductIds, 
   isCardDragOver?: boolean;
   mismatches?: any[];
 }) {
+  const { toast } = useToast();
   const tableData = parseTableData(boqItem.table_data);
+  const [localTarget, setLocalTarget] = useState(tableData.targetRequiredQty || 0);
+
+  useEffect(() => {
+    setLocalTarget(tableData.targetRequiredQty || 0);
+  }, [tableData.targetRequiredQty]);
+
   const step11Items = Array.isArray(tableData.step11_items) ? tableData.step11_items : [];
   const productName = tableData.product_name || boqItem.estimator;
   const isExpanded = expandedProductIds.has(boqItem.id);
@@ -525,8 +532,53 @@ function BoqItemCard({ boqItem, boqIdx, isVersionSubmitted, expandedProductIds, 
               />
             </div>
             {isEngineBased && (
-              <div className="flex items-center gap-2 text-[11px] text-gray-600 font-medium">
-                Project Target: <span className="text-blue-600 font-bold">{tableData.targetRequiredQty} {tableData.configBasis?.requiredUnitType}</span>
+              <div className="flex items-center gap-2 text-[11px] text-gray-600 font-medium whitespace-nowrap">
+                Project Target: 
+                <div className="flex items-center gap-1 group/target">
+                  <Input
+                    type="number"
+                    className="h-7 w-20 text-[11px] font-bold text-blue-600 px-1 py-0 border-blue-200 focus:border-blue-500 focus:ring-1 focus:ring-blue-100 transition-all rounded"
+                    value={localTarget}
+                    onChange={(e) => setLocalTarget(parseFloat(e.target.value) || 0)}
+                    disabled={isVersionSubmitted || tableData.is_finalized}
+                    onBlur={async (e) => {
+                      const newVal = parseFloat(e.target.value);
+                      if (isNaN(newVal) || newVal === tableData.targetRequiredQty || newVal <= 0) {
+                        setLocalTarget(tableData.targetRequiredQty || 0);
+                        return;
+                      }
+                      
+                      try {
+                        const updatedTd = { ...tableData, targetRequiredQty: newVal };
+                        const resp = await apiFetch(`/api/boq-items/${boqItem.id}`, {
+                          method: "PUT",
+                          headers: { "Content-Type": "application/json" },
+                          body: JSON.stringify({ table_data: updatedTd }),
+                        });
+                        
+                        if (resp.ok) {
+                          setBoqItems((prev: BOMItem[]) => 
+                            prev.map((i: BOMItem) => i.id === boqItem.id ? { ...i, table_data: updatedTd } : i)
+                          );
+                          toast({ title: "Updated", description: `Project target updated to ${newVal} ${tableData.configBasis?.requiredUnitType || "Unit"}` });
+                        } else {
+                          toast({ title: "Error", description: "Failed to save project target", variant: "destructive" });
+                          setLocalTarget(tableData.targetRequiredQty || 0);
+                        }
+                      } catch (err) {
+                        console.error("Failed to update target qty", err);
+                        toast({ title: "Error", description: "Failed to connect to server", variant: "destructive" });
+                        setLocalTarget(tableData.targetRequiredQty || 0);
+                      }
+                    }}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter') {
+                        (e.target as HTMLInputElement).blur();
+                      }
+                    }}
+                  />
+                  <span className="text-blue-600 font-bold">{tableData.configBasis?.requiredUnitType || "Unit"}</span>
+                </div>
               </div>
             )}
           </div>
