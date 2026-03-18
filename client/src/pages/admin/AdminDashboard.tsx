@@ -74,6 +74,16 @@ const UNIT_OPTIONS = [
 
 // Removed hardcoded CATEGORY_OPTIONS - will be dynamic now
 
+const INDIAN_STATES = [
+  "Andhra Pradesh", "Arunachal Pradesh", "Assam", "Bihar", "Chhattisgarh",
+  "Goa", "Gujarat", "Haryana", "Himachal Pradesh", "Jharkhand", "Karnataka",
+  "Kerala", "Madhya Pradesh", "Maharashtra", "Manipur", "Meghalaya", "Mizoram",
+  "Nagaland", "Odisha", "Punjab", "Rajasthan", "Sikkim", "Tamil Nadu",
+  "Telangana", "Tripura", "Uttar Pradesh", "Uttarakhand", "West Bengal",
+  "Andaman and Nicobar Islands", "Chandigarh", "Dadra and Nagar Haveli and Daman and Diu",
+  "Delhi", "Jammu and Kashmir", "Ladakh", "Lakshadweep", "Puducherry"
+];
+
 const COUNTRY_CODES = [
   { code: "+91", country: "India" },
   { code: "+1", country: "USA" },
@@ -112,6 +122,33 @@ export default function AdminDashboard() {
 
   const [rejectReason, setRejectReason] = useState("");
   const [rejectingId, setRejectingId] = useState<string | null>(null);
+
+  // Helper to convert an uploaded image to a Base64 string
+  const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>, callback: (base64: string) => void) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    if (!file.type.startsWith('image/')) {
+      toast({ title: 'Error', description: 'Please upload a valid image file', variant: 'destructive' });
+      return;
+    }
+
+    // Limit size to ~5MB for Base64 storage
+    if (file.size > 5 * 1024 * 1024) {
+      toast({ title: 'Error', description: 'Image size should be less than 5MB', variant: 'destructive' });
+      return;
+    }
+
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      const base64String = event.target?.result as string;
+      callback(base64String);
+    };
+    reader.onerror = () => {
+      toast({ title: 'Error', description: 'Failed to read image file', variant: 'destructive' });
+    };
+    reader.readAsDataURL(file);
+  };
 
   // ==== CATEGORIES & SUBCATEGORIES (Admin/Software Team Created) ====
   const [categories, setCategories] = useState<string[]>([]);
@@ -193,7 +230,7 @@ export default function AdminDashboard() {
 
   // PRODUCTS STATE
   const [products, setProducts] = useState<any[]>([]);
-  const [newProduct, setNewProduct] = useState({ name: "", subcategory: "", taxCodeType: null as 'hsn' | 'sac' | null, taxCodeValue: "", hsnCode: "", sacCode: "" });
+  const [newProduct, setNewProduct] = useState({ name: "", subcategory: "", taxCodeType: null as 'hsn' | 'sac' | null, taxCodeValue: "", hsnCode: "", sacCode: "", image: undefined as string | undefined });
   const [showAddSubInline, setShowAddSubInline] = useState(false);
   const [editingProduct, setEditingProduct] = useState<any | null>(null);
   const [searchCategories, setSearchCategories] = useState("");
@@ -407,6 +444,7 @@ export default function AdminDashboard() {
       };
       if (newProduct.hsnCode && newProduct.hsnCode.trim()) payload.hsn_code = newProduct.hsnCode.trim();
       if (newProduct.sacCode && newProduct.sacCode.trim()) payload.sac_code = newProduct.sacCode.trim();
+      if (newProduct.image) payload.image = newProduct.image;
 
       const res = await postJSON('/products', payload);
       const newProd = res.product || res;
@@ -415,7 +453,7 @@ export default function AdminDashboard() {
         title: "Success",
         description: `Product "${newProduct.name}" created`,
       });
-      setNewProduct({ name: "", subcategory: "", taxCodeType: null, taxCodeValue: "", hsnCode: "", sacCode: "" });
+      setNewProduct({ name: "", subcategory: "", taxCodeType: null, taxCodeValue: "", hsnCode: "", sacCode: "", image: undefined });
     } catch (err: any) {
       console.error('add product error', err);
       toast({
@@ -434,6 +472,7 @@ export default function AdminDashboard() {
       taxCodeValue: product.taxCodeValue || "",
       hsnCode: product.hsn_code || product.hsnCode || "",
       sacCode: product.sac_code || product.sacCode || "",
+      image: product.image || undefined,
     });
     setShowAddProductDialog(true);
   };
@@ -472,6 +511,7 @@ export default function AdminDashboard() {
       if (editingProduct.taxCodeValue) payload.taxCodeValue = editingProduct.taxCodeValue;
       if (editingProduct.hsnCode !== undefined) payload.hsn_code = editingProduct.hsnCode;
       if (editingProduct.sacCode !== undefined) payload.sac_code = editingProduct.sacCode;
+      if (editingProduct.image !== undefined) payload.image = editingProduct.image;
 
       const res = await apiFetch(`/products/${editingProduct.id}`, {
         method: 'PUT',
@@ -676,6 +716,7 @@ export default function AdminDashboard() {
     hsnCode: string;
     sacCode: string;
     technicalSpecification: string;
+    image?: string;
   }>({
     name: "",
     code: "",
@@ -685,6 +726,7 @@ export default function AdminDashboard() {
     hsnCode: "",
     sacCode: "",
     technicalSpecification: "",
+    image: undefined,
   });
 
   // Auto-generate code when admin enters material name
@@ -1040,14 +1082,16 @@ export default function AdminDashboard() {
     name: "",
     location: "",
     city: "",
-    state: "",
-    country: "",
+    state: "Tamil Nadu",
+    country: "India",
     pincode: "",
     phoneCountryCode: "+91",
     contactNumber: "",
     gstNo: "",
     vendorCategory: "",
     rating: 5,
+    new_location: "",
+    terms_and_conditions: "",
   });
 
   // Editing states
@@ -1063,6 +1107,7 @@ export default function AdminDashboard() {
     if (
       !newShop.name ||
       !newShop.phoneCountryCode ||
+      !newShop.location ||
       !newShop.city ||
       !newShop.state ||
       !newShop.country ||
@@ -1133,11 +1178,13 @@ export default function AdminDashboard() {
           city: "",
           phoneCountryCode: "+91",
           contactNumber: "",
-          state: "",
-          country: "",
+          state: "Tamil Nadu",
+          country: "India",
           pincode: "",
           gstNo: "",
           vendorCategory: "",
+          new_location: "",
+          terms_and_conditions: "",
         });
         setEditingShopId(null);
       }
@@ -1159,6 +1206,8 @@ export default function AdminDashboard() {
       gstNo: shop.gst_no || shop.gstNo || shop.gstno || "",
       vendorCategory: shop.vendor_category || shop.vendorCategory || shop.vendorcategory || "",
       rating: shop.rating || 5,
+      new_location: shop.new_location || shop.newLocation || "",
+      terms_and_conditions: shop.terms_and_conditions || shop.termsAndConditions || "",
     });
     // No redirect - keep on dashboard for inline editing
   };
@@ -1499,8 +1548,12 @@ export default function AdminDashboard() {
                                       <Input value={newShop.name || ''} onChange={(e) => setNewShop({ ...newShop, name: e.target.value })} placeholder="Shop Name" />
                                     </div>
                                     <div>
+                                      <Label className="text-xs font-semibold">Address</Label>
+                                      <Input value={newShop.location || ''} onChange={(e) => setNewShop({ ...newShop, location: e.target.value })} placeholder="Address" />
+                                    </div>
+                                    <div>
                                       <Label className="text-xs font-semibold">Location</Label>
-                                      <Input value={newShop.location || ''} onChange={(e) => setNewShop({ ...newShop, location: e.target.value })} placeholder="Location" />
+                                      <Input value={newShop.new_location || ''} onChange={(e) => setNewShop({ ...newShop, new_location: e.target.value })} placeholder="Location" />
                                     </div>
                                     <div>
                                       <Label className="text-xs font-semibold">City</Label>
@@ -1513,6 +1566,10 @@ export default function AdminDashboard() {
                                     <div>
                                       <Label className="text-xs font-semibold">GST No</Label>
                                       <Input value={newShop.gstNo || ''} onChange={(e) => setNewShop({ ...newShop, gstNo: e.target.value })} placeholder="GST No" />
+                                    </div>
+                                    <div>
+                                      <Label className="text-xs font-semibold">Terms and Conditions</Label>
+                                      <Input value={newShop.terms_and_conditions || ''} onChange={(e) => setNewShop({ ...newShop, terms_and_conditions: e.target.value })} placeholder="Terms and Conditions" />
                                     </div>
                                     <div>
                                       <Label className="text-xs font-semibold">Vendor Category</Label>
@@ -1546,7 +1603,11 @@ export default function AdminDashboard() {
                                       </button>
                                       <div>
                                         <div className="font-bold text-lg text-foreground">{shop.name}</div>
-                                        <div className="text-sm text-foreground/80">{shop.location}, {shop.city}</div>
+                                        <div className="text-sm text-foreground/80">
+                                          {shop.location}, {shop.city}
+                                          {shop.new_location && <div className="text-xs text-muted-foreground mt-0.5 italic">Alt Location: {shop.new_location}</div>}
+                                          {shop.terms_and_conditions && <div className="text-xs text-blue-600 mt-0.5 line-clamp-1">T&C: {shop.terms_and_conditions}</div>}
+                                        </div>
                                         <div className="text-xs text-muted-foreground mt-1 font-medium">
                                           {(shop.phone_country_code || shop.phoneCountryCode || shop.phonecountrycode || '+91')}{" "}{(shop.contact_number || shop.contactNumber || shop.contactnumber || shop.phone || shop.mobile)} • {shop.gst_no || shop.gstNo || shop.gstno || 'No GST'}
                                         </div>
@@ -1950,8 +2011,16 @@ export default function AdminDashboard() {
 
           {/* === CREATE PRODUCT TAB (Admin/Software Team can manage, Purchase Team can view) === */}
           {canViewCategories && (
-            <TabsContent value="create-product" className="space-y-6 mt-4">
-              {/* Create Categories Section */}
+            <TabsContent value="create-product" className="mt-4">
+              <Tabs defaultValue="categories">
+                <TabsList className="rounded-xl bg-muted/50 p-1.5 mb-6 w-full max-w-2xl grid grid-cols-3">
+                  <TabsTrigger value="categories" className="text-sm md:text-base font-medium data-[state=active]:font-bold data-[state=active]:bg-purple-100 data-[state=active]:text-purple-900 py-2">Categories</TabsTrigger>
+                  <TabsTrigger value="subcategories" className="text-sm md:text-base font-medium data-[state=active]:font-bold data-[state=active]:bg-green-100 data-[state=active]:text-green-900 py-2">Subcategories</TabsTrigger>
+                  <TabsTrigger value="products" className="text-sm md:text-base font-medium data-[state=active]:font-bold data-[state=active]:bg-blue-100 data-[state=active]:text-blue-900 py-2">Products</TabsTrigger>
+                </TabsList>
+
+                <TabsContent value="categories">
+                  {/* Create Categories Section */}
               <Card className="border-purple-200 bg-purple-50">
                 <CardHeader>
                   <div className="flex items-center justify-between">
@@ -2107,13 +2176,11 @@ export default function AdminDashboard() {
                   </div>
                 </CardContent>
               </Card>
-            </TabsContent>
-          )}
+                </TabsContent>
 
-          {/* === CREATE PRODUCT TAB - Subcategories Section === */}
-          {canViewCategories && (
-            <TabsContent value="create-product" className="space-y-6 mt-4">
-              <Card className="border-green-200 bg-green-50">
+                <TabsContent value="subcategories">
+                  {/* === CREATE PRODUCT TAB - Subcategories Section === */}
+                  <Card className="border-green-200 bg-green-50">
                 <CardHeader>
                   <div className="flex items-center justify-between">
                     <div>
@@ -2311,9 +2378,11 @@ export default function AdminDashboard() {
                   </div>
                 </CardContent>
               </Card>
+                </TabsContent>
 
-              {/* Create Products Section */}
-              <Card className="border-blue-200 bg-blue-50">
+                <TabsContent value="products">
+                  {/* Create Products Section */}
+                  <Card className="border-blue-200 bg-blue-50">
                 <CardHeader>
                   <div className="flex items-center justify-between">
                     <div>
@@ -2423,6 +2492,19 @@ export default function AdminDashboard() {
                                 <Label>SAC Code</Label>
                                 <Input value={newProduct.sacCode} onChange={(e) => setNewProduct({ ...newProduct, sacCode: e.target.value })} placeholder="Enter SAC code" />
                               </div>
+                            </div>
+                            <div className="space-y-2">
+                              <Label>Product Image</Label>
+                              <Input
+                                type="file"
+                                accept="image/*"
+                                onChange={(e) => handleImageUpload(e, (base64) => setNewProduct({ ...newProduct, image: base64 as any }))}
+                              />
+                              {(newProduct as any).image && (
+                                <div className="mt-2 text-xs text-green-600 font-medium">
+                                  ✅ Image selected
+                                </div>
+                              )}
                             </div>
                             <Button
                               onClick={async () => {
@@ -2613,6 +2695,19 @@ export default function AdminDashboard() {
                             />
                           </div>
                         </div>
+                        <div className="space-y-2">
+                          <Label>Product Image</Label>
+                          <Input
+                            type="file"
+                            accept="image/*"
+                            onChange={(e) => handleImageUpload(e, (base64) => setEditingProduct((prev: any) => ({ ...prev, image: base64 })))}
+                          />
+                          {editingProduct.image && (
+                            <div className="mt-2 text-xs text-green-600 font-medium">
+                              ✅ Image selected
+                            </div>
+                          )}
+                        </div>
                         <div className="flex gap-2 justify-end">
                           <Button variant="outline" onClick={() => setEditingProduct(null)}>
                             Cancel
@@ -2636,6 +2731,8 @@ export default function AdminDashboard() {
                   </DialogContent>
                 </Dialog>
               )}
+                </TabsContent>
+              </Tabs>
             </TabsContent>
           )}
 
@@ -2759,6 +2856,19 @@ export default function AdminDashboard() {
                         placeholder="Enter item description..."
                         className="min-h-[80px]"
                       />
+                    </div>
+                    <div className="space-y-2 md:col-span-3">
+                      <Label>Product Image</Label>
+                      <Input
+                        type="file"
+                        accept="image/*"
+                        onChange={(e) => handleImageUpload(e, (base64) => setNewMasterMaterial({ ...newMasterMaterial, image: base64 }))}
+                      />
+                      {newMasterMaterial.image && (
+                        <div className="mt-2 text-xs text-green-600 font-medium flex items-center gap-1">
+                          ✅ Image selected
+                        </div>
+                      )}
                     </div>
                   </div>
                   <div className="flex gap-2">
@@ -2892,11 +3002,24 @@ export default function AdminDashboard() {
                                     <div className="md:col-span-2">
                                       <Label>Description</Label>
                                       <Textarea
-                                        value={newMaterial.technicalspecification || newMaterial.technicalSpecification || ""}
-                                        onChange={(e) => setNewMaterial({ ...newMaterial, technicalspecification: e.target.value, technicalSpecification: e.target.value })}
+                                        value={newMaterial.technicalSpecification || ""}
+                                        onChange={(e) => setNewMaterial({ ...newMaterial, technicalSpecification: e.target.value })}
                                         placeholder="Enter item description..."
                                         className="min-h-[80px]"
                                       />
+                                    </div>
+                                    <div className="md:col-span-2">
+                                      <Label>Product Image</Label>
+                                      <Input
+                                        type="file"
+                                        accept="image/*"
+                                        onChange={(e) => handleImageUpload(e, (base64) => setNewMaterial({ ...newMaterial, image: base64 }))}
+                                      />
+                                      {newMaterial.image && (
+                                        <div className="mt-2 text-xs text-green-600 font-medium">
+                                          ✅ Image selected
+                                        </div>
+                                      )}
                                     </div>
                                   </div>
                                   <div className="flex gap-2 justify-end pt-2">
@@ -2913,7 +3036,8 @@ export default function AdminDashboard() {
                                           vendor_category: newMaterial.vendorCategory || null,
                                           hsn_code: newMaterial.hsnCode || null,
                                           sac_code: newMaterial.sacCode || null,
-                                          technicalSpecification: newMaterial.technicalSpecification || null
+                                          technicalSpecification: newMaterial.technicalSpecification || null,
+                                          image: newMaterial.image || null
                                         };
 
                                         const res = await apiFetch(`/material-templates/${template.id}`, {
@@ -3026,11 +3150,20 @@ export default function AdminDashboard() {
                       />
                     </div>
                     <div className="space-y-2">
-                      <Label>Location <span className="text-red-500">*</span></Label>
+                      <Label>Address <span className="text-red-500">*</span></Label>
                       <Input
                         value={newShop.location}
                         onChange={(e) =>
                           setNewShop({ ...newShop, location: e.target.value })
+                        }
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label>Location</Label>
+                      <Input
+                        value={newShop.new_location}
+                        onChange={(e) =>
+                          setNewShop({ ...newShop, new_location: e.target.value })
                         }
                       />
                     </div>
@@ -3081,12 +3214,23 @@ export default function AdminDashboard() {
 
                     <div className="space-y-2">
                       <Label>State <span className="text-red-500">*</span></Label>
-                      <Input
+                      <Select
                         value={newShop.state}
-                        onChange={(e) =>
-                          setNewShop({ ...newShop, state: e.target.value })
+                        onValueChange={(value) =>
+                          setNewShop({ ...newShop, state: value })
                         }
-                      />
+                      >
+                        <SelectTrigger>
+                          <SelectValue placeholder="Select state" />
+                        </SelectTrigger>
+                        <SelectContent className="max-h-[300px] overflow-y-auto">
+                          {INDIAN_STATES.map((state) => (
+                            <SelectItem key={state} value={state}>
+                              {state}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
                     </div>
 
                     <div className="space-y-2">
@@ -3137,7 +3281,7 @@ export default function AdminDashboard() {
                               No categories available
                             </SelectItem>
                           ) : (
-                            vendorCategories.map((cat) => (
+                            vendorCategories.map((cat: any) => (
                               <SelectItem key={cat.id} value={cat.name}>
                                 {cat.name}
                               </SelectItem>
@@ -3145,6 +3289,17 @@ export default function AdminDashboard() {
                           )}
                         </SelectContent>
                       </Select>
+                    </div>
+
+                    <div className="space-y-2">
+                      <Label>Terms and Conditions</Label>
+                      <Input
+                        value={newShop.terms_and_conditions}
+                        onChange={(e) =>
+                          setNewShop({ ...newShop, terms_and_conditions: e.target.value })
+                        }
+                        placeholder="Enter terms and conditions"
+                      />
                     </div>
                   </div>
                   <Button onClick={editingShopId ? handleUpdateShop : handleAddShop}>{editingShopId ? 'Save Changes' : 'Add Shop'}</Button>
@@ -3189,9 +3344,15 @@ export default function AdminDashboard() {
                             </div>
                             <div className="grid grid-cols-2 gap-3 text-sm">
                               <div>
-                                <p className="font-semibold">Location</p>
+                                <p className="font-semibold">Address</p>
                                 <p>{request.shop.location}</p>
                               </div>
+                              {request.shop.new_location && (
+                                <div>
+                                  <p className="font-semibold">Location</p>
+                                  <p>{request.shop.new_location}</p>
+                                </div>
+                              )}
                               <div>
                                 <p className="font-semibold">City</p>
                                 <p>{request.shop.city}</p>
@@ -3200,6 +3361,12 @@ export default function AdminDashboard() {
                                 <p className="font-semibold">State</p>
                                 <p>{request.shop.state}</p>
                               </div>
+                              {request.shop.terms_and_conditions && (
+                                <div className="col-span-2">
+                                  <p className="font-semibold">Terms and Conditions</p>
+                                  <p className="text-xs italic">{request.shop.terms_and_conditions}</p>
+                                </div>
+                              )}
                               <div>
                                 <p className="font-semibold">Country</p>
                                 <p>{request.shop.country}</p>
