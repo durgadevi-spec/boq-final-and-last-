@@ -532,7 +532,8 @@ function BoqItemCard({ boqItem, boqIdx, isVersionSubmitted, expandedProductIds, 
                 }}
               />
             </div>
-            <div className="flex items-center gap-2 text-[11px] text-gray-600 font-medium whitespace-nowrap">
+            {isEngineBased && (
+              <div className="flex items-center gap-2 text-[11px] text-gray-600 font-medium whitespace-nowrap">
                 Project Target: 
                 <div className="flex items-center gap-1 group/target">
                   <Input
@@ -581,6 +582,7 @@ function BoqItemCard({ boqItem, boqIdx, isVersionSubmitted, expandedProductIds, 
                   <span className="text-blue-600 font-bold">{tableData.configBasis?.requiredUnitType || "Unit"}</span>
                 </div>
               </div>
+            )}
           </div>
         </div>
 
