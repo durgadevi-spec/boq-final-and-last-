@@ -572,6 +572,7 @@ export async function registerRoutes(
       )
     `);
     await query(`CREATE INDEX IF NOT EXISTS idx_po_request_items_req_id ON po_request_items(po_request_id)`);
+    await query(`ALTER TABLE po_request_items ADD COLUMN IF NOT EXISTS material_id VARCHAR(255)`);
     console.log("[db] po_request_items table verified/created");
   } catch (err: unknown) {
     console.warn("[db] Could not create po_request_items table:", (err as any)?.message || err);
@@ -798,6 +799,18 @@ export async function registerRoutes(
       )
     `);
     console.log("[db] boq_templates table verified/created");
+
+    // NEW: Create bom_templates table for reusable BOM item cards (Generate BOM)
+    await query(`
+      CREATE TABLE IF NOT EXISTS bom_templates (
+        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        name VARCHAR(255) NOT NULL UNIQUE,
+        config JSONB NOT NULL,
+        created_at TIMESTAMP DEFAULT NOW(),
+        updated_at TIMESTAMP DEFAULT NOW()
+      )
+    `);
+    console.log("[db] bom_templates table verified/created");
   } catch (err: unknown) {
     console.warn(
       "[db] Could not create boq_templates table:",
@@ -4322,7 +4335,7 @@ export async function registerRoutes(
         await query("ALTER TABLE boq_versions ADD COLUMN IF NOT EXISTS is_cleared BOOLEAN DEFAULT FALSE");
 
         const result = await query(
-          "SELECT * FROM boq_versions WHERE type = 'bom' AND status != 'draft' AND ((is_cleared IS FALSE OR is_cleared IS NULL) OR status = 'edit_requested') AND created_at >= '2026-03-02 00:00:00' ORDER BY created_at DESC"
+          "SELECT * FROM boq_versions WHERE status != 'draft' AND ((is_cleared IS FALSE OR is_cleared IS NULL) OR status = 'edit_requested') ORDER BY created_at DESC"
         );
         res.json({ approvals: result.rows });
       } catch (err) {
@@ -4980,6 +4993,55 @@ export async function registerRoutes(
     } catch (err) {
       console.error("DELETE /api/boq-templates error", err);
       res.status(500).json({ message: "Failed to delete template" });
+    }
+  });
+
+  // ======================================================================
+  // ✅ BOM TEMPLATES ROUTES (Generate BOM Page)
+  // ======================================================================
+
+  // GET /api/bom-templates - List all BOM templates
+  app.get("/api/bom-templates", authMiddleware, async (req: Request, res: Response) => {
+    try {
+      const result = await query("SELECT * FROM bom_templates ORDER BY name ASC");
+      res.json({ templates: result.rows });
+    } catch (err) {
+      console.error("GET /api/bom-templates error", err);
+      res.status(500).json({ message: "Failed to fetch BOM templates" });
+    }
+  });
+
+  // POST /api/bom-templates - Save a new BOM template
+  app.post("/api/bom-templates", authMiddleware, async (req: Request, res: Response) => {
+    try {
+      const { name, config } = req.body;
+      if (!name || !config) {
+        return res.status(400).json({ message: "Name and config are required" });
+      }
+
+      await query(
+        `INSERT INTO bom_templates (name, config, updated_at) 
+         VALUES ($1, $2, NOW()) 
+         ON CONFLICT (name) DO UPDATE SET config = $2, updated_at = NOW()`,
+        [name, JSON.stringify(config)]
+      );
+
+      res.json({ message: "BOM Template saved successfully" });
+    } catch (err) {
+      console.error("POST /api/bom-templates error", err);
+      res.status(500).json({ message: "Failed to save BOM template" });
+    }
+  });
+
+  // DELETE /api/bom-templates/:id - Delete a BOM template
+  app.delete("/api/bom-templates/:id", authMiddleware, async (req: Request, res: Response) => {
+    try {
+      const { id } = req.params;
+      await query("DELETE FROM bom_templates WHERE id = $1", [id]);
+      res.json({ message: "BOM Template deleted" });
+    } catch (err) {
+      console.error("DELETE /api/bom-templates error", err);
+      res.status(500).json({ message: "Failed to delete BOM template" });
     }
   });
 
@@ -6632,7 +6694,7 @@ export async function registerRoutes(
         for (const [vendorName, items] of Object.entries(vendorGroups)) {
           if (vendorName === "unassigned") continue;
 
-          const poNumber = `PO-${Math.floor(1000 + Math.random() * 9000)}-${Date.now().toString().slice(-4)}`;
+          const poNumber = `Anx-${Math.floor(1000 + Math.random() * 9000)}-${Date.now().toString().slice(-4)}`;
           let totalAmount = 0;
 
           // Look up vendor's UUID by name
@@ -6737,9 +6799,9 @@ export async function registerRoutes(
       for (const item of items) {
         await query(
           `INSERT INTO po_request_items 
-           (po_request_id, item, category, subcategory, unit, qty, remarks) 
-           VALUES ($1, $2, $3, $4, $5, $6, $7)`,
-          [poRequest.id, item.item, item.category, item.subcategory, item.unit, item.qty, item.remarks]
+           (po_request_id, material_id, item, category, subcategory, unit, qty, remarks) 
+           VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
+          [poRequest.id, item.material_id || item.id || null, item.item, item.category, item.subcategory, item.unit, item.qty, item.remarks]
         );
       }
 
@@ -6856,7 +6918,7 @@ export async function registerRoutes(
       // 2. Generate PO Number
       const poCountRes = await query(`SELECT COUNT(*) FROM purchase_orders`);
       const poNumStr = String(parseInt(poCountRes.rows[0].count) + 1).padStart(3, "0");
-      const generatedPoNumber = `PO-${new Date().getFullYear()}-${poNumStr}`;
+      const generatedPoNumber = `Anx-${new Date().getFullYear()}-${poNumStr}`;
 
       // 3. Calculate Totals based on matching selected rates
       let subtotal = 0;
@@ -6872,6 +6934,7 @@ export async function registerRoutes(
           subtotal += amount;
 
           finalItems.push({
+            material_id: dbItem.material_id, // Ensure material_id is carried forward
             item: dbItem.item,
             description: dbItem.remarks || '',
             unit: dbItem.unit,
@@ -6895,9 +6958,9 @@ export async function registerRoutes(
       for (const fItem of finalItems) {
         await query(
           `INSERT INTO purchase_order_items 
-           (po_id, item, description, unit, qty, rate, amount) 
-           VALUES ($1, $2, $3, $4, $5, $6, $7)`,
-          [newPo.id, fItem.item, fItem.description, fItem.unit, fItem.qty, fItem.rate, fItem.amount]
+           (po_id, material_id, item, description, unit, qty, rate, amount) 
+           VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
+          [newPo.id, fItem.material_id, fItem.item, fItem.description, fItem.unit, fItem.qty, fItem.rate, fItem.amount]
         );
       }
 
@@ -6916,7 +6979,7 @@ export async function registerRoutes(
   app.post("/api/purchase-orders/:id/revise", authMiddleware, async (req: Request, res: Response) => {
     try {
       const { id } = req.params;
-      const { items, reason, deletedItems, delivery_date, shippingAddress, paymentTerms } = req.body;
+      const { items, reason, deletedItems, delivery_date, shippingAddress, paymentTerms, vendor_id, vendor_name } = req.body;
       const user = (req as any).user;
 
       // 1. Get existing PO
@@ -6994,13 +7057,16 @@ export async function registerRoutes(
         totalAmount += parseFloat(item.amount) || (parseFloat(item.qty) * parseFloat(item.rate)) || 0;
       }
 
-      console.log(`[revise-po] Attempting revision for PO ${id}. New PO Number: ${newPoNumber}`);
+      const finalVendorId = vendor_id || existingPo.vendor_id;
+      const finalVendorName = vendor_name || existingPo.vendor_name;
+
+      console.log(`[revise-po] Attempting revision for PO ${id}. New PO Number: ${newPoNumber}. Vendor: ${finalVendorName}`);
 
       // 4. Create new PO
       const newPoRes = await query(
         `INSERT INTO purchase_orders (po_number, project_id, project_name, vendor_id, vendor_name, subtotal, total, status, requested_by, approval_comments, delivery_date, shipping_address, payment_terms) 
          VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13) RETURNING *`,
-        [newPoNumber, existingPo.project_id, existingPo.project_name, existingPo.vendor_id, existingPo.vendor_name, totalAmount, totalAmount, newStatus, existingPo.requested_by, approvalComments, delivery_date || null, shippingAddress || null, paymentTerms || null]
+        [newPoNumber, existingPo.project_id, existingPo.project_name, finalVendorId, finalVendorName, totalAmount, totalAmount, newStatus, existingPo.requested_by, approvalComments, delivery_date || null, shippingAddress || null, paymentTerms || null]
       );
       const newPo = newPoRes.rows[0];
       console.log(`[revise-po] New PO created with ID: ${newPo.id}`);
@@ -7008,9 +7074,9 @@ export async function registerRoutes(
       // 5. Insert new items
       for (const item of items) {
         await query(
-          `INSERT INTO purchase_order_items (po_id, item, description, unit, qty, rate, amount, hsn_code, sac_code) 
-           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
-          [newPo.id, item.item || item.item_name, item.description || null, item.unit || null, item.qty, item.rate, item.amount, item.hsn_code || null, item.sac_code || null]
+          `INSERT INTO purchase_order_items (po_id, material_id, item, description, unit, qty, rate, amount, hsn_code, sac_code) 
+           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)`,
+          [newPo.id, item.material_id || item.id || null, item.item || item.item_name, item.description || null, item.unit || null, item.qty, item.rate, item.amount, item.hsn_code || null, item.sac_code || null]
         );
       }
 
@@ -7025,15 +7091,15 @@ export async function registerRoutes(
         const defPoRes = await query(
             `INSERT INTO purchase_orders (po_number, project_id, project_name, vendor_id, vendor_name, subtotal, total, status, requested_by, approval_comments) 
              VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10) RETURNING *`,
-            [deferredPoNumber, existingPo.project_id, existingPo.project_name, existingPo.vendor_id, existingPo.vendor_name, deferredTotal, deferredTotal, "draft", existingPo.requested_by, "Items deferred due to budget constraints during revision."]
+            [deferredPoNumber, existingPo.project_id, existingPo.project_name, finalVendorId, finalVendorName, deferredTotal, deferredTotal, "draft", existingPo.requested_by, "Items deferred due to budget constraints during revision."]
         );
         const defPo = defPoRes.rows[0];
         
         for (const ditem of deletedItems) {
             await query(
-              `INSERT INTO purchase_order_items (po_id, item, description, unit, qty, rate, amount, hsn_code, sac_code) 
-               VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
-              [defPo.id, ditem.item || ditem.item_name, ditem.description || null, ditem.unit || null, ditem.qty, ditem.rate, ditem.amount, ditem.hsn_code || null, ditem.sac_code || null]
+              `INSERT INTO purchase_order_items (po_id, material_id, item, description, unit, qty, rate, amount, hsn_code, sac_code) 
+               VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)`,
+              [defPo.id, ditem.material_id || ditem.id || null, ditem.item || ditem.item_name, ditem.description || null, ditem.unit || null, ditem.qty, ditem.rate, ditem.amount, ditem.hsn_code || null, ditem.sac_code || null]
             );
         }
       }
@@ -7238,6 +7304,96 @@ export async function registerRoutes(
     } catch (err) {
       console.error("DELETE /api/purchase-orders/:id error:", err);
       res.status(500).json({ message: "Failed to delete purchase order" });
+    }
+  });
+
+  // GET /api/purchase-orders/check-material-increases - Check if materials have increased qty in approved POs
+  app.get("/api/purchase-orders/check-material-increases", authMiddleware, async (req: Request, res: Response) => {
+    try {
+      const { materialIds } = req.query;
+      if (!materialIds || typeof materialIds !== 'string') {
+        return res.status(400).json({ message: "materialIds query parameter is required" });
+      }
+
+      const ids = materialIds.split(',').filter(id => id.trim());
+      if (ids.length === 0) return res.json({ increases: {} });
+
+      // Query for the latest approved PO item for each material
+      // We exclude 'Deferred' POs as they are usually budget-split, not increases
+      const result = await query(
+        `SELECT DISTINCT ON (material_id) 
+           material_id, qty, po_id, p.po_number, p.updated_at
+         FROM purchase_order_items poi
+         JOIN purchase_orders p ON poi.po_id = p.id
+         WHERE material_id = ANY($1) 
+           AND p.status = 'approved'
+           AND p.po_number NOT LIKE '%Deferred%'
+         ORDER BY material_id, p.updated_at DESC`,
+        [ids]
+      );
+
+      const increases: Record<string, any> = {};
+      result.rows.forEach((row: any) => {
+        increases[row.material_id] = {
+          qty: parseFloat(row.qty),
+          poNumber: row.po_number,
+          poId: row.po_id,
+          updatedAt: row.updated_at
+        };
+      });
+
+      res.json({ increases });
+    } catch (err) {
+      console.error("GET /api/purchase-orders/check-material-increases error:", err);
+      res.status(500).json({ message: "Failed to check material increases" });
+    }
+  });
+
+  // POST /api/products/update-template-qty - Update product template with new quantity
+  app.post("/api/products/update-template-qty", authMiddleware, async (req: Request, res: Response) => {
+    try {
+      const { productId, materialId, newQty } = req.body;
+      if (!productId || !materialId || newQty === undefined) {
+        return res.status(400).json({ message: "productId, materialId, and newQty are required" });
+      }
+
+      await query("BEGIN");
+      try {
+        // 1. Update product_step3_config_items
+        // We find the config for the product first
+        const configRes = await query(`SELECT id FROM product_step3_config WHERE product_id = $1 LIMIT 1`, [productId]);
+        if (configRes.rows.length > 0) {
+          const configId = configRes.rows[0].id;
+          await query(
+            `UPDATE product_step3_config_items 
+             SET qty = $1, base_qty = $1
+             WHERE step3_config_id = $2 AND material_id = $3`,
+            [newQty, configId, materialId]
+          );
+        }
+
+        // 2. Update step11_product_items (Product Master)
+        // Find the latest approved version for this product
+        const step11Res = await query(`SELECT id FROM step11_products WHERE product_id = $1 ORDER BY updated_at DESC LIMIT 1`, [productId]);
+        if (step11Res.rows.length > 0) {
+          const step11Id = step11Res.rows[0].id;
+          await query(
+            `UPDATE step11_product_items 
+             SET qty = $1
+             WHERE step11_product_id = $2 AND material_id = $3`,
+            [newQty, step11Id, materialId]
+          );
+        }
+
+        await query("COMMIT");
+        res.json({ message: "Product template updated successfully" });
+      } catch (err) {
+        await query("ROLLBACK");
+        throw err;
+      }
+    } catch (err) {
+      console.error("POST /api/products/update-template-qty error:", err);
+      res.status(500).json({ message: "Failed to update product template" });
     }
   });
 
