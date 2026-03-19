@@ -201,7 +201,7 @@ function VersionStatusBanner({ version }: { version: BOMVersion }) {
 
 function BoqItemRow({ item, itemIdx, boqItem, tableData, isEngineBased, isVersionSubmitted,
   getEditedValue, updateEditedField, handleDeleteRow, checkBudgetEarly, handleSaveProject,
-  isDraggable, onDragStart, onDragOver, onDrop, isDragOver, mismatch }: {
+  isDraggable, onDragStart, onDragOver, onDrop, isDragOver, mismatch, isCompactView }: {
     item: any; itemIdx: number; boqItem: BOMItem; tableData: any; isEngineBased: boolean;
     isVersionSubmitted: boolean; getEditedValue: (k: string, f: string, v: any) => any;
     updateEditedField: (k: string, f: string, v: any) => void;
@@ -211,6 +211,7 @@ function BoqItemRow({ item, itemIdx, boqItem, tableData, isEngineBased, isVersio
     isDraggable?: boolean; onDragStart?: () => void;
     onDragOver?: (e: React.DragEvent) => void; onDrop?: () => void;
     isDragOver?: boolean; mismatch?: any;
+    isCompactView?: boolean;
   }) {
   const itemKey = item.itemKey || `${boqItem.id}-${itemIdx}`;
   const perItemIsEngine = isEngineBased && !item.manual;
@@ -247,12 +248,12 @@ function BoqItemRow({ item, itemIdx, boqItem, tableData, isEngineBased, isVersio
       </td>
       <td className="border px-2 py-1 text-center">{itemIdx + 1}</td>
       <td className="border px-2 py-1 font-medium">{item.title}<ManualBadge /></td>
-      <td className="border px-2 py-1 text-gray-600">{item.shop_name || "-"}</td>
-      <td className="border px-2 py-1 text-gray-600 truncate max-w-[200px]" title={description}>{description}</td>
+      {!isCompactView && <td className="border px-2 py-1 text-gray-600">{item.shop_name || "-"}</td>}
+      {!isCompactView && <td className="border px-2 py-1 text-gray-600 truncate max-w-[200px]" title={description}>{description}</td>}
       <td className="border px-2 py-1 text-center">{unit}</td>
       <td className="border px-2 py-1 text-center">{(item.qtyPerSqf ?? 0).toFixed(3)}</td>
       <td className="border px-2 py-1 text-center text-blue-600">{(item.requiredQty ?? item.qty ?? 0).toFixed(2)}</td>
-      <td className="border px-2 py-1 text-center font-bold">{item.roundOff}</td>
+      {!isCompactView && <td className="border px-2 py-1 text-center font-bold">{item.roundOff}</td>}
       <td className={`border px-2 py-1 text-right ${mismatch ? 'bg-amber-50 animate-pulse' : ''}`}>
         <div className="flex flex-col items-end">
           <span className={mismatch ? 'text-amber-700 font-bold' : ''}>₹{(item.rateSqft || 0).toLocaleString()}</span>
@@ -281,13 +282,13 @@ function BoqItemRow({ item, itemIdx, boqItem, tableData, isEngineBased, isVersio
       </td>
       <td className="border px-2 py-1 text-center text-xs">{itemIdx + 1}</td>
       <td className="border px-2 py-1 font-medium text-xs">{item.title || "Item"}<ManualBadge /></td>
-      <td className="border px-2 py-1 text-gray-600">{item.shop_name || "-"}</td>
-      <td className="border px-2 py-1">
+      {!isCompactView && <td className="border px-2 py-1 text-gray-600">{item.shop_name || "-"}</td>}
+      {!isCompactView && <td className="border px-2 py-1">
         <textarea value={description} onChange={e => updateEditedField(itemKey, "description", e.target.value)} disabled={isLocked}
           onFocus={checkBudgetEarly}
           onBlur={handleSaveProject}
           className="w-full border rounded px-1 py-0.5 text-xs min-h-[60px] resize-y focus:ring-1 ring-blue-500 outline-none" placeholder="Description" />
-      </td>
+      </td>}
       <td className="border px-2 py-1">
         <input type="text" value={unit} onChange={e => updateEditedField(itemKey, "unit", e.target.value)} disabled={isLocked}
           onBlur={handleSaveProject}
@@ -300,7 +301,7 @@ function BoqItemRow({ item, itemIdx, boqItem, tableData, isEngineBased, isVersio
           className="w-full border rounded px-1 py-0.5 text-xs text-center font-medium focus:ring-1 ring-blue-500 outline-none" />
       </td>
       <td className="border px-2 py-1 text-center text-blue-600">{(getEditedValue(itemKey, "qty", item.qty || 0) || 0).toFixed(2)}</td>
-      <td className="border px-2 py-1 font-bold text-center">-</td>
+      {!isCompactView && <td className="border px-2 py-1 font-bold text-center">-</td>}
       <td className={`border px-1 py-1 ${mismatch ? 'bg-amber-50 animate-pulse' : ''}`}>
         <div className="flex flex-col">
           <input type="number" value={rateVal} disabled={isLocked}
@@ -324,7 +325,7 @@ function BoqItemRow({ item, itemIdx, boqItem, tableData, isEngineBased, isVersio
 
 // ─── BOQ Item Card ─────────────────────────────────────────────────────────────
 
-function BoqItemCard({ boqItem, boqIdx, isVersionSubmitted, expandedProductIds, setExpandedProductIds, getEditedValue, updateEditedField, handleDeleteRow, handleFinalizeProduct, handleAddItem, loadBoqItemsAndEdits, setBoqItems, checkBudgetEarly, handleSaveProject, mismatches, onCardDragStart, onCardDragOver, onCardDrop, isCardDragOver }: {
+function BoqItemCard({ boqItem, boqIdx, isVersionSubmitted, expandedProductIds, setExpandedProductIds, getEditedValue, updateEditedField, handleDeleteRow, handleFinalizeProduct, handleAddItem, loadBoqItemsAndEdits, setBoqItems, checkBudgetEarly, handleSaveProject, mismatches, onCardDragStart, onCardDragOver, onCardDrop, isCardDragOver, isCompactView }: {
   boqItem: BOMItem; boqIdx: number; isVersionSubmitted: boolean;
   expandedProductIds: Set<string>; setExpandedProductIds: (fn: (p: Set<string>) => Set<string>) => void;
   getEditedValue: (k: string, f: string, v: any) => any;
@@ -341,6 +342,7 @@ function BoqItemCard({ boqItem, boqIdx, isVersionSubmitted, expandedProductIds, 
   onCardDrop?: (e: React.DragEvent) => void;
   isCardDragOver?: boolean;
   mismatches?: any[];
+  isCompactView?: boolean;
 }) {
   const { toast } = useToast();
   const tableData = parseTableData(boqItem.table_data);
@@ -474,19 +476,42 @@ function BoqItemCard({ boqItem, boqIdx, isVersionSubmitted, expandedProductIds, 
       onDrop={onCardDrop}
     >
       {/* Header */}
-      <div className="bg-gray-100 px-4 py-3 flex justify-between items-center border-b border-gray-200">
-        <div className="flex flex-col gap-0.5">
-          <div className="flex items-center gap-2 font-semibold text-sm text-gray-800">
+      <div className={`bg-gray-100 px-4 flex justify-between items-center border-b border-gray-200 ${isCompactView ? 'py-1.5' : 'py-3'}`}>
+        <div className={`flex ${isCompactView ? 'items-center justify-between w-full' : 'flex-col gap-0.5 flex-1'}`}>
+          <div className={`flex items-center gap-2 font-semibold text-gray-800 ${isCompactView ? 'text-xs' : 'text-sm'}`}>
             <GripVertical className={`h-4 w-4 flex-shrink-0 ${isVersionSubmitted ? 'text-gray-200' : 'text-gray-400 hover:text-blue-500 cursor-grab'}`} />
-            {boqIdx + 1}. {productName}
-            {tableData.category && <span className="text-xs text-gray-500 font-normal">({tableData.category})</span>}
-            {tableData.is_finalized && <span className="inline-block bg-green-100 text-green-700 px-2 py-0.5 rounded text-xs font-semibold ml-2">Finalized</span>}
+            <span className="truncate max-w-[200px] sm:max-w-sm" title={productName}>{boqIdx + 1}. {productName}</span>
+            {tableData.category && !isCompactView && <span className="text-xs text-gray-500 font-normal">({tableData.category})</span>}
+            {tableData.is_finalized && <span className={`inline-block bg-green-100 text-green-700 px-2 py-0.5 rounded font-semibold ml-2 ${isCompactView ? 'text-[10px]' : 'text-xs'}`}>Finalized</span>}
             <Button variant="ghost" size="sm" className="h-6 w-6 p-0 ml-1" title={isExpanded ? "Collapse" : "Expand"} onClick={toggle}>
               {isExpanded ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
             </Button>
+            {isCompactView && (
+              <div className="ml-4 flex items-center gap-3 text-[11px] bg-white px-2 py-0.5 rounded border border-slate-200 shadow-sm whitespace-nowrap">
+                <span className="font-semibold text-slate-500">Rate: <span className="text-blue-700 font-bold">₹{ratePerUnit.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span></span>
+                <div className="w-px h-3 bg-slate-300"></div>
+                <span className="font-semibold text-slate-500">Total: <span className="text-slate-900 font-bold">₹{grandTotalValue.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span></span>
+              </div>
+            )}
           </div>
-          <div className="flex flex-col gap-2">
-            <div className="flex items-center gap-4 mt-1">
+          
+          {isCompactView && (
+            <div className="flex gap-2 ml-4">
+              {!tableData.is_finalized && (
+                <Button variant="outline" size="sm" className="h-6 text-[10px] px-2" disabled={isVersionSubmitted} onClick={() => handleAddItem(boqItem.id)}>+ Add Item</Button>
+              )}
+              <Button variant="default" size="sm" className="h-6 text-[10px] px-2 bg-green-600 hover:bg-green-700 text-white" disabled={isVersionSubmitted || tableData.is_finalized} onClick={() => handleFinalizeProduct(boqItem.id)}>Finalize</Button>
+              <Button variant="destructive" size="sm" className="h-6 text-[10px] px-2" disabled={isVersionSubmitted}
+                onClick={async () => {
+                  if (!confirm("Delete this product and all its items?")) return;
+                  try { await apiFetch(`/api/boq-items/${boqItem.id}`, { method: "DELETE" }); loadBoqItemsAndEdits(); } catch { /* handled */ }
+                }}>Delete Product</Button>
+            </div>
+          )}
+
+          {!isCompactView && (
+            <div className="flex flex-col gap-2">
+              <div className="flex items-center gap-4 mt-1">
               <div className="flex flex-col bg-white border border-slate-200 rounded-md px-3 py-1.5 shadow-sm">
                 <span className="text-[10px] leading-none text-slate-400 font-bold uppercase tracking-tight mb-1">Rate per {tableData.configBasis?.requiredUnitType || "Unit"}</span>
                 <span className="text-sm font-extrabold text-blue-700">₹{ratePerUnit.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
@@ -583,20 +608,23 @@ function BoqItemCard({ boqItem, boqIdx, isVersionSubmitted, expandedProductIds, 
                 </div>
               </div>
             )}
-          </div>
+            </div>
+          )}
         </div>
 
-        <div className="flex gap-2">
-          {!tableData.is_finalized && (
-            <Button variant="outline" size="sm" className="h-7 text-xs" disabled={isVersionSubmitted} onClick={() => handleAddItem(boqItem.id)}>+ Add Item</Button>
-          )}
-          <Button variant="default" size="sm" className="h-7 text-xs bg-green-600 hover:bg-green-700 text-white" disabled={isVersionSubmitted || tableData.is_finalized} onClick={() => handleFinalizeProduct(boqItem.id)}>Finalize</Button>
-          <Button variant="destructive" size="sm" className="h-7 text-xs" disabled={isVersionSubmitted}
-            onClick={async () => {
-              if (!confirm("Delete this product and all its items?")) return;
-              try { await apiFetch(`/api/boq-items/${boqItem.id}`, { method: "DELETE" }); loadBoqItemsAndEdits(); } catch { /* handled */ }
-            }}>Delete Product</Button>
-        </div>
+        {!isCompactView && (
+          <div className="flex gap-2 ml-4">
+            {!tableData.is_finalized && (
+              <Button variant="outline" size="sm" className="h-7 text-xs" disabled={isVersionSubmitted} onClick={() => handleAddItem(boqItem.id)}>+ Add Item</Button>
+            )}
+            <Button variant="default" size="sm" className="h-7 text-xs bg-green-600 hover:bg-green-700 text-white" disabled={isVersionSubmitted || tableData.is_finalized} onClick={() => handleFinalizeProduct(boqItem.id)}>Finalize</Button>
+            <Button variant="destructive" size="sm" className="h-7 text-xs" disabled={isVersionSubmitted}
+              onClick={async () => {
+                if (!confirm("Delete this product and all its items?")) return;
+                try { await apiFetch(`/api/boq-items/${boqItem.id}`, { method: "DELETE" }); loadBoqItemsAndEdits(); } catch { /* handled */ }
+              }}>Delete Product</Button>
+          </div>
+        )}
       </div>
 
       {/* Items Table */}
@@ -609,12 +637,12 @@ function BoqItemCard({ boqItem, boqIdx, isVersionSubmitted, expandedProductIds, 
                   <th className="border px-1 py-2 text-center w-8 text-gray-400" title="Drag to reorder"><GripVertical className="h-3 w-3 mx-auto" /></th>
                   <th className="border px-2 py-2 text-left font-semibold w-10">Sl</th>
                   <th className="border px-2 py-2 text-left font-semibold w-64">Item</th>
-                  <th className="border px-2 py-2 text-left font-semibold w-32">Shop</th>
-                  <th className="border px-2 py-2 text-left font-semibold w-[300px]">Description</th>
+                  {!isCompactView && <th className="border px-2 py-2 text-left font-semibold w-32">Shop</th>}
+                  {!isCompactView && <th className="border px-2 py-2 text-left font-semibold w-[300px]">Description</th>}
                   <th className="border px-2 py-2 text-center font-semibold w-16">Unit</th>
                   <th className="border px-2 py-2 text-center font-semibold w-20">Qty/{tableData.configBasis?.requiredUnitType || "Sqf"}</th>
                   <th className="border px-2 py-2 text-center font-semibold w-24">Required Qty</th>
-                  <th className="border px-2 py-2 text-center font-semibold w-24">Round off</th>
+                  {!isCompactView && <th className="border px-2 py-2 text-center font-semibold w-24">Round off</th>}
                   <th className="border px-2 py-2 text-center font-semibold w-24">Rate/{tableData.configBasis?.requiredUnitType || "Unit"}</th>
                   <th className="border px-2 py-2 text-center font-semibold w-28 text-green-700">Amount</th>
                   <th className="border px-2 py-2 text-center font-semibold w-16">Action</th>
@@ -646,13 +674,14 @@ function BoqItemCard({ boqItem, boqIdx, isVersionSubmitted, expandedProductIds, 
                         handleRowReorder(newOrder);
                       }}
                       mismatch={mismatches?.find(m => m.index === (isEngineBased ? item._materialIdx : item._s11Idx) && m.type === (isEngineBased ? 'materialLine' : 'step11'))}
+                      isCompactView={isCompactView}
                     />
                   ))
                 }
               </tbody>
               <tfoot className="bg-gray-50/50 border-t-2 border-gray-200">
                 <tr className="text-gray-600 font-medium">
-                  <td colSpan={10} className="border px-2 py-1 text-right uppercase tracking-wider text-[10px]">Material Sub-total</td>
+                  <td colSpan={isCompactView ? 7 : 10} className="border px-2 py-1 text-right uppercase tracking-wider text-[10px]">Material Sub-total</td>
                   <td className="border px-2 py-1 text-right">₹{totalAmount.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
                   <td className="border px-2 py-1"></td>
                 </tr>
@@ -666,14 +695,14 @@ function BoqItemCard({ boqItem, boqIdx, isVersionSubmitted, expandedProductIds, 
 
                   return (
                     <tr className="text-gray-500 italic">
-                      <td colSpan={10} className="border px-2 py-1 text-right uppercase tracking-wider text-[10px]">Round Off (Adjustment)</td>
+                      <td colSpan={isCompactView ? 7 : 10} className="border px-2 py-1 text-right uppercase tracking-wider text-[10px]">Round Off (Adjustment)</td>
                       <td className="border px-2 py-1 text-right">{roundOff > 0 ? "+" : ""}₹{roundOff.toFixed(2)}</td>
                       <td className="border px-2 py-1"></td>
                     </tr>
                   );
                 })()}
                 <tr className="font-bold bg-blue-50/20 text-blue-900">
-                  <td colSpan={10} className="border px-2 py-1.5 text-right uppercase tracking-wider text-[10px]">Grand Total</td>
+                  <td colSpan={isCompactView ? 7 : 10} className="border px-2 py-1.5 text-right uppercase tracking-wider text-[10px]">Grand Total</td>
                   <td className="border px-2 py-1.5 text-right bg-blue-50/30">
                     ₹{grandTotalValue.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                   </td>
@@ -762,6 +791,7 @@ export default function CreateBom() {
   const [showHistoryModal, setShowHistoryModal] = useState(false);
   const [editedFields, setEditedFields] = useState<Record<string, any>>({});
   const [productSearch, setProductSearch] = useState("");
+  const [isCompactView, setIsCompactView] = useState(false);
   const cardDragIdxRef = useRef<number | null>(null);
   const [cardDragOverIdx, setCardDragOverIdx] = useState<number | null>(null);
   const [loading, setLoading] = useState(true);
@@ -1886,14 +1916,24 @@ export default function CreateBom() {
               <CardContent className="space-y-4 pt-6">
                 <div className="flex items-center justify-between mb-4">
                   <h2 className="text-lg font-bold text-gray-800">BOQ Items</h2>
-                  <div className="relative w-72">
-                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
-                    <Input
-                      placeholder="Search products..."
-                      value={productSearch}
-                      onChange={(e) => setProductSearch(e.target.value)}
-                      className="pl-9 h-9 text-sm border-slate-200 focus:ring-blue-500 shadow-sm"
-                    />
+                  <div className="flex items-center gap-4">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => setIsCompactView(!isCompactView)}
+                      className={`h-9 px-3 font-semibold ${isCompactView ? 'bg-blue-50 text-blue-600 border-blue-300' : 'text-slate-600 border-slate-200 hover:bg-slate-50'}`}
+                    >
+                      Compact View
+                    </Button>
+                    <div className="relative w-72">
+                      <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
+                      <Input
+                        placeholder="Search products..."
+                        value={productSearch}
+                        onChange={(e) => setProductSearch(e.target.value)}
+                        className="pl-9 h-9 text-sm border-slate-200 focus:ring-blue-500 shadow-sm"
+                      />
+                    </div>
                   </div>
                 </div>
                 {boqItems.length === 0
@@ -1930,6 +1970,7 @@ export default function CreateBom() {
                             cardDragIdxRef.current = null;
                           }}
                           mismatches={mismatches.filter(m => m.boqItemId === boqItem.id)}
+                          isCompactView={isCompactView}
                         />
                       ))}
                   </div>
