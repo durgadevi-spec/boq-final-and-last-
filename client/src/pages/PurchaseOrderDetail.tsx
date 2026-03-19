@@ -36,6 +36,9 @@ import {
 import { Input } from "@/components/ui/input";
 import apiFetch from "@/lib/api";
 import { useToast } from "@/hooks/use-toast";
+import { useAuth } from "@/lib/auth-context";
+import { Download } from "lucide-react";
+import html2pdf from "html2pdf.js";
 
 interface PurchaseOrder {
     id: string;
@@ -66,6 +69,7 @@ interface PurchaseOrder {
     approval_comments?: string | null;
     shipping_address?: string | null;
     payment_terms?: string | null;
+    items?: PurchaseOrderItem[];
 }
 
 interface PurchaseOrderItem {
@@ -90,11 +94,110 @@ export default function PurchaseOrderDetail() {
     const { id } = useParams();
     const [, setLocation] = useLocation();
     const { toast } = useToast();
+    const { user } = useAuth();
     const [po, setPo] = useState<PurchaseOrder | null>(null);
     const [items, setItems] = useState<PurchaseOrderItem[]>([]);
     const [loading, setLoading] = useState(true);
     const [showApprovalDialog, setShowApprovalDialog] = useState(false);
     const [approvalAction, setApprovalAction] = useState<"approve" | "reject">("approve");
+    const [isDownloading, setIsDownloading] = useState(false);
+
+    const handleDownloadPDF = () => {
+        const element = document.getElementById("po-detail-content");
+        if (!element) return;
+
+        setIsDownloading(true);
+
+        const opt = {
+            margin: 10,
+            filename: `PO_${po?.po_number || id}.pdf`,
+            image: { type: 'jpeg' as const, quality: 0.98 },
+            html2canvas: { 
+                scale: 2, 
+                useCORS: true, 
+                logging: false,
+                onclone: (clonedDoc: Document) => {
+                    // NUCLEAR FIX: Strip ALL style/link tags to stop html2canvas from parsing oklch/oklab
+                    clonedDoc.querySelectorAll('style, link[rel="stylesheet"]').forEach(el => el.remove());
+                    
+                    // Remove any elements marked with no-print in the clone
+                    clonedDoc.querySelectorAll('.no-print').forEach(el => el.remove());
+
+                    // The element passed to .from() (the clone) already has styles if we inlined them
+                    const clonedContent = clonedDoc.getElementById('po-detail-content');
+                    if (clonedContent) {
+                        // Apply essential layout styles to the container
+                        clonedContent.style.backgroundColor = 'white';
+                        clonedContent.style.color = '#1e293b';
+                    }
+                }
+            },
+            jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' as const }
+        };
+
+        // 1. Create a "Styles-Inlined" Clone
+        const clone = element.cloneNode(true) as HTMLElement;
+        const sourceElements = [element, ...Array.from(element.querySelectorAll('*'))] as HTMLElement[];
+        const cloneElements = [clone, ...Array.from(clone.querySelectorAll('*'))] as HTMLElement[];
+        
+        sourceElements.forEach((sEl, i) => {
+            const cEl = cloneElements[i];
+            if (!cEl) return;
+            
+            const style = window.getComputedStyle(sEl);
+            // Copy EVERY relevant property to inline style
+            const styleProperties = [
+                'display', 'position', 'top', 'left', 'right', 'bottom', 'width', 'height',
+                'padding', 'margin', 'font-size', 'font-family', 'font-weight', 'line-height',
+                'color', 'background-color', 'border-color', 'border-width', 'border-style',
+                'border-radius', 'flex', 'flex-direction', 'align-items', 'justify-content',
+                'text-align', 'box-sizing', 'white-space', 'vertical-align', 'opacity', 'z-index'
+            ];
+            
+            styleProperties.forEach(prop => {
+                let val = style.getPropertyValue(prop);
+                // Sanitize color values
+                if (val && (val.includes('oklch') || val.includes('oklab'))) {
+                    if (prop.includes('background')) val = '#ffffff';
+                    else if (prop.includes('border')) val = '#cbd5e1';
+                    else val = '#1e293b';
+                }
+                cEl.style.setProperty(prop, val, 'important');
+            });
+        });
+
+        // 2. Wrap clone in a hidden container that's part of the DOM
+        const container = document.createElement('div');
+        container.style.position = 'fixed';
+        container.style.top = '0';
+        container.style.left = '0';
+        container.style.width = '210mm'; // A4 width
+        container.style.zIndex = '-9999';
+        container.style.opacity = '0';
+        container.style.pointerEvents = 'none';
+        container.appendChild(clone);
+        document.body.appendChild(container);
+
+        html2pdf().set(opt).from(clone).save().then(() => {
+            document.body.removeChild(container);
+            setIsDownloading(false);
+            toast({
+                title: "Success",
+                description: "Purchase Order downloaded successfully",
+            });
+        }).catch((err: any) => {
+            console.error("PDF generation error:", err);
+            if (container.parentNode) document.body.removeChild(container);
+            setIsDownloading(false);
+            toast({
+                title: "Error",
+                description: "Failed to generate PDF. Falling back to print...",
+                variant: "destructive"
+            });
+            // Final fallback: try window.print if everything else fails
+            // window.print();
+        });
+    };
     const [comment, setComment] = useState("");
     const [isSubmitting, setIsSubmitting] = useState(false);
 
@@ -115,6 +218,12 @@ export default function PurchaseOrderDetail() {
     const [parentItems, setParentItems] = useState<PurchaseOrderItem[]>([]);
     const [showDeleteExistingDialog, setShowDeleteExistingDialog] = useState(false);
     const [existingRevisionToDelete, setExistingRevisionToDelete] = useState<any>(null);
+
+    // General Revise Data
+    const [shops, setShops] = useState<any[]>([]);
+    const [materials, setMaterials] = useState<any[]>([]);
+    const [editableVendorId, setEditableVendorId] = useState<string>("");
+    const [itemsAvailability, setItemsAvailability] = useState<Record<string, boolean>>({});
 
     const searchParams = new URLSearchParams(window.location.search);
     const mode = searchParams.get("mode");
@@ -140,7 +249,7 @@ export default function PurchaseOrderDetail() {
         } catch (error) {
             toast({
                 title: "Error",
-                description: "Failed to load purchase order details.",
+                description: "Failed to load Annexure details.",
                 variant: "destructive",
             });
         } finally {
@@ -178,7 +287,7 @@ export default function PurchaseOrderDetail() {
             if (res.ok) {
                 toast({
                     title: approvalAction === "approve" ? "Approved" : "Rejected",
-                    description: `Purchase order has been ${approvalAction === "approve" ? "approved" : "rejected"}.`,
+                    description: `Annexure has been ${approvalAction === "approve" ? "approved" : "rejected"}.`,
                 });
                 setShowApprovalDialog(false);
                 fetchPODetail();
@@ -209,11 +318,38 @@ export default function PurchaseOrderDetail() {
         }
     };
 
-    const startRevision = () => {
+    const startRevision = async () => {
         if (!po) return;
+
+        setIsSubmitting(true);
+        try {
+            const [shopsRes, materialsRes] = await Promise.all([
+                apiFetch('/api/shops'),
+                apiFetch('/api/materials')
+            ]);
+            if (shopsRes.ok) {
+                const data = await shopsRes.json();
+                setShops(data.shops || []);
+            }
+            if (materialsRes.ok) {
+                const data = await materialsRes.json();
+                setMaterials(data.materials || []);
+            }
+        } catch (error) {
+            console.error("Failed to fetch shops/materials for override", error);
+        } finally {
+            setIsSubmitting(false);
+        }
+
         setIsReviseMode(true);
         setEditedItems(items.map(i => ({ ...i })));
         setDeletedItems([]);
+        setEditableVendorId(po.vendor_id);
+        
+        // Default availability is true for original items
+        const initialAvail: Record<string, boolean> = {};
+        for (const item of items) initialAvail[item.id] = true;
+        setItemsAvailability(initialAvail);
         
         // Ensure editable fields are initialized from current PO
         setEditableDeliveryDate(po.delivery_date ? new Date(po.delivery_date).toISOString().split('T')[0] : "");
@@ -237,6 +373,7 @@ export default function PurchaseOrderDetail() {
                 });
                 // Remove from local relatedPos state
                 setRelatedPos(prev => prev.filter(p => p.id !== existingRevisionToDelete.id));
+                setIsSubmitting(false); // Make sure it's false before async call finishes
                 
                 // Now start our revision
                 startRevision();
@@ -246,14 +383,55 @@ export default function PurchaseOrderDetail() {
                     description: "Failed to delete previous revision.",
                     variant: "destructive",
                 });
+                setIsSubmitting(false);
             }
         } catch (error) {
             toast({ title: "Error", description: "Network error while deleting revision", variant: "destructive" });
-        } finally {
             setIsSubmitting(false);
+        } finally {
             setShowDeleteExistingDialog(false);
             setExistingRevisionToDelete(null);
         }
+    };
+
+    const handleGlobalVendorChange = (newVendorId: string) => {
+        setEditableVendorId(newVendorId);
+        
+        const shop = shops.find(s => s.id === newVendorId);
+        if (!shop) return;
+
+        const newAvailability: Record<string, boolean> = {};
+        const newEditedItems = editedItems.map(item => {
+            const itemName = item.item || item.item_name;
+            const matchedMaterial = materials.find(m => 
+                m.shop_id === newVendorId && 
+                (m.name === itemName || m.product === itemName || m.item === itemName)
+            );
+
+            if (matchedMaterial) {
+                newAvailability[item.id] = true;
+                const newRate = matchedMaterial.rate;
+                const newAmount = parseFloat(item.qty) * newRate;
+                
+                return { 
+                    ...item, 
+                    rate: newRate.toString(), 
+                    amount: newAmount.toString()
+                };
+            } else {
+                newAvailability[item.id] = false;
+                // Set rate and amount to zero if unavailable in new shop
+                return { 
+                    ...item, 
+                    rate: "0", 
+                    amount: "0" 
+                };
+            }
+        });
+
+        setItemsAvailability(newAvailability);
+        setEditedItems(newEditedItems);
+        toast({ title: "Vendor Changed", description: `Rates updated for ${shop.name}` });
     };
 
     const handleQtyChange = (itemId: string, newQty: string) => {
@@ -327,6 +505,7 @@ export default function PurchaseOrderDetail() {
     const submitRevision = async (reason: string) => {
         setIsSubmitting(true);
         try {
+            const selectedShop = shops.find(s => s.id === editableVendorId);
             const res = await apiFetch(`/api/purchase-orders/${id}/revise`, {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
@@ -336,7 +515,9 @@ export default function PurchaseOrderDetail() {
                     deletedItems,
                     delivery_date: editableDeliveryDate,
                     shippingAddress,
-                    paymentTerms
+                    paymentTerms,
+                    vendor_id: editableVendorId,
+                    vendor_name: selectedShop?.name
                 }),
             });
             if (res.ok) {
@@ -391,7 +572,7 @@ export default function PurchaseOrderDetail() {
         return (
             <Layout>
                 <div className="text-center py-10">
-                    <h2 className="text-xl font-bold">Purchase Order not found.</h2>
+                    <h2 className="text-xl font-bold">Annexure not found.</h2>
                     <Button variant="link" onClick={() => setLocation("/purchase-orders")}>Go back to list</Button>
                 </div>
             </Layout>
@@ -439,6 +620,60 @@ export default function PurchaseOrderDetail() {
                     .po-container { border: none !important; box-shadow: none !important; width: 100% !important; max-width: 100% !important; }
                     @page { margin: 10mm; size: A4; }
                 }
+                
+                /* FIX: Map oklch/oklab (unsupported by html2pdf/html2canvas) to standard hex colors */
+                /* Scoped to #po-detail-content to ensure it doesn't break other parts of the app */
+                #po-detail-content, 
+                #po-detail-content * {
+                    --tw-ring-color: rgba(59, 130, 246, 0.5) !important;
+                    --tw-ring-offset-shadow: 0 0 #0000 !important;
+                    --tw-ring-shadow: 0 0 #0000 !important;
+                    --tw-shadow: 0 0 #0000 !important;
+                    --tw-shadow-colored: 0 0 #0000 !important;
+                }
+
+                #po-detail-content .text-slate-500 { color: #64748b !important; }
+                #po-detail-content .text-slate-600 { color: #475569 !important; }
+                #po-detail-content .text-slate-700 { color: #334155 !important; }
+                #po-detail-content .text-slate-800 { color: #1e293b !important; }
+                #po-detail-content .text-slate-900 { color: #0f172a !important; }
+                #po-detail-content .bg-slate-50 { background-color: #f8fafc !important; }
+                #po-detail-content .bg-slate-100 { background-color: #f1f5f9 !important; }
+                #po-detail-content .bg-slate-200 { background-color: #e2e8f0 !important; }
+                #po-detail-content .border-slate-100 { border-color: #f1f5f9 !important; }
+                #po-detail-content .border-slate-200 { border-color: #e2e8f0 !important; }
+                #po-detail-content .border-slate-300 { border-color: #cbd5e1 !important; }
+                
+                /* Amber/Warning colors */
+                #po-detail-content .text-amber-800 { color: #92400e !important; }
+                #po-detail-content .text-amber-700 { color: #b45309 !important; }
+                #po-detail-content .bg-amber-50 { background-color: #fffbeb !important; }
+                #po-detail-content .border-amber-500 { border-color: #f59e0b !important; }
+                
+                /* Emerald/Success colors */
+                #po-detail-content .text-emerald-700 { color: #047857 !important; }
+                #po-detail-content .text-emerald-600 { color: #059669 !important; }
+                #po-detail-content .bg-emerald-50 { background-color: #ecfdf5 !important; }
+                
+                /* Status Colors */
+                #po-detail-content .bg-green-100 { background-color: #dcfce7 !important; }
+                #po-detail-content .text-green-700 { color: #15803d !important; }
+                #po-detail-content .bg-orange-100 { background-color: #ffedd5 !important; }
+                #po-detail-content .text-orange-700 { color: #c2410c !important; }
+                #po-detail-content .bg-red-100 { background-color: #fee2e2 !important; }
+                #po-detail-content .text-red-700 { color: #b91c1c !important; }
+                
+                /* Indigo/Primary colors */
+                #po-detail-content .text-indigo-700 { color: #4338ca !important; }
+                #po-detail-content .bg-indigo-50 { background-color: #eef2ff !important; }
+                #po-detail-content .border-indigo-200 { border-color: #c7d2fe !important; }
+                
+                /* General fixes for any other color variables that might use oklch/oklab */
+                #po-detail-content .border-border { border-color: #e2e8f0 !important; }
+                #po-detail-content .bg-background { background-color: #ffffff !important; }
+                #po-detail-content .text-foreground { color: #0f172a !important; }
+                #po-detail-content .text-muted-foreground { color: #64748b !important; }
+
                 .watermark {
                     position: absolute;
                     top: 50%;
@@ -446,7 +681,7 @@ export default function PurchaseOrderDetail() {
                     transform: translate(-50%, -50%) rotate(-45deg);
                     font-size: 8rem;
                     font-weight: 900;
-                    color: rgba(34, 197, 94, 0.1);
+                    color: rgba(34, 197, 94, 0.1) !important; /* Force compatible color */
                     pointer-events: none;
                     z-index: 0;
                     white-space: nowrap;
@@ -462,13 +697,23 @@ export default function PurchaseOrderDetail() {
                             <ChevronLeft className="h-4 w-4 mr-1" /> Back to List
                         </Button>
                         <h1 className="text-2xl font-bold tracking-tight flex items-center gap-3">
-                            Purchase Order Detail
+                            Annexure Detail
                             {getStatusBadge(po.status)}
                         </h1>
                     </div>
                     <div className="flex gap-2">
                         <Button variant="outline" onClick={() => window.print()}>
                             <Printer className="h-4 w-4 mr-2" /> Print PO
+                        </Button>
+
+                        <Button 
+                            variant="outline" 
+                            className="bg-slate-800 text-white hover:bg-slate-900 border-slate-800"
+                            onClick={handleDownloadPDF} 
+                            disabled={(user?.role === 'purchase_team' && po?.status !== 'approved') || isDownloading}
+                        >
+                            {isDownloading ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Download className="h-4 w-4 mr-2" />}
+                            {isDownloading ? "Generating..." : "Download PDF"}
                         </Button>
 
                         {po.status === "draft" && (
@@ -528,7 +773,7 @@ export default function PurchaseOrderDetail() {
                                 <Edit className="h-5 w-5" />
                             </div>
                             <div>
-                                <p className="font-semibold text-sm">This Purchase Order has been revised.</p>
+                                <p className="font-semibold text-sm">This Annexure has been revised.</p>
                                 <p className="text-xs">A newer version of this document exists. Please refer to the related versions below for the latest details.</p>
                             </div>
                         </div>
@@ -550,12 +795,15 @@ export default function PurchaseOrderDetail() {
                     </div>
                 )}
 
-                {/* Main PO Document Card */}
-                <Card className="max-w-[1000px] mx-auto border-slate-300 shadow-xl overflow-hidden bg-white po-container relative">
-                    {po.status === 'approved' && <div className="watermark print-only hidden">Approved</div>}
-                    {po.status === 'approved' && <div className="watermark no-print">Approved</div>}
+                {/* Main PO Document ID Wrapper for PDF */}
+                <div id="po-detail-content">
+                    {/* Main PO Document Card */}
+                    <Card className="max-w-[1000px] mx-auto border-slate-300 shadow-xl overflow-hidden bg-white po-container relative">
+                        {po.status === 'approved' && <div className="watermark print-only hidden">Approved</div>}
+                        {po.status === 'approved' && <div className="watermark no-print">Approved</div>}
 
-                    <CardContent className="p-8 space-y-8 relative z-10">
+                        <CardContent className="p-8 space-y-8 relative z-10">
+
                         {/* Header Section - Logo + Company Info + PO Info */}
                         <div className="flex justify-between items-start pb-6 border-b border-slate-200">
                             <div className="flex gap-6">
@@ -568,13 +816,13 @@ export default function PurchaseOrderDetail() {
                                 </div>
                             </div>
                             <div className="text-right space-y-1">
-                                <div className="text-xl font-black text-slate-900 tracking-tighter">PURCHASE ORDER</div>
-                                <div className="text-sm text-slate-500">PO# <span className="font-bold text-slate-800">{po.po_number}</span></div>
+                                <div className="text-xl font-black text-slate-900 tracking-tighter">ANNEXURE</div>
+                                <div className="text-sm text-slate-500">Annexure No. <span className="font-bold text-slate-800">{po?.po_number}</span></div>
                                 
                                 <div className="pt-2 space-y-1">
                                     <div className="flex justify-end gap-3 text-xs">
                                         <span className="text-slate-500 uppercase font-semibold tracking-wider">Date:</span>
-                                        <span className="font-bold text-slate-700">{new Date(po.created_at).toLocaleDateString('en-IN', { day: '2-digit', month: '2-digit', year: 'numeric' })}</span>
+                                        <span className="font-bold text-slate-700">{po?.created_at ? new Date(po.created_at).toLocaleDateString('en-IN', { day: '2-digit', month: '2-digit', year: 'numeric' }) : ''}</span>
                                     </div>
                                     
                                     {isReviseMode ? (
@@ -588,11 +836,11 @@ export default function PurchaseOrderDetail() {
                                             />
                                         </div>
                                     ) : (
-                                        (po.delivery_date || editableDeliveryDate) && (
+                                        (po?.delivery_date || editableDeliveryDate) && (
                                             <div className="flex justify-end gap-3 text-xs">
                                                 <span className="text-slate-500 uppercase font-semibold tracking-wider">Expected Delivery :</span>
                                                 <span className="font-bold text-slate-700">
-                                                    {new Date(editableDeliveryDate || po.delivery_date || "").toLocaleDateString('en-IN', { day: '2-digit', month: '2-digit', year: 'numeric' })}
+                                                    {new Date(editableDeliveryDate || po?.delivery_date || "").toLocaleDateString('en-IN', { day: '2-digit', month: '2-digit', year: 'numeric' })}
                                                 </span>
                                             </div>
                                         )
@@ -604,23 +852,56 @@ export default function PurchaseOrderDetail() {
                         {/* Bill From / Deliver To Grid */}
                         <div className="grid grid-cols-2 gap-12 py-2">
                             <div className="space-y-6">
-                                <div className="space-y-1">
+                                <div className="space-y-2">
                                     <p className="text-[10px] text-slate-500 font-bold uppercase tracking-widest">Bill From</p>
-                                    <div className="text-sm">
-                                        <p className="font-bold text-slate-800">{po.vendor_name || "Vendor"}</p>
-                                        {po.vendor_location && <p className="text-slate-600 truncate">{po.vendor_location}</p>}
-                                        {po.vendor_new_location && <p className="text-xs text-slate-500 italic truncate">Landmark/Loc: {po.vendor_new_location}</p>}
-                                        <p className="text-slate-600">
-                                            {[po.vendor_city, po.vendor_state, po.vendor_pincode].filter(Boolean).join(', ')}
-                                        </p>
-                                        {po.vendor_gstin && <p className="text-[10px] text-slate-500 mt-1 font-medium">GSTIN: {po.vendor_gstin}</p>}
-                                    </div>
+                                    
+                                    {isReviseMode ? (
+                                        <div className="space-y-2 relative z-50">
+                                            <select 
+                                                className="w-full border border-slate-300 rounded p-1.5 text-sm font-bold text-slate-800 focus:ring-1 focus:ring-primary outline-none bg-white"
+                                                value={editableVendorId}
+                                                onChange={(e) => handleGlobalVendorChange(e.target.value)}
+                                            >
+                                                <option disabled value="">Select Vendor</option>
+                                                {shops.map(s => (
+                                                    <option key={s.id} value={s.id}>{s.name || "Vendor"}</option>
+                                                ))}
+                                            </select>
+                                            
+                                            {/* Display address for selected vendor */}
+                                            {shops.find(s => s.id === editableVendorId) && (
+                                            <div className="text-xs text-slate-600 space-y-0.5 pl-1">
+                                                {(() => {
+                                                    const s = shops.find(s => s.id === editableVendorId);
+                                                    return (
+                                                        <>
+                                                            {s.location && <p className="truncate">{s.location}</p>}
+                                                            {s.new_location && <p className="text-xs text-slate-500 italic truncate">Landmark/Loc: {s.new_location}</p>}
+                                                            <p>{[s.city, s.state, s.pincode].filter(Boolean).join(', ')}</p>
+                                                            {s.gstNo && <p className="text-[10px] text-slate-500 mt-1 font-medium">GSTIN: {s.gstNo}</p>}
+                                                        </>
+                                                    );
+                                                })()}
+                                            </div>
+                                            )}
+                                        </div>
+                                    ) : (
+                                        <div className="text-sm">
+                                            <p className="font-bold text-slate-800">{po?.vendor_name || "Vendor"}</p>
+                                            {po?.vendor_location && <p className="text-slate-600 truncate">{po.vendor_location}</p>}
+                                            {po?.vendor_new_location && <p className="text-xs text-slate-500 italic truncate">Landmark/Loc: {po.vendor_new_location}</p>}
+                                            <p className="text-slate-600">
+                                                {[po?.vendor_city, po?.vendor_state, po?.vendor_pincode].filter(Boolean).join(', ')}
+                                            </p>
+                                            {po?.vendor_gstin && <p className="text-[10px] text-slate-500 mt-1 font-medium">GSTIN: {po.vendor_gstin}</p>}
+                                        </div>
+                                    )}
                                 </div>
 
                                 <div className="space-y-1">
                                     <p className="text-xs text-slate-600">
                                         <span className="font-semibold text-slate-500 uppercase text-[10px] tracking-wider mr-2">Project Name:</span>
-                                        <span className="font-bold text-slate-700 uppercase">{po.project_client || po.project_name || '—'}</span>
+                                        <span className="font-bold text-slate-700 uppercase">{po?.project_client || po?.project_name || '—'}</span>
                                     </p>
                                 </div>
                             </div>
@@ -645,8 +926,8 @@ export default function PurchaseOrderDetail() {
                         </div>
 
                         {/* Approval Comments / Revision Reason */}
-                        {po.approval_comments && (
-                            <div className="bg-amber-50 border-l-4 border-amber-500 p-4 mb-6 rounded-r-md">
+                        {po?.approval_comments && (
+                            <div className="bg-amber-50 border-l-4 border-amber-500 p-4 mb-6 rounded-r-md no-print">
                                 <div className="flex items-start">
                                     <div className="flex-shrink-0">
                                         <svg className="h-5 w-5 text-amber-500 mt-0.5" viewBox="0 0 20 20" fill="currentColor">
@@ -665,260 +946,256 @@ export default function PurchaseOrderDetail() {
                             </div>
                         )}
 
-                        {/* Items Table Control Bar */}
-                        {isReviseMode && (
-                            <div className="flex justify-end mb-2 no-print">
-                                <div className="flex items-center gap-2 bg-slate-50 p-2 rounded border border-slate-200">
-                                    <span className="text-sm font-medium text-slate-600">Tax Preference (Global):</span>
-                                    <select 
-                                        className="text-sm border border-slate-300 rounded p-1 bg-white outline-none focus:ring-1 focus:ring-primary"
-                                        value={taxPreference}
-                                        onChange={(e) => setTaxPreference(e.target.value as any)}
-                                    >
-                                        <option value="exclusive">Tax Exclusive</option>
-                                        <option value="inclusive">Tax Inclusive</option>
-                                    </select>
-                                </div>
-                            </div>
-                        )}
-                        <div className="border border-slate-300 overflow-hidden">
-                            <Table>
-                                <TableHeader>
-                                    <TableRow className="bg-slate-100 border-b border-slate-300">
-                                        <TableHead className="text-slate-700 font-semibold w-12 text-center text-[10px] py-1">#</TableHead>
-                                        <TableHead className="text-slate-700 font-semibold text-[10px] py-1">Item Details</TableHead>
-                                        <TableHead className="text-slate-700 font-semibold text-[10px] text-center py-1">Unit</TableHead>
-                                        <TableHead className="text-slate-700 font-semibold text-[10px] text-center py-1">HSN</TableHead>
-                                        <TableHead className="text-slate-700 font-semibold text-[10px] text-center py-1">SAC</TableHead>
-                                        <TableHead className="text-slate-700 font-semibold text-[10px] text-center py-1 bg-slate-200/50">Original Qty</TableHead>
-                                        <TableHead className="text-slate-700 font-semibold text-[10px] text-center py-1">Ordered Qty</TableHead>
-                                        <TableHead className="text-slate-700 font-semibold text-[10px] text-center py-1">Change</TableHead>
-                                        <TableHead className="text-slate-700 font-semibold text-[10px] text-center py-1">Balance Qty</TableHead>
-                                        <TableHead className="text-slate-700 font-semibold text-[10px] text-center py-1">Tax %</TableHead>
-                                        <TableHead className="text-slate-700 font-semibold text-[10px] text-right py-1">Rate</TableHead>
-                                        <TableHead className="text-slate-700 font-semibold text-[10px] text-right py-1 pr-4">Amount</TableHead>
-                                        {isReviseMode && <TableHead className="text-slate-700 font-semibold text-[10px] text-center w-8 py-1">Action</TableHead>}
-                                    </TableRow>
-                                </TableHeader>
-                                <TableBody>
-                                    {displayItems.map((item, idx) => {
-                                        // When revising, compare against current items. When viewing, compare against parent PO items.
-                                        const baseItems = isReviseMode ? items : parentItems;
-                                        
-                                        // Match by name and description since IDs change across PO versions
-                                        const originalItem = baseItems.find(o => 
-                                            (o.item === item.item || o.item_name === item.item_name || o.item === item.item_name || o.item_name === item.item) && 
-                                            o.description === item.description
-                                        );
-                                        
-                                        const originalQty = originalItem ? parseFloat(originalItem.qty) : 0;
-                                        const currentQty = parseFloat(item.qty) || 0;
-                                        const change = currentQty - originalQty;
-                                        
-                                        // Mock value for Received as requested (no DB support)
-                                        const receivedQty = item.received_qty ?? 0;
-                                        const balanceQty = currentQty - receivedQty;
 
-                                        return (
-                                            <TableRow key={item.id} className="border-b border-slate-200">
-                                                <TableCell className="text-center text-[11px] text-slate-500 py-2">{idx + 1}</TableCell>
-                                                <TableCell className="py-2">
-                                                    <div className="flex items-center gap-1.5">
-                                                        {change !== 0 && <div className={`w-1.5 h-1.5 rounded-full ${change > 0 ? 'bg-green-500' : 'bg-red-500'}`} />}
-                                                        <div className="text-[11px] font-medium text-slate-800 uppercase">{item.item || item.item_name}</div>
-                                                    </div>
-                                                    {item.description && <div className="text-[10px] text-slate-400 mt-0.5 line-clamp-1">{item.description}</div>}
-                                                </TableCell>
-                                                <TableCell className="text-center text-[11px] text-slate-600 py-2">{item.unit || "—"}</TableCell>
-                                                <TableCell className="text-center text-[11px] text-slate-600 py-2">{item.hsn_code || "—"}</TableCell>
-                                                <TableCell className="text-center text-[11px] text-slate-600 py-2">{item.sac_code || "—"}</TableCell>
-
-                                                {/* Original Qty Column */}
-                                                <TableCell className="text-center text-[11px] py-1 bg-slate-50 font-medium text-slate-500">
-                                                    {originalQty.toFixed(2)}
-                                                </TableCell>
-
-                                                {/* Ordered Qty Column */}
-                                                <TableCell className="text-center text-[11px] py-1">
-                                                    {isReviseMode ? (
-                                                        <Input
-                                                            type="number"
-                                                            value={item.qty}
-                                                            onChange={(e) => handleQtyChange(item.id, e.target.value)}
-                                                            className="w-14 text-center mx-auto h-6 text-[10px] p-0.5"
-                                                            min="0"
-                                                            step="0.01"
-                                                        />
-                                                    ) : (
-                                                        currentQty.toFixed(2)
-                                                    )}
-                                                </TableCell>
-
-                                                {/* Change Column */}
-                                                <TableCell className="text-center text-[11px] py-1">
-                                                    <span className={`font-bold ${change > 0 ? 'text-green-600' : change < 0 ? 'text-red-600' : 'text-slate-400'}`}>
-                                                        {change > 0 ? `+${change.toFixed(2)}` : change === 0 ? "0" : change.toFixed(2)}
-                                                    </span>
-                                                </TableCell>
-
-                                                {/* Balance Qty Column */}
-                                                <TableCell className="text-center text-[11px] py-1">
-                                                    <span className={`px-1 py-0.5 rounded-sm font-semibold ${balanceQty === 0 ? 'bg-green-100 text-green-700' : 'bg-orange-100 text-orange-700'}`}>
-                                                        {balanceQty.toFixed(2)}
-                                                        {balanceQty === 0 && <span className="ml-1 text-[7px] uppercase">(Full)</span>}
-                                                    </span>
-                                                </TableCell>
-
-                                                {/* Tax Selection Dropdown */}
-                                                <TableCell className="text-center text-[11px] py-1">
-                                                    {isReviseMode ? (
-                                                        <select 
-                                                            className="h-6 text-[9px] border rounded w-16 bg-white p-0.5 outline-none focus:ring-1 focus:ring-primary"
-                                                            value={item.tax_rate ?? 18}
-                                                            onChange={(e) => handleTaxRateChange(item.id, e.target.value)}
-                                                        >
-                                                            <option value="0">0%</option>
-                                                            <option value="5">5%</option>
-                                                            <option value="12">12%</option>
-                                                            <option value="18">18%</option>
-                                                            <option value="28">28%</option>
-                                                        </select>
-                                                    ) : (
-                                                        <Badge variant="outline" className="text-[9px] py-0 px-1 border-slate-200 text-slate-500">
-                                                            {item.tax_rate ?? 18}%
-                                                        </Badge>
-                                                    )}
-                                                </TableCell>
-
-                                                <TableCell className="text-right text-[11px] py-1">
-                                                    {parseFloat(item.rate).toLocaleString('en-IN', { minimumFractionDigits: 2 })}
-                                                </TableCell>
-                                                
-                                                <TableCell className="text-right text-[11px] font-semibold py-1 pr-4 text-slate-700">
-                                                    {parseFloat(item.amount).toLocaleString('en-IN', { minimumFractionDigits: 2 })}
-                                                </TableCell>
-
-
-
-                                                {isReviseMode && (
-                                                    <TableCell className="text-center py-1">
-                                                        <Button variant="ghost" size="sm" onClick={() => handleDeleteItem(item.id)} className="h-5 w-5 p-0 hover:bg-red-50">
-                                                            <Trash2 className="h-3 w-3 text-red-500" />
-                                                        </Button>
-                                                    </TableCell>
-                                                )}
-                                            </TableRow>
-                                        );
-                                    })}
-                                </TableBody>
-                            </Table>
-                        </div>
-
-                        {/* Totals Section & Terms */}
-                        <div className="flex justify-between items-start mt-6">
-                            {/* Terms & Conditions */}
-                            <div className="flex-1 pr-8 pt-2">
-                                <div className="space-y-4">
-                                    <div>
-                                        <p className="text-xs text-slate-500 mb-1.5 font-semibold uppercase tracking-wider">
-                                            Payment Terms {isReviseMode && <span className="text-red-500">*</span>}
-                                        </p>
-                                        {isReviseMode ? (
-                                            <select 
-                                                className="w-full max-w-xs text-sm border border-slate-300 rounded p-2 bg-white outline-none focus:ring-1 focus:ring-primary h-10"
-                                                value={paymentTerms}
-                                                onChange={(e) => setPaymentTerms(e.target.value)}
+                                {/* Items Table Control Bar */}
+                                {isReviseMode && (
+                                    <div className="flex justify-end mb-2 no-print">
+                                        <div className="flex items-center gap-2 bg-slate-50 p-2 rounded border border-slate-200">
+                                            <span className="text-sm font-medium text-slate-600">Tax Preference (Global):</span>
+                                            <select
+                                                className="text-sm border border-slate-300 rounded p-1 bg-white outline-none focus:ring-1 focus:ring-primary"
+                                                value={taxPreference}
+                                                onChange={(e) => setTaxPreference(e.target.value as any)}
                                             >
-                                                <option value="">Select Terms</option>
-                                                <option value="Advance">Advance</option>
-                                                <option value="50% Advance">50% Advance</option>
-                                                <option value="Net 15">Net 15</option>
-                                                <option value="Net 30">Net 30</option>
-                                                <option value="Net 45">Net 45</option>
-                                                <option value="On Delivery">On Delivery</option>
-                                                <option value="custom">Other (Enter in Terms)</option>
+                                                <option value="exclusive">Tax Exclusive</option>
+                                                <option value="inclusive">Tax Inclusive</option>
                                             </select>
-                                        ) : (
-                                            paymentTerms ? (
-                                                <Badge variant="outline" className="bg-indigo-50 text-indigo-700 border-indigo-200 px-3 py-1 font-bold">
-                                                    {paymentTerms}
-                                                </Badge>
-                                            ) : <span className="text-slate-400 text-xs italic">No payment terms specified.</span>
-                                        )}
-                                    </div>
-                                    <div>
-                                        <p className="text-xs text-slate-500 mb-1.5 font-semibold uppercase tracking-wider">Additional Terms & Conditions</p>
-                                        {isReviseMode ? (
-                                            <Textarea 
-                                                placeholder="Enter custom terms, banking details, or other conditions..."
-                                                className="text-sm text-slate-600 min-h-[120px] w-full border-slate-300 focus:border-primary"
-                                                value={comment} /* Use comment state as it was mapped to terms in simpler version */
-                                                onChange={(e) => setComment(e.target.value)}
-                                            />
-                                        ) : (
-                                            po.comments || po.approval_comments || po.vendor_terms ? (
-                                                <div className="space-y-4">
-                                                    {(po.comments || po.approval_comments) && (
-                                                        <div className="text-[11px] text-slate-600 whitespace-pre-wrap bg-slate-50/70 p-4 rounded-md border border-slate-100 italic leading-relaxed">
-                                                            {po.comments || po.approval_comments}
-                                                        </div>
-                                                    )}
-                                                    {po.vendor_terms && (
-                                                        <div className="text-[11px] text-slate-600 whitespace-pre-wrap bg-blue-50/40 p-4 rounded-md border border-blue-100/50 leading-relaxed">
-                                                            <p className="font-bold text-blue-800 mb-1 uppercase text-[9px] tracking-wider">Shop Terms & Conditions:</p>
-                                                            {po.vendor_terms}
-                                                        </div>
-                                                    )}
-                                                </div>
-                                            ) : null
-                                        )}
-                                    </div>
-                                </div>
-                            </div>
-
-                            {/* Totals Engine */}
-                            <div className="w-72 space-y-1 bg-white pt-2 shrink-0">
-                                <div className="flex justify-between text-sm py-1">
-                                    <span className="text-slate-600 font-medium">Sub Total</span>
-                                    <span className="text-slate-800">{displayedSubtotal.toLocaleString('en-IN', { minimumFractionDigits: 2 })}</span>
-                                </div>
-                                {taxPreference === "inclusive" && (
-                                    <div className="flex justify-between text-[11px] font-medium text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded -mx-2 mb-1">
-                                        <span>Subtotal derived from inclusive rate</span>
+                                        </div>
                                     </div>
                                 )}
-                                <div className="flex justify-between text-sm py-1">
-                                    <span className="text-slate-600">SGST9 (9%)</span>
-                                    <span className="text-slate-800">{sgst.toLocaleString('en-IN', { minimumFractionDigits: 2 })}</span>
-                                </div>
-                                <div className="flex justify-between text-sm py-1">
-                                    <span className="text-slate-600">CGST9 (9%)</span>
-                                    <span className="text-slate-800">{cgst.toLocaleString('en-IN', { minimumFractionDigits: 2 })}</span>
-                                </div>
-                                <div className="flex justify-between text-sm py-1">
-                                    <span className="text-slate-600">Round off</span>
-                                    <span className="text-slate-800">{(grandTotal - totalWithTax).toFixed(2)}</span>
-                                </div>
-                                <div className="flex justify-between text-sm font-semibold py-2 border-t border-slate-300">
-                                    <span className="text-slate-800">Total</span>
-                                    <span className="text-slate-900">₹{grandTotal.toLocaleString('en-IN', { minimumFractionDigits: 2 })}</span>
-                                </div>
-                                <div className="flex justify-between text-sm font-semibold py-2 bg-slate-100 px-2 -mx-2">
-                                    <span className="text-slate-800">Balance Due</span>
-                                    <span className="text-slate-900 font-bold">₹{grandTotal.toLocaleString('en-IN', { minimumFractionDigits: 2 })}</span>
-                                </div>
-                            </div>
-                        </div>
+                                <div className="border border-slate-300 overflow-hidden">
+                                    <Table>
+                                        <TableHeader>
+                                            <TableRow className="bg-slate-100 border-b border-slate-300">
+                                                <TableHead className="text-slate-700 font-semibold w-12 text-center text-[10px] py-1">#</TableHead>
+                                                <TableHead className="text-slate-700 font-semibold text-[10px] py-1">Item Details</TableHead>
+                                                <TableHead className="text-slate-700 font-semibold text-[10px] text-center py-1">Unit</TableHead>
+                                                <TableHead className="text-slate-700 font-semibold text-[10px] text-center py-1">HSN</TableHead>
+                                                <TableHead className="text-slate-700 font-semibold text-[10px] text-center py-1">SAC</TableHead>
+                                                <TableHead className="text-slate-700 font-semibold text-[10px] text-center py-1 bg-slate-200/50">Original Qty</TableHead>
+                                                <TableHead className="text-slate-700 font-semibold text-[10px] text-center py-1">Ordered Qty</TableHead>
 
-                        {/* Footer - Authorized Signature */}
-                        <div className="pt-12 pb-4">
-                            <div className="text-sm text-slate-700">
-                                <span className="font-medium">Authorized Signature</span>
-                                <span className="inline-block w-64 border-b border-slate-400 ml-2"></span>
-                            </div>
-                        </div>
-                    </CardContent>
-                </Card>
+                                                <TableHead className="text-slate-700 font-semibold text-[10px] text-center py-1">Balance Qty</TableHead>
+                                                <TableHead className="text-slate-700 font-semibold text-[10px] text-center py-1">Tax %</TableHead>
+                                                <TableHead className="text-slate-700 font-semibold text-[10px] text-right py-1">Rate</TableHead>
+                                                <TableHead className="text-slate-700 font-semibold text-[10px] text-right py-1 pr-4">Amount</TableHead>
+                                                {isReviseMode && <TableHead className="text-slate-700 font-semibold text-[10px] text-center w-8 py-1">Action</TableHead>}
+                                            </TableRow>
+                                        </TableHeader>
+                                        <TableBody>
+                                            {displayItems.map((item, idx) => {
+                                                // When revising, compare against current items. When viewing, compare against parent PO items.
+                                                const baseItems = isReviseMode ? parentItems : items;
+
+                                                // Match by name and description since IDs change across PO versions
+                                                const originalItem = baseItems.find(o =>
+                                                    (o.item === item.item || o.item_name === item.item_name || o.item === item.item_name || o.item_name === item.item) &&
+                                                    o.description === item.description
+                                                );
+
+                                                const originalQty = originalItem ? parseFloat(originalItem.qty) : 0;
+                                                const currentQty = parseFloat(item.qty) || 0;
+
+
+                                                // Balance Qty = how much of the original requirement is still unordered
+                                                const balanceQty = originalQty - currentQty;
+
+                                                return (
+                                                    <TableRow key={item.id} className="border-b border-slate-200">
+                                                        <TableCell className="text-center text-[11px] text-slate-500 py-2">{idx + 1}</TableCell>
+                                                        <TableCell className="py-2">
+                                                            <div className="flex items-center gap-1.5">
+                                                                <div className="text-[11px] font-medium text-slate-800 uppercase">{item.item || item.item_name}</div>
+                                                            </div>
+                                                            {isReviseMode && itemsAvailability[item.id] === false && (
+                                                                <div className="text-[9px] text-red-600 font-bold leading-none mt-1">Unavailable in new shop</div>
+                                                            )}
+                                                            {item.description && <div className="text-[10px] text-slate-400 mt-0.5 line-clamp-1">{item.description}</div>}
+                                                        </TableCell>
+                                                        <TableCell className="text-center text-[11px] text-slate-600 py-2">{item.unit || "—"}</TableCell>
+                                                        <TableCell className="text-center text-[11px] text-slate-600 py-2">{item.hsn_code || "—"}</TableCell>
+                                                        <TableCell className="text-center text-[11px] text-slate-600 py-2">{item.sac_code || "—"}</TableCell>
+
+                                                        {/* Original Qty Column */}
+                                                        <TableCell className="text-center text-[11px] py-1 bg-slate-50 font-medium text-slate-500">
+                                                            {originalQty.toFixed(2)}
+                                                        </TableCell>
+
+                                                        {/* Ordered Qty Column */}
+                                                        <TableCell className="text-center text-[11px] py-1">
+                                                            {isReviseMode ? (
+                                                                <Input
+                                                                    type="number"
+                                                                    value={item.qty}
+                                                                    onChange={(e) => handleQtyChange(item.id, e.target.value)}
+                                                                    className="w-14 text-center mx-auto h-6 text-[10px] p-0.5"
+                                                                    min="0"
+                                                                    step="0.01"
+                                                                />
+                                                            ) : (
+                                                                currentQty.toFixed(2)
+                                                            )}
+                                                        </TableCell>
+
+                                                        {/* Balance Qty Column */}
+                                                        <TableCell className="text-center text-[11px] py-1">
+                                                            <span className={`px-1 py-0.5 rounded-sm font-semibold ${balanceQty === 0 ? 'bg-green-100 text-green-700' : balanceQty < 0 ? 'bg-red-100 text-red-700' : 'bg-orange-100 text-orange-700'}`}>
+                                                                {balanceQty.toFixed(2)}
+                                                                {balanceQty === 0 && <span className="ml-1 text-[7px] uppercase">(Fulfilled)</span>}
+                                                            </span>
+                                                        </TableCell>
+
+                                                        {/* Tax Selection Dropdown */}
+                                                        <TableCell className="text-center text-[11px] py-1">
+                                                            {isReviseMode ? (
+                                                                <select
+                                                                    className="h-6 text-[9px] border rounded w-16 bg-white p-0.5 outline-none focus:ring-1 focus:ring-primary"
+                                                                    value={item.tax_rate ?? 18}
+                                                                    onChange={(e) => handleTaxRateChange(item.id, e.target.value)}
+                                                                >
+                                                                    <option value="0">0%</option>
+                                                                    <option value="5">5%</option>
+                                                                    <option value="12">12%</option>
+                                                                    <option value="18">18%</option>
+                                                                    <option value="28">28%</option>
+                                                                </select>
+                                                            ) : (
+                                                                <Badge variant="outline" className="text-[9px] py-0 px-1 border-slate-200 text-slate-500">
+                                                                    {item.tax_rate ?? 18}%
+                                                                </Badge>
+                                                            )}
+                                                        </TableCell>
+
+                                                        <TableCell className="text-right text-[11px] py-1">
+                                                            {parseFloat(item.rate).toLocaleString('en-IN', { minimumFractionDigits: 2 })}
+                                                        </TableCell>
+
+                                                        <TableCell className="text-right text-[11px] font-semibold py-1 pr-4 text-slate-700">
+                                                            {parseFloat(item.amount).toLocaleString('en-IN', { minimumFractionDigits: 2 })}
+                                                        </TableCell>
+
+
+
+                                                        {isReviseMode && (
+                                                            <TableCell className="text-center py-1">
+                                                                <Button variant="ghost" size="sm" onClick={() => handleDeleteItem(item.id)} className="h-5 w-5 p-0 hover:bg-red-50">
+                                                                    <Trash2 className="h-3 w-3 text-red-500" />
+                                                                </Button>
+                                                            </TableCell>
+                                                        )}
+                                                    </TableRow>
+                                                );
+                                            })}
+                                        </TableBody>
+                                    </Table>
+                                </div>
+
+                                {/* Totals Section & Terms */}
+                                <div className="flex justify-between items-start mt-6">
+                                    {/* Terms & Conditions */}
+                                    <div className="flex-1 pr-8 pt-2">
+                                        <div className="space-y-4">
+                                            <div>
+                                                <p className="text-xs text-slate-500 mb-1.5 font-semibold uppercase tracking-wider">
+                                                    Payment Terms {isReviseMode && <span className="text-red-500">*</span>}
+                                                </p>
+                                                {isReviseMode ? (
+                                                    <select
+                                                        className="w-full max-w-xs text-sm border border-slate-300 rounded p-2 bg-white outline-none focus:ring-1 focus:ring-primary h-10"
+                                                        value={paymentTerms}
+                                                        onChange={(e) => setPaymentTerms(e.target.value)}
+                                                    >
+                                                        <option value="">Select Terms</option>
+                                                        <option value="Advance">Advance</option>
+                                                        <option value="50% Advance">50% Advance</option>
+                                                        <option value="Net 15">Net 15</option>
+                                                        <option value="Net 30">Net 30</option>
+                                                        <option value="Net 45">Net 45</option>
+                                                        <option value="On Delivery">On Delivery</option>
+                                                        <option value="custom">Other (Enter in Terms)</option>
+                                                    </select>
+                                                ) : (
+                                                    paymentTerms ? (
+                                                        <Badge variant="outline" className="bg-indigo-50 text-indigo-700 border-indigo-200 px-3 py-1 font-bold">
+                                                            {paymentTerms}
+                                                        </Badge>
+                                                    ) : <span className="text-slate-400 text-xs italic">No payment terms specified.</span>
+                                                )}
+                                            </div>
+                                            <div>
+                                                <p className="text-xs text-slate-500 mb-1.5 font-semibold uppercase tracking-wider">Additional Terms & Conditions</p>
+                                                {isReviseMode ? (
+                                                    <Textarea
+                                                        placeholder="Enter custom terms, banking details, or other conditions..."
+                                                        className="text-sm text-slate-600 min-h-[120px] w-full border-slate-300 focus:border-primary"
+                                                        value={comment} /* Use comment state as it was mapped to terms in simpler version */
+                                                        onChange={(e) => setComment(e.target.value)}
+                                                    />
+                                                ) : (
+                                                    (po?.comments || po?.approval_comments || po?.vendor_terms) ? (
+                                                        <div className="space-y-4">
+                                                            {(po.comments || po.approval_comments) && (
+                                                                <div className="text-[11px] text-slate-600 whitespace-pre-wrap bg-slate-50/70 p-4 rounded-md border border-slate-100 italic leading-relaxed">
+                                                                    {po.comments || po.approval_comments}
+                                                                </div>
+                                                            )}
+                                                            {po.vendor_terms && (
+                                                                <div className="text-[11px] text-slate-600 whitespace-pre-wrap bg-blue-50/40 p-4 rounded-md border border-blue-100/50 leading-relaxed">
+                                                                    <p className="font-bold text-blue-800 mb-1 uppercase text-[9px] tracking-wider">Shop Terms & Conditions:</p>
+                                                                    {po.vendor_terms}
+                                                                </div>
+                                                            )}
+                                                        </div>
+                                                    ) : null
+                                                )}
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    {/* Totals Engine */}
+                                    <div className="w-72 space-y-1 bg-white pt-2 shrink-0">
+                                        <div className="flex justify-between text-sm py-1">
+                                            <span className="text-slate-600 font-medium">Sub Total</span>
+                                            <span className="text-slate-800">{displayedSubtotal.toLocaleString('en-IN', { minimumFractionDigits: 2 })}</span>
+                                        </div>
+                                        {taxPreference === "inclusive" && (
+                                            <div className="flex justify-between text-[11px] font-medium text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded -mx-2 mb-1">
+                                                <span>Subtotal derived from inclusive rate</span>
+                                            </div>
+                                        )}
+                                        <div className="flex justify-between text-sm py-1">
+                                            <span className="text-slate-600">SGST9 (9%)</span>
+                                            <span className="text-slate-800">{sgst.toLocaleString('en-IN', { minimumFractionDigits: 2 })}</span>
+                                        </div>
+                                        <div className="flex justify-between text-sm py-1">
+                                            <span className="text-slate-600">CGST9 (9%)</span>
+                                            <span className="text-slate-800">{cgst.toLocaleString('en-IN', { minimumFractionDigits: 2 })}</span>
+                                        </div>
+                                        <div className="flex justify-between text-sm py-1">
+                                            <span className="text-slate-600">Round off</span>
+                                            <span className="text-slate-800">{(grandTotal - totalWithTax).toFixed(2)}</span>
+                                        </div>
+                                        <div className="flex justify-between text-sm font-semibold py-2 border-t border-slate-300">
+                                            <span className="text-slate-800">Total</span>
+                                            <span className="text-slate-900">₹{grandTotal.toLocaleString('en-IN', { minimumFractionDigits: 2 })}</span>
+                                        </div>
+                                        <div className="flex justify-between text-sm font-semibold py-2 bg-slate-100 px-2 -mx-2">
+                                            <span className="text-slate-800">Balance Due</span>
+                                            <span className="text-slate-900 font-bold">₹{grandTotal.toLocaleString('en-IN', { minimumFractionDigits: 2 })}</span>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                {/* Footer - Authorized Signature */}
+                                <div className="pt-12 pb-4">
+                                    <div className="text-sm text-slate-700">
+                                        <span className="font-medium">Authorized Signature</span>
+                                        <span className="inline-block w-64 border-b border-slate-400 ml-2"></span>
+                                    </div>
+                                </div>
+                            </CardContent>
+                        </Card>
+                    </div>
 
                 {/* Related PO Versions */}
                 {relatedPos.length > 0 && (
@@ -930,9 +1207,9 @@ export default function PurchaseOrderDetail() {
                             </h3>
                             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
                                 {relatedPos.map(rpo => (
-                                    <div 
-                                        key={rpo.id} 
-                                        className="flex items-center justify-between p-4 bg-white border border-slate-200 rounded-lg hover:border-blue-400 hover:shadow-md transition-all cursor-pointer group" 
+                                    <div
+                                        key={rpo.id}
+                                        className="flex items-center justify-between p-4 bg-white border border-slate-200 rounded-lg hover:border-blue-400 hover:shadow-md transition-all cursor-pointer group"
                                         onClick={() => setLocation(`/purchase-orders/${rpo.id}`)}
                                     >
                                         <div>
@@ -955,7 +1232,7 @@ export default function PurchaseOrderDetail() {
             <Dialog open={showApprovalDialog} onOpenChange={setShowApprovalDialog}>
                 <DialogContent>
                     <DialogHeader>
-                        <DialogTitle>{approvalAction === "approve" ? "Approve Purchase Order" : "Reject Purchase Order"}</DialogTitle>
+                        <DialogTitle>{approvalAction === "approve" ? "Approve Annexure" : "Reject Annexure"}</DialogTitle>
                         <DialogDescription>
                             {approvalAction === "approve"
                                 ? "Provide optional comments for this approval."
