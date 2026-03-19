@@ -100,7 +100,7 @@ export default function POApprovals() {
             if (res.ok) {
                 toast({
                     title: approvalAction === "approve" ? "Approved" : "Rejected",
-                    description: `PO ${selectedPO.po_number} has been ${approvalAction === "approve" ? "approved" : "rejected"}.`,
+                    description: `Annexure ${selectedPO.po_number} has been ${approvalAction === "approve" ? "approved" : "rejected"}.`,
                 });
                 setShowApprovalDialog(false);
                 setComment("");
@@ -128,8 +128,8 @@ export default function POApprovals() {
         <Layout>
             <div className="space-y-6">
                 <div>
-                    <h1 className="text-3xl font-bold tracking-tight">PO Approvals</h1>
-                    <p className="text-muted-foreground">Review and act on purchase orders awaiting approval.</p>
+                    <h1 className="text-3xl font-bold tracking-tight">Annexure Approvals</h1>
+                    <p className="text-muted-foreground">Review and act on Annexures awaiting approval.</p>
                 </div>
 
                 <Card className="border-slate-200 shadow-sm">
@@ -140,7 +140,7 @@ export default function POApprovals() {
                         <Table>
                             <TableHeader>
                                 <TableRow>
-                                    <TableHead className="font-bold">PO Number</TableHead>
+                                    <TableHead className="font-bold">Annexure No.</TableHead>
                                     <TableHead className="font-bold">Project</TableHead>
                                     <TableHead className="font-bold">Vendor</TableHead>
                                     <TableHead className="font-bold text-right">Amount</TableHead>
@@ -152,7 +152,7 @@ export default function POApprovals() {
                                 {approvals.length === 0 ? (
                                     <TableRow>
                                         <TableCell colSpan={6} className="text-center py-12 text-muted-foreground italic">
-                                            No pending purchase order approvals.
+                                            No pending Annexure approvals.
                                         </TableCell>
                                     </TableRow>
                                 ) : (
@@ -206,11 +206,11 @@ export default function POApprovals() {
             <Dialog open={showApprovalDialog} onOpenChange={setShowApprovalDialog}>
                 <DialogContent>
                     <DialogHeader>
-                        <DialogTitle>{approvalAction === "approve" ? "Approve Purchase Order" : "Reject Purchase Order"}</DialogTitle>
+                        <DialogTitle>{approvalAction === "approve" ? "Approve Annexure" : "Reject Annexure"}</DialogTitle>
                         <DialogDescription>
                             {approvalAction === "approve"
-                                ? `Confirming approval for PO ${selectedPO?.po_number}.`
-                                : `Please provide a reason for rejecting PO ${selectedPO?.po_number}.`}
+                                ? `Confirming approval for Annexure No. ${selectedPO?.po_number}.`
+                                : `Please provide a reason for rejecting Annexure No. ${selectedPO?.po_number}.`}
                         </DialogDescription>
                     </DialogHeader>
                     <div className="py-4">
