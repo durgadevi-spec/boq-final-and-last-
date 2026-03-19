@@ -1482,7 +1482,7 @@ export default function FinalizeBoq() {
       await apiFetch(`/api/boq-versions/${activeVersionId}`, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ status: "submitted" }),
+        body: JSON.stringify({ status: "approved" }),
       });
 
       const [bomResp, boqResp] = await Promise.all([
@@ -2287,7 +2287,7 @@ export default function FinalizeBoq() {
   };
 
   const selectedProject = projects.find((p) => p.id === selectedProjectId);
-  const isVersionSubmitted = !!activeVersion && ["submitted", "pending_approval", "edit_requested"].includes(activeVersion.status);
+  const isVersionSubmitted = !!activeVersion && ["submitted", "pending_approval", "edit_requested", "approved"].includes(activeVersion.status);
 
   // Budget (read-only) should come from the generated BOQ total (sum of displayed item amounts)
   const calculateGeneratedBudget = () => {
@@ -3787,7 +3787,7 @@ export default function FinalizeBoq() {
                     variant="default"
                     disabled={isVersionSubmitted || boqItems.length === 0}
                   >
-                    Submit & Lock Version
+                    Lock Version
                   </Button>
                   <Button
                     onClick={handleDownloadExcel}
