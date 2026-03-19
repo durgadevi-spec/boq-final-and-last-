@@ -1,6 +1,6 @@
 import React, { useEffect, useState, useRef, useCallback, useMemo } from "react";
 import { Reorder, useDragControls } from "framer-motion";
-import { ChevronUp, ChevronDown, Loader2, CheckCircle2, XCircle, Lock, History, Clock, Briefcase, MapPin, IndianRupee, GripVertical, Search, ArrowUp } from "lucide-react";
+import { ChevronUp, ChevronDown, Loader2, CheckCircle2, XCircle, Lock, History, Clock, Briefcase, MapPin, IndianRupee, GripVertical, Search, ArrowUp, Plus, Trash2, Save } from "lucide-react";
 import { fuzzySearch } from "@/lib/utils";
 import { Layout } from "@/components/layout/Layout";
 import { Card, CardContent } from "@/components/ui/card";
@@ -325,7 +325,7 @@ function BoqItemRow({ item, itemIdx, boqItem, tableData, isEngineBased, isVersio
 
 // ─── BOQ Item Card ─────────────────────────────────────────────────────────────
 
-function BoqItemCard({ boqItem, boqIdx, isVersionSubmitted, expandedProductIds, setExpandedProductIds, getEditedValue, updateEditedField, handleDeleteRow, handleFinalizeProduct, handleAddItem, loadBoqItemsAndEdits, setBoqItems, checkBudgetEarly, handleSaveProject, mismatches, onCardDragStart, onCardDragOver, onCardDrop, isCardDragOver, isCompactView }: {
+function BoqItemCard({ boqItem, boqIdx, isVersionSubmitted, expandedProductIds, setExpandedProductIds, getEditedValue, updateEditedField, handleDeleteRow, handleFinalizeProduct, handleAddItem, loadBoqItemsAndEdits, setBoqItems, checkBudgetEarly, handleSaveProject, onCardDragStart, onCardDragOver, onCardDrop, isCardDragOver, mismatches, isCompactView, onSaveAsTemplate }: {
   boqItem: BOMItem; boqIdx: number; isVersionSubmitted: boolean;
   expandedProductIds: Set<string>; setExpandedProductIds: (fn: (p: Set<string>) => Set<string>) => void;
   getEditedValue: (k: string, f: string, v: any) => any;
@@ -343,6 +343,7 @@ function BoqItemCard({ boqItem, boqIdx, isVersionSubmitted, expandedProductIds, 
   isCardDragOver?: boolean;
   mismatches?: any[];
   isCompactView?: boolean;
+  onSaveAsTemplate?: (boqItem: BOMItem) => void;
 }) {
   const { toast } = useToast();
   const tableData = parseTableData(boqItem.table_data);
@@ -501,6 +502,7 @@ function BoqItemCard({ boqItem, boqIdx, isVersionSubmitted, expandedProductIds, 
                 <Button variant="outline" size="sm" className="h-6 text-[10px] px-2" disabled={isVersionSubmitted} onClick={() => handleAddItem(boqItem.id)}>+ Add Item</Button>
               )}
               <Button variant="default" size="sm" className="h-6 text-[10px] px-2 bg-green-600 hover:bg-green-700 text-white" disabled={isVersionSubmitted || tableData.is_finalized} onClick={() => handleFinalizeProduct(boqItem.id)}>Finalize</Button>
+              <Button variant="outline" size="sm" className="h-6 text-[10px] px-2" disabled={isVersionSubmitted} onClick={() => onSaveAsTemplate?.(boqItem)}>Save as Template</Button>
               <Button variant="destructive" size="sm" className="h-6 text-[10px] px-2" disabled={isVersionSubmitted}
                 onClick={async () => {
                   if (!confirm("Delete this product and all its items?")) return;
@@ -618,6 +620,7 @@ function BoqItemCard({ boqItem, boqIdx, isVersionSubmitted, expandedProductIds, 
               <Button variant="outline" size="sm" className="h-7 text-xs" disabled={isVersionSubmitted} onClick={() => handleAddItem(boqItem.id)}>+ Add Item</Button>
             )}
             <Button variant="default" size="sm" className="h-7 text-xs bg-green-600 hover:bg-green-700 text-white" disabled={isVersionSubmitted || tableData.is_finalized} onClick={() => handleFinalizeProduct(boqItem.id)}>Finalize</Button>
+            <Button variant="outline" size="sm" className="h-7 text-xs" disabled={isVersionSubmitted} onClick={() => onSaveAsTemplate?.(boqItem)}>Save as Template</Button>
             <Button variant="destructive" size="sm" className="h-7 text-xs" disabled={isVersionSubmitted}
               onClick={async () => {
                 if (!confirm("Delete this product and all its items?")) return;
@@ -797,6 +800,96 @@ export default function CreateBom() {
   const [loading, setLoading] = useState(true);
   const [materialsById, setMaterialsById] = useState<Record<string, any>>({});
   const [isUpdatingRates, setIsUpdatingRates] = useState(false);
+  const [showQtyIncreaseDialog, setShowQtyIncreaseDialog] = useState(false);
+  const [qtyIncreases, setQtyIncreases] = useState<any[]>([]);
+  const [pendingAddProductData, setPendingAddProductData] = useState<any>(null);
+
+  // BOM Template state
+  const [bomTemplates, setBomTemplates] = useState<any[]>([]);
+  const [showTemplateManager, setShowTemplateManager] = useState(false);
+  const [showSaveTemplateDialog, setShowSaveTemplateDialog] = useState(false);
+  const [templateToSave, setTemplateToSave] = useState<BOMItem | null>(null);
+  const [newTemplateName, setNewTemplateName] = useState("");
+
+  const loadBomTemplates = useCallback(async () => {
+    try {
+      const resp = await apiFetch("/api/bom-templates");
+      if (resp.ok) {
+        const data = await resp.json();
+        setBomTemplates(data.templates || []);
+      }
+    } catch (e) {
+      console.error("Failed to load BOM templates:", e);
+    }
+  }, []);
+
+  const handleSaveAsTemplate = async (name: string, config: any) => {
+    try {
+      const resp = await apiFetch("/api/bom-templates", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name, config }),
+      });
+      if (resp.ok) {
+        toast({ title: "Template Saved", description: `"${name}" has been saved as a BOM template.` });
+        loadBomTemplates();
+        setShowSaveTemplateDialog(false);
+        setNewTemplateName("");
+      } else {
+        const error = await resp.json();
+        toast({ title: "Error", description: error.message || "Failed to save template", variant: "destructive" });
+      }
+    } catch (e) {
+      console.error("Save template error:", e);
+      toast({ title: "Error", description: "Failed to connect to server", variant: "destructive" });
+    }
+  };
+
+  const handleApplyTemplate = async (template: any) => {
+    if (!selectedVersionId) return;
+
+    try {
+      // Create a new BOQ item with this template's config
+      const newItem = {
+        project_id: selectedProjectId,
+        version_id: selectedVersionId,
+        estimator: template.config.product_name || "Template Product",
+        table_data: template.config,
+        sort_order: boqItems.length,
+      };
+
+      const resp = await apiFetch("/api/boq-items", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(newItem),
+      });
+
+      if (resp.ok) {
+        toast({ title: "Template Applied", description: `"${template.name}" added to BOM.` });
+        const created = await resp.json();
+        const itemWithParsedData = { ...created, table_data: parseTableData(created.table_data) };
+        setBoqItems(prev => [...prev, itemWithParsedData]);
+        setExpandedProductIds(prev => new Set(prev).add(created.id));
+        setShowTemplateManager(false);
+      }
+    } catch (e) {
+      console.error("Apply template error:", e);
+      toast({ title: "Error", description: "Failed to apply template", variant: "destructive" });
+    }
+  };
+
+  const handleDeleteTemplate = async (id: string) => {
+    if (!confirm("Are you sure you want to delete this template?")) return;
+    try {
+      const resp = await apiFetch(`/api/bom-templates/${id}`, { method: "DELETE" });
+      if (resp.ok) {
+        toast({ title: "Template Deleted" });
+        loadBomTemplates();
+      }
+    } catch (e) {
+      console.error("Delete template error:", e);
+    }
+  };
   // Budget warning/modals removed for Generate BOM page per request
   const editedFieldsRef = useRef(editedFields);
   const [location, setLocation] = useLocation();
@@ -896,7 +989,8 @@ export default function CreateBom() {
     if (!selectedVersionId) { setBoqItems([]); setEditedFields({}); editedFieldsRef.current = {}; return; }
     loadBoqItemsAndEdits();
     loadHistory();
-  }, [selectedVersionId, loadBoqItemsAndEdits, loadHistory]);
+    loadBomTemplates();
+  }, [selectedVersionId, loadBoqItemsAndEdits, loadHistory, loadBomTemplates]);
 
   const mismatches = useMemo(() => {
     const list: any[] = [];
@@ -1225,7 +1319,16 @@ export default function CreateBom() {
         const { config, items } = await configRes.json();
         if (config) {
           configBasis = { requiredUnitType: config.required_unit_type as UnitType, baseRequiredQty: Math.max(0.001, Number(config.base_required_qty || 100)), wastagePctDefault: Number(config.wastage_pct_default || 0) };
-          materialLines = (items || []).map((item: any) => ({ id: item.material_id, name: item.material_name, unit: item.unit, baseQty: Number(item.base_qty ?? item.qty ?? 0), wastagePct: item.wastage_pct != null ? Number(item.wastage_pct) : undefined, supplyRate: Number(item.supply_rate), installRate: Number(item.install_rate), shop_name: item.shop_name }));
+          materialLines = (items || []).map((item: any) => ({ 
+            id: item.material_id, 
+            name: item.material_name, 
+            unit: item.unit, 
+            baseQty: Number(item.base_qty ?? item.qty ?? 0), 
+            wastagePct: item.wastage_pct != null ? Number(item.wastage_pct) : undefined, 
+            supplyRate: Number(item.supply_rate), 
+            installRate: Number(item.install_rate), 
+            shop_name: item.shop_name 
+          }));
         }
       }
       if (!configBasis) {
@@ -1233,15 +1336,67 @@ export default function CreateBom() {
         materialLines = pendingItems.map(i => ({ materialId: i.id || Math.random().toString(), materialName: i.title || "Item", unit: i.unit || "nos", baseQty: i.qty || 1, supplyRate: i.supply_rate || 0, installRate: i.install_rate || 0 }));
       }
       const tableData = { product_name: selectedProduct.name, product_id: selectedProduct.id, category: selectedProduct.category, subcategory: selectedProduct.subcategory, hsn_sac_type: selectedProduct.tax_code_type || null, hsn_sac_code: selectedProduct.tax_code_value || null, hsn_code: selectedProduct.hsn_code || null, sac_code: selectedProduct.sac_code || null, targetRequiredQty, configBasis, materialLines, step11_items: pendingItems, finalize_description: pendingItems[0]?.description || "", created_at: new Date().toISOString() };
-      const res = await apiFetch("/api/boq-items", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ project_id: selectedProjectId, version_id: selectedVersionId, estimator: getEstimatorTypeFromProduct(selectedProduct) || "General", table_data: tableData }) });
+
+      // --- NEW: Check for Material Quantity Increases in Approved POs ---
+      const materialIds = materialLines.map(ml => ml.id || ml.materialId).filter(Boolean);
+      if (materialIds.length > 0) {
+        const increaseRes = await apiFetch(`/api/purchase-orders/check-material-increases?materialIds=${materialIds.join(',')}`);
+        if (increaseRes.ok) {
+          const { increases } = await increaseRes.json();
+          const detectedIncreases: any[] = [];
+          
+          materialLines.forEach(ml => {
+            const mId = ml.id || ml.materialId;
+            const inc = increases[mId];
+            if (inc && inc.qty > ml.baseQty) {
+              detectedIncreases.push({
+                materialId: mId,
+                name: ml.name,
+                templateQty: ml.baseQty,
+                poQty: inc.qty,
+                poNumber: inc.poNumber
+              });
+            }
+          });
+
+          if (detectedIncreases.length > 0) {
+            setQtyIncreases(detectedIncreases);
+            setPendingAddProductData(tableData);
+            setShowQtyIncreaseDialog(true);
+            return; // Wait for user confirmation via dialog
+          }
+        }
+      }
+      // --- END NEW ---
+
+      await saveBoqItem(tableData);
+    } catch { toast({ title: "Error", description: "Failed to add product", variant: "destructive" }); }
+  });
+
+  const saveBoqItem = async (tableData: any) => {
+    const product = selectedProduct;
+    if (!product || !selectedProjectId || !selectedVersionId) return;
+    try {
+      const res = await apiFetch("/api/boq-items", { 
+        method: "POST", 
+        headers: { "Content-Type": "application/json" }, 
+        body: JSON.stringify({ 
+          project_id: selectedProjectId, 
+          version_id: selectedVersionId, 
+          estimator: getEstimatorTypeFromProduct(product) || "General", 
+          table_data: tableData 
+        }) 
+      });
       if (!res.ok) throw new Error("Failed to save");
       const newItem = await res.json();
       setBoqItems(prev => [...prev, newItem]);
       toast({ title: "Success", description: `Added ${selectedProduct.name}` });
       setShowStep11Preview(false); setSelectedProduct(null); setPendingItems([]);
       loadBoqItemsAndEdits();
-    } catch { toast({ title: "Error", description: "Failed to add product", variant: "destructive" }); }
-  });
+    } catch (err) {
+      toast({ title: "Error", description: "Failed to save BOQ item", variant: "destructive" });
+    }
+  };
 
   const handleSaveProject = async () => {
     if (!selectedVersionId) return;
@@ -1821,6 +1976,9 @@ export default function CreateBom() {
                   )}
 
                   <div className="flex gap-2 h-9 ml-auto">
+                    <Button onClick={() => setShowTemplateManager(true)} variant="outline" className="border-slate-200 h-full px-4 text-xs font-bold shadow-sm bg-white flex items-center gap-2" disabled={isVersionSubmitted || !selectedVersionId}>
+                      <History className="h-4 w-4" /> Load Template
+                    </Button>
                     <Button onClick={handleAddProduct} className="bg-primary text-white h-full px-5 text-xs font-bold shadow-sm" disabled={isVersionSubmitted || !selectedVersionId}>+ Add Product</Button>
                     <Button onClick={handleAddProductManual} variant="outline" className="border-slate-200 h-full px-5 text-xs font-bold shadow-sm bg-white" disabled={isVersionSubmitted || !selectedVersionId}>+ Add Item</Button>
                   </div>
@@ -1971,6 +2129,11 @@ export default function CreateBom() {
                           }}
                           mismatches={mismatches.filter(m => m.boqItemId === boqItem.id)}
                           isCompactView={isCompactView}
+                          onSaveAsTemplate={(item) => {
+                            setTemplateToSave(item);
+                            setNewTemplateName(parseTableData(item.table_data).product_name || item.estimator);
+                            setShowSaveTemplateDialog(true);
+                          }}
                         />
                       ))}
                   </div>
@@ -2016,8 +2179,13 @@ export default function CreateBom() {
           <div className="space-y-4 py-4">
             <p className="text-sm font-medium">Required quantity for <span className="font-bold underline">{selectedProduct?.name}</span>:</p>
             <div className="flex items-center gap-3">
-              <Input type="number" value={targetRequiredQty} onChange={(e: React.ChangeEvent<HTMLInputElement>) => setTargetRequiredQty(Number(e.target.value))} className="text-lg font-bold" />
-              <span className="text-muted-foreground font-semibold">{pendingItems[0]?.unit || "Sqft"}</span>
+              <input 
+                type="number" 
+                value={targetRequiredQty} 
+                onChange={(e) => setTargetRequiredQty(Number(e.target.value))} 
+                className="w-full border rounded px-3 py-2 text-lg font-bold focus:ring-1 ring-blue-500 outline-none" 
+              />
+              <span className="text-muted-foreground font-semibold">{pendingItems[0]?.unit || "Unit"}</span>
             </div>
             <p className="text-xs text-muted-foreground italic">Quantity will be scaled according to product recipe.</p>
           </div>
@@ -2034,7 +2202,199 @@ export default function CreateBom() {
         </DialogContent>
       </Dialog>
 
+      {/* Material Quantity Increase Dialog */}
+      <Dialog open={showQtyIncreaseDialog} onOpenChange={setShowQtyIncreaseDialog}>
+        <DialogContent className="sm:max-w-lg">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2 text-amber-600">
+              <ArrowUp className="h-5 w-5" />
+              Quantity Increase Detected
+            </DialogTitle>
+            <DialogDescription>
+              The following materials have higher quantities in recently approved Purchase Orders compared to the product template.
+            </DialogDescription>
+          </DialogHeader>
+          
+          <div className="py-4">
+            <div className="border rounded-md overflow-hidden">
+              <table className="w-full text-xs">
+                <thead className="bg-slate-50 border-b">
+                  <tr>
+                    <th className="px-3 py-2 text-left font-bold text-slate-500 uppercase">Material</th>
+                    <th className="px-3 py-2 text-center font-bold text-slate-500 uppercase">Template Qty</th>
+                    <th className="px-3 py-2 text-center font-bold text-slate-500 uppercase">Latest PO Qty</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y">
+                  {qtyIncreases.map((inc, idx) => (
+                    <tr key={idx} className="hover:bg-slate-50/50">
+                      <td className="px-3 py-2 font-medium">
+                        {inc.name}
+                        <div className="text-[10px] text-slate-400 font-normal">Approved in PO: {inc.poNumber}</div>
+                      </td>
+                      <td className="px-3 py-2 text-center text-slate-500">{inc.templateQty}</td>
+                      <td className="px-3 py-2 text-center font-bold text-amber-700 bg-amber-50">
+                        {inc.poQty}
+                        <ArrowUp className="inline h-2 w-2 ml-0.5" />
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+            <p className="mt-4 text-sm text-slate-600 font-medium italic text-center">
+              Do you want to update the product template with these new quantities?
+            </p>
+          </div>
+
+          <DialogFooter className="gap-2 sm:gap-0">
+            <Button 
+              variant="outline" 
+              onClick={async () => {
+                if (pendingAddProductData) {
+                  await saveBoqItem(pendingAddProductData);
+                }
+                setShowQtyIncreaseDialog(false);
+              }}
+              className="font-bold"
+            >
+              No, Keep Original
+            </Button>
+            <Button 
+              onClick={async () => {
+                if (pendingAddProductData) {
+                  const updatedTd = { ...pendingAddProductData };
+                  
+                  // Update template in DB and local tableData
+                  for (const inc of qtyIncreases) {
+                    try {
+                      await apiFetch("/api/products/update-template-qty", {
+                        method: "POST",
+                        headers: { "Content-Type": "application/json" },
+                        body: JSON.stringify({
+                          productId: updatedTd.product_id,
+                          materialId: inc.materialId,
+                          newQty: inc.poQty
+                        })
+                      });
+
+                      // Update local materialLines
+                      if (updatedTd.materialLines) {
+                        updatedTd.materialLines = updatedTd.materialLines.map((ml: any) => 
+                          (ml.id === inc.materialId || ml.materialId === inc.materialId) 
+                            ? { ...ml, baseQty: inc.poQty } 
+                            : ml
+                        );
+                      }
+                    } catch (err) {
+                      console.error("Failed to update template qty for", inc.name, err);
+                    }
+                  }
+
+                  await saveBoqItem(updatedTd);
+                  toast({ title: "Template Updated", description: "Product template and current item updated with new quantities." });
+                }
+                setShowQtyIncreaseDialog(false);
+              }}
+              className="bg-amber-600 hover:bg-amber-700 text-white font-bold"
+            >
+              Yes, Update Template
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
       {/* Budget warning dialogs removed for Generate BOM page */}
+
+      {/* Load Template Dialog */}
+      <Dialog open={showTemplateManager} onOpenChange={setShowTemplateManager}>
+        <DialogContent className="sm:max-w-[700px]">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <History className="h-5 w-5 text-blue-600" />
+              BOM Templates
+            </DialogTitle>
+            <DialogDescription>
+              Select a saved BOM template to add it to your current version.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="py-4 max-h-[60vh] overflow-y-auto">
+            {bomTemplates.length === 0 ? (
+              <div className="text-center py-8 text-slate-500 bg-slate-50 rounded-lg border border-dashed border-slate-200">
+                <div className="text-sm font-medium">No templates saved yet.</div>
+                <div className="text-xs">Save any product card as a template to see it here.</div>
+              </div>
+            ) : (
+              <div className="grid gap-3">
+                {bomTemplates.map((template) => (
+                  <div key={template.id} className="flex items-center justify-between p-3 border border-slate-200 rounded-lg hover:bg-slate-50 transition-colors">
+                    <div className="flex flex-col">
+                      <span className="text-sm font-bold text-slate-800">{template.name}</span>
+                      <span className="text-[10px] text-slate-500 uppercase font-medium">
+                        {template.config.product_name || "Custom Product"} • Created {new Date(template.created_at).toLocaleDateString()}
+                      </span>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <Button variant="outline" size="sm" onClick={() => handleApplyTemplate(template)} className="h-8 text-xs font-bold">
+                        Apply
+                      </Button>
+                      <Button variant="ghost" size="sm" onClick={() => handleDeleteTemplate(template.id)} className="h-8 w-8 p-0 text-slate-400 hover:text-red-600">
+                        <Trash2 className="h-4 w-4" />
+                      </Button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setShowTemplateManager(false)}>Close</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Save Template Dialog */}
+      <Dialog open={showSaveTemplateDialog} onOpenChange={setShowSaveTemplateDialog}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Save className="h-5 w-5 text-green-600" />
+              Save as BOM Template
+            </DialogTitle>
+            <DialogDescription>
+              Enter a name for this template to reuse it in other projects.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 py-4">
+            <div className="space-y-2">
+              <Label htmlFor="templateName">Template Name</Label>
+              <Input
+                id="templateName"
+                placeholder="e.g. Standard Kitchen Cabinet"
+                value={newTemplateName}
+                onChange={(e) => setNewTemplateName(e.target.value)}
+                autoFocus
+              />
+            </div>
+            {templateToSave && (
+              <div className="p-3 bg-slate-50 rounded-lg border border-slate-200">
+                <div className="text-[10px] uppercase font-bold text-slate-400 mb-1">Product Details</div>
+                <div className="text-xs font-bold text-slate-700">{parseTableData(templateToSave.table_data).product_name || templateToSave.estimator}</div>
+              </div>
+            )}
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setShowSaveTemplateDialog(false)}>Cancel</Button>
+            <Button 
+              onClick={() => handleSaveAsTemplate(newTemplateName, templateToSave?.table_data)} 
+              disabled={!newTemplateName.trim()}
+              className="bg-green-600 hover:bg-green-700 text-white font-bold"
+            >
+              Save Template
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </>
   );
 }
