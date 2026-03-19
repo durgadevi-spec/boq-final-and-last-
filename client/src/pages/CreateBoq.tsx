@@ -27,11 +27,11 @@ import * as XLSX from 'xlsx';
 type Project = { id: string; name: string; client: string; budget: string; location?: string; status?: string; project_status?: string };
 
 const PROJECT_STATUSES: { value: string; label: string; color: string }[] = [
-  { value: 'started',     label: 'Started',     color: 'bg-blue-100 text-blue-700' },
+  { value: 'started', label: 'Started', color: 'bg-blue-100 text-blue-700' },
   { value: 'in_progress', label: 'In Progress', color: 'bg-amber-100 text-amber-700' },
-  { value: 'hold',        label: 'Hold',        color: 'bg-orange-100 text-orange-700' },
-  { value: 'cancelled',   label: 'Cancelled',   color: 'bg-red-100 text-red-700' },
-  { value: 'closed',      label: 'Closed',      color: 'bg-gray-200 text-gray-600' },
+  { value: 'hold', label: 'Hold', color: 'bg-orange-100 text-orange-700' },
+  { value: 'cancelled', label: 'Cancelled', color: 'bg-red-100 text-red-700' },
+  { value: 'closed', label: 'Closed', color: 'bg-gray-200 text-gray-600' },
 ];
 const getProjectStatusMeta = (s?: string) => PROJECT_STATUSES.find(x => x.value === s) ?? { label: s || 'Started', color: 'bg-blue-100 text-blue-700' };
 type BOMVersion = { id: string; project_id: string; version_number: number; status: "draft" | "submitted" | "pending_approval" | "approved" | "rejected" | "edit_requested"; created_at: string; rejection_reason?: string; updated_at: string; project_name?: string; project_client?: string; project_location?: string };
@@ -405,7 +405,7 @@ function BoqItemCard({ boqItem, boqIdx, isVersionSubmitted, expandedProductIds, 
       const sRate = Number(getEditedValue(itemKey, "supply_rate", it.supply_rate ?? 0)) || 0;
       const iRate = Number(getEditedValue(itemKey, "install_rate", it.install_rate ?? 0)) || 0;
       const rate = Number(getEditedValue(itemKey, "rate", sRate + iRate)) || (sRate + iRate);
-      
+
       // For semi-manual products, treat the quantity as "Qty per Unit" if Target is defined/editable
       const scaledQty = Number((baseQty * calculationTarget).toFixed(2));
       return { ...it, itemKey, _s11Idx: s11Idx, qtyPerSqf: baseQty, qty: scaledQty, rateSqft: rate, amount: Number((scaledQty * rate).toFixed(2)) };
@@ -495,7 +495,7 @@ function BoqItemCard({ boqItem, boqIdx, isVersionSubmitted, expandedProductIds, 
               </div>
             )}
           </div>
-          
+
           {isCompactView && (
             <div className="flex gap-2 ml-4">
               {!tableData.is_finalized && (
@@ -514,102 +514,102 @@ function BoqItemCard({ boqItem, boqIdx, isVersionSubmitted, expandedProductIds, 
           {!isCompactView && (
             <div className="flex flex-col gap-2">
               <div className="flex items-center gap-4 mt-1">
-              <div className="flex flex-col bg-white border border-slate-200 rounded-md px-3 py-1.5 shadow-sm">
-                <span className="text-[10px] leading-none text-slate-400 font-bold uppercase tracking-tight mb-1">Rate per {tableData.configBasis?.requiredUnitType || "Unit"}</span>
-                <span className="text-sm font-extrabold text-blue-700">₹{ratePerUnit.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
-              </div>
-              <div className="flex flex-col bg-white border border-slate-200 rounded-md px-3 py-1.5 shadow-sm">
-                <span className="text-[10px] leading-none text-slate-400 font-bold uppercase tracking-tight mb-1">Grand Total</span>
-                <span className="text-sm font-extrabold text-slate-900">
-                  ₹{grandTotalValue.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                </span>
-              </div>
-            </div>
-            <div className="flex items-center gap-2 flex-wrap mt-2">
-              <Input
-                placeholder="Enter product description..."
-                className="h-8 text-xs w-full max-w-md mt-1"
-                defaultValue={tableData.finalize_description || ""}
-                disabled={isVersionSubmitted}
-                onFocus={checkBudgetEarly}
-                onBlur={async e => {
-                  const newDesc = e.target.value;
-                  if (newDesc === (tableData.finalize_description || "")) return;
-                  try {
-                    const updatedTd = { ...tableData, finalize_description: newDesc };
-                    const resp = await apiFetch(`/api/boq-items/${boqItem.id}`, { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ table_data: updatedTd }) });
-                    if (resp.ok) { setBoqItems((prev: BOMItem[]) => prev.map((i: BOMItem) => i.id === boqItem.id ? { ...i, table_data: updatedTd } : i)); }
-                  } catch (err) { console.error("Failed to save description", err); }
-                }}
-              />
-              <EditableHsnSac
-                tableData={tableData}
-                onUpdate={async (hsn, sac) => {
-                  try {
-                    const updatedTd = { ...tableData, hsn_code: hsn, sac_code: sac, hsn_sac_type: hsn ? 'hsn' : (sac ? 'sac' : null), hsn_sac_code: hsn || sac || "" };
-                    const resp = await apiFetch(`/api/boq-items/${boqItem.id}`, {
-                      method: "PUT",
-                      headers: { "Content-Type": "application/json" },
-                      body: JSON.stringify({ table_data: updatedTd })
-                    });
-                    if (resp.ok) {
-                      setBoqItems((prev: BOMItem[]) => prev.map((i: BOMItem) => i.id === boqItem.id ? { ...i, table_data: updatedTd } : i));
-                    }
-                  } catch (err) { console.error("Failed to save HSN/SAC", err); }
-                }}
-              />
-            </div>
-            {isEngineBased && (
-              <div className="flex items-center gap-2 text-[11px] text-gray-600 font-medium whitespace-nowrap">
-                Project Target: 
-                <div className="flex items-center gap-1 group/target">
-                  <Input
-                    type="number"
-                    className="h-7 w-20 text-[11px] font-bold text-blue-600 px-1 py-0 border-blue-200 focus:border-blue-500 focus:ring-1 focus:ring-blue-100 transition-all rounded"
-                    value={localTarget}
-                    onChange={(e) => setLocalTarget(parseFloat(e.target.value) || 0)}
-                    disabled={isVersionSubmitted || tableData.is_finalized}
-                    onBlur={async (e) => {
-                      const newVal = parseFloat(e.target.value);
-                      const currentVal = tableData.targetRequiredQty ?? 1;
-                      if (isNaN(newVal) || newVal === currentVal || newVal <= 0) {
-                        setLocalTarget(currentVal);
-                        return;
-                      }
-                      
-                      try {
-                        const updatedTd = { ...tableData, targetRequiredQty: newVal };
-                        const resp = await apiFetch(`/api/boq-items/${boqItem.id}`, {
-                          method: "PUT",
-                          headers: { "Content-Type": "application/json" },
-                          body: JSON.stringify({ table_data: updatedTd }),
-                        });
-                        
-                        if (resp.ok) {
-                          setBoqItems((prev: BOMItem[]) => 
-                            prev.map((i: BOMItem) => i.id === boqItem.id ? { ...i, table_data: updatedTd } : i)
-                          );
-                          toast({ title: "Updated", description: `Project target updated to ${newVal} ${tableData.configBasis?.requiredUnitType || "Unit"}` });
-                        } else {
-                          toast({ title: "Error", description: "Failed to save project target", variant: "destructive" });
-                          setLocalTarget(currentVal);
-                        }
-                      } catch (err) {
-                        console.error("Failed to update target qty", err);
-                        toast({ title: "Error", description: "Failed to connect to server", variant: "destructive" });
-                        setLocalTarget(currentVal);
-                      }
-                    }}
-                    onKeyDown={(e) => {
-                      if (e.key === 'Enter') {
-                        (e.target as HTMLInputElement).blur();
-                      }
-                    }}
-                  />
-                  <span className="text-blue-600 font-bold">{tableData.configBasis?.requiredUnitType || "Unit"}</span>
+                <div className="flex flex-col bg-white border border-slate-200 rounded-md px-3 py-1.5 shadow-sm">
+                  <span className="text-[10px] leading-none text-slate-400 font-bold uppercase tracking-tight mb-1">Rate per {tableData.configBasis?.requiredUnitType || "Unit"}</span>
+                  <span className="text-sm font-extrabold text-blue-700">₹{ratePerUnit.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+                </div>
+                <div className="flex flex-col bg-white border border-slate-200 rounded-md px-3 py-1.5 shadow-sm">
+                  <span className="text-[10px] leading-none text-slate-400 font-bold uppercase tracking-tight mb-1">Grand Total</span>
+                  <span className="text-sm font-extrabold text-slate-900">
+                    ₹{grandTotalValue.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                  </span>
                 </div>
               </div>
-            )}
+              <div className="flex items-center gap-2 flex-wrap mt-2">
+                <Input
+                  placeholder="Enter product description..."
+                  className="h-8 text-xs w-full max-w-md mt-1"
+                  defaultValue={tableData.finalize_description || ""}
+                  disabled={isVersionSubmitted}
+                  onFocus={checkBudgetEarly}
+                  onBlur={async e => {
+                    const newDesc = e.target.value;
+                    if (newDesc === (tableData.finalize_description || "")) return;
+                    try {
+                      const updatedTd = { ...tableData, finalize_description: newDesc };
+                      const resp = await apiFetch(`/api/boq-items/${boqItem.id}`, { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ table_data: updatedTd }) });
+                      if (resp.ok) { setBoqItems((prev: BOMItem[]) => prev.map((i: BOMItem) => i.id === boqItem.id ? { ...i, table_data: updatedTd } : i)); }
+                    } catch (err) { console.error("Failed to save description", err); }
+                  }}
+                />
+                <EditableHsnSac
+                  tableData={tableData}
+                  onUpdate={async (hsn, sac) => {
+                    try {
+                      const updatedTd = { ...tableData, hsn_code: hsn, sac_code: sac, hsn_sac_type: hsn ? 'hsn' : (sac ? 'sac' : null), hsn_sac_code: hsn || sac || "" };
+                      const resp = await apiFetch(`/api/boq-items/${boqItem.id}`, {
+                        method: "PUT",
+                        headers: { "Content-Type": "application/json" },
+                        body: JSON.stringify({ table_data: updatedTd })
+                      });
+                      if (resp.ok) {
+                        setBoqItems((prev: BOMItem[]) => prev.map((i: BOMItem) => i.id === boqItem.id ? { ...i, table_data: updatedTd } : i));
+                      }
+                    } catch (err) { console.error("Failed to save HSN/SAC", err); }
+                  }}
+                />
+              </div>
+              {isEngineBased && (
+                <div className="flex items-center gap-2 text-[11px] text-gray-600 font-medium whitespace-nowrap">
+                  Project Target:
+                  <div className="flex items-center gap-1 group/target">
+                    <Input
+                      type="number"
+                      className="h-7 w-20 text-[11px] font-bold text-blue-600 px-1 py-0 border-blue-200 focus:border-blue-500 focus:ring-1 focus:ring-blue-100 transition-all rounded"
+                      value={localTarget}
+                      onChange={(e) => setLocalTarget(parseFloat(e.target.value) || 0)}
+                      disabled={isVersionSubmitted || tableData.is_finalized}
+                      onBlur={async (e) => {
+                        const newVal = parseFloat(e.target.value);
+                        const currentVal = tableData.targetRequiredQty ?? 1;
+                        if (isNaN(newVal) || newVal === currentVal || newVal <= 0) {
+                          setLocalTarget(currentVal);
+                          return;
+                        }
+
+                        try {
+                          const updatedTd = { ...tableData, targetRequiredQty: newVal };
+                          const resp = await apiFetch(`/api/boq-items/${boqItem.id}`, {
+                            method: "PUT",
+                            headers: { "Content-Type": "application/json" },
+                            body: JSON.stringify({ table_data: updatedTd }),
+                          });
+
+                          if (resp.ok) {
+                            setBoqItems((prev: BOMItem[]) =>
+                              prev.map((i: BOMItem) => i.id === boqItem.id ? { ...i, table_data: updatedTd } : i)
+                            );
+                            toast({ title: "Updated", description: `Project target updated to ${newVal} ${tableData.configBasis?.requiredUnitType || "Unit"}` });
+                          } else {
+                            toast({ title: "Error", description: "Failed to save project target", variant: "destructive" });
+                            setLocalTarget(currentVal);
+                          }
+                        } catch (err) {
+                          console.error("Failed to update target qty", err);
+                          toast({ title: "Error", description: "Failed to connect to server", variant: "destructive" });
+                          setLocalTarget(currentVal);
+                        }
+                      }}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter') {
+                          (e.target as HTMLInputElement).blur();
+                        }
+                      }}
+                    />
+                    <span className="text-blue-600 font-bold">{tableData.configBasis?.requiredUnitType || "Unit"}</span>
+                  </div>
+                </div>
+              )}
             </div>
           )}
         </div>
@@ -810,6 +810,7 @@ export default function CreateBom() {
   const [showSaveTemplateDialog, setShowSaveTemplateDialog] = useState(false);
   const [templateToSave, setTemplateToSave] = useState<BOMItem | null>(null);
   const [newTemplateName, setNewTemplateName] = useState("");
+  const [templateSearch, setTemplateSearch] = useState("");
 
   const loadBomTemplates = useCallback(async () => {
     try {
@@ -1319,15 +1320,15 @@ export default function CreateBom() {
         const { config, items } = await configRes.json();
         if (config) {
           configBasis = { requiredUnitType: config.required_unit_type as UnitType, baseRequiredQty: Math.max(0.001, Number(config.base_required_qty || 100)), wastagePctDefault: Number(config.wastage_pct_default || 0) };
-          materialLines = (items || []).map((item: any) => ({ 
-            id: item.material_id, 
-            name: item.material_name, 
-            unit: item.unit, 
-            baseQty: Number(item.base_qty ?? item.qty ?? 0), 
-            wastagePct: item.wastage_pct != null ? Number(item.wastage_pct) : undefined, 
-            supplyRate: Number(item.supply_rate), 
-            installRate: Number(item.install_rate), 
-            shop_name: item.shop_name 
+          materialLines = (items || []).map((item: any) => ({
+            id: item.material_id,
+            name: item.material_name,
+            unit: item.unit,
+            baseQty: Number(item.base_qty ?? item.qty ?? 0),
+            wastagePct: item.wastage_pct != null ? Number(item.wastage_pct) : undefined,
+            supplyRate: Number(item.supply_rate),
+            installRate: Number(item.install_rate),
+            shop_name: item.shop_name
           }));
         }
       }
@@ -1344,7 +1345,7 @@ export default function CreateBom() {
         if (increaseRes.ok) {
           const { increases } = await increaseRes.json();
           const detectedIncreases: any[] = [];
-          
+
           materialLines.forEach(ml => {
             const mId = ml.id || ml.materialId;
             const inc = increases[mId];
@@ -1377,15 +1378,15 @@ export default function CreateBom() {
     const product = selectedProduct;
     if (!product || !selectedProjectId || !selectedVersionId) return;
     try {
-      const res = await apiFetch("/api/boq-items", { 
-        method: "POST", 
-        headers: { "Content-Type": "application/json" }, 
-        body: JSON.stringify({ 
-          project_id: selectedProjectId, 
-          version_id: selectedVersionId, 
-          estimator: getEstimatorTypeFromProduct(product) || "General", 
-          table_data: tableData 
-        }) 
+      const res = await apiFetch("/api/boq-items", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          project_id: selectedProjectId,
+          version_id: selectedVersionId,
+          estimator: getEstimatorTypeFromProduct(product) || "General",
+          table_data: tableData
+        })
       });
       if (!res.ok) throw new Error("Failed to save");
       const newItem = await res.json();
@@ -1484,13 +1485,13 @@ export default function CreateBom() {
       const key = `${boqItem.id}-${idx}`;
       const baseQty = Number(getEditedValue(key, "qty", it.qty ?? 0)) || 0;
       const scaledQty = Number((baseQty * target).toFixed(2));
-      return { 
-        ...it, 
+      return {
+        ...it,
         qty: scaledQty,
-        supply_rate: getEditedValue(key, "supply_rate", it.supply_rate ?? 0), 
-        install_rate: getEditedValue(key, "install_rate", it.install_rate ?? 0), 
-        description: getEditedValue(key, "description", it.description ?? ""), 
-        unit: getEditedValue(key, "unit", it.unit ?? "") 
+        supply_rate: getEditedValue(key, "supply_rate", it.supply_rate ?? 0),
+        install_rate: getEditedValue(key, "install_rate", it.install_rate ?? 0),
+        description: getEditedValue(key, "description", it.description ?? ""),
+        unit: getEditedValue(key, "unit", it.unit ?? "")
       };
     });
   };
@@ -2179,11 +2180,11 @@ export default function CreateBom() {
           <div className="space-y-4 py-4">
             <p className="text-sm font-medium">Required quantity for <span className="font-bold underline">{selectedProduct?.name}</span>:</p>
             <div className="flex items-center gap-3">
-              <input 
-                type="number" 
-                value={targetRequiredQty} 
-                onChange={(e) => setTargetRequiredQty(Number(e.target.value))} 
-                className="w-full border rounded px-3 py-2 text-lg font-bold focus:ring-1 ring-blue-500 outline-none" 
+              <input
+                type="number"
+                value={targetRequiredQty}
+                onChange={(e) => setTargetRequiredQty(Number(e.target.value))}
+                className="w-full border rounded px-3 py-2 text-lg font-bold focus:ring-1 ring-blue-500 outline-none"
               />
               <span className="text-muted-foreground font-semibold">{pendingItems[0]?.unit || "Unit"}</span>
             </div>
@@ -2214,7 +2215,7 @@ export default function CreateBom() {
               The following materials have higher quantities in recently approved Purchase Orders compared to the product template.
             </DialogDescription>
           </DialogHeader>
-          
+
           <div className="py-4">
             <div className="border rounded-md overflow-hidden">
               <table className="w-full text-xs">
@@ -2248,8 +2249,8 @@ export default function CreateBom() {
           </div>
 
           <DialogFooter className="gap-2 sm:gap-0">
-            <Button 
-              variant="outline" 
+            <Button
+              variant="outline"
               onClick={async () => {
                 if (pendingAddProductData) {
                   await saveBoqItem(pendingAddProductData);
@@ -2260,11 +2261,11 @@ export default function CreateBom() {
             >
               No, Keep Original
             </Button>
-            <Button 
+            <Button
               onClick={async () => {
                 if (pendingAddProductData) {
                   const updatedTd = { ...pendingAddProductData };
-                  
+
                   // Update template in DB and local tableData
                   for (const inc of qtyIncreases) {
                     try {
@@ -2280,9 +2281,9 @@ export default function CreateBom() {
 
                       // Update local materialLines
                       if (updatedTd.materialLines) {
-                        updatedTd.materialLines = updatedTd.materialLines.map((ml: any) => 
-                          (ml.id === inc.materialId || ml.materialId === inc.materialId) 
-                            ? { ...ml, baseQty: inc.poQty } 
+                        updatedTd.materialLines = updatedTd.materialLines.map((ml: any) =>
+                          (ml.id === inc.materialId || ml.materialId === inc.materialId)
+                            ? { ...ml, baseQty: inc.poQty }
                             : ml
                         );
                       }
@@ -2318,6 +2319,17 @@ export default function CreateBom() {
               Select a saved BOM template to add it to your current version.
             </DialogDescription>
           </DialogHeader>
+          <div className="px-1 pt-2 pb-1">
+            <div className="relative">
+              <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-slate-400" />
+              <Input
+                placeholder="Search templates by name..."
+                className="pl-9 h-9 text-sm bg-slate-50/50 border-slate-200 focus:bg-white transition-colors"
+                value={templateSearch}
+                onChange={(e) => setTemplateSearch(e.target.value)}
+              />
+            </div>
+          </div>
           <div className="py-4 max-h-[60vh] overflow-y-auto">
             {bomTemplates.length === 0 ? (
               <div className="text-center py-8 text-slate-500 bg-slate-50 rounded-lg border border-dashed border-slate-200">
@@ -2326,7 +2338,9 @@ export default function CreateBom() {
               </div>
             ) : (
               <div className="grid gap-3">
-                {bomTemplates.map((template) => (
+                {bomTemplates
+                  .filter(t => fuzzySearch(templateSearch, [t.name, t.config?.product_name || ""]))
+                  .map((template) => (
                   <div key={template.id} className="flex items-center justify-between p-3 border border-slate-200 rounded-lg hover:bg-slate-50 transition-colors">
                     <div className="flex flex-col">
                       <span className="text-sm font-bold text-slate-800">{template.name}</span>
@@ -2385,8 +2399,8 @@ export default function CreateBom() {
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setShowSaveTemplateDialog(false)}>Cancel</Button>
-            <Button 
-              onClick={() => handleSaveAsTemplate(newTemplateName, templateToSave?.table_data)} 
+            <Button
+              onClick={() => handleSaveAsTemplate(newTemplateName, templateToSave?.table_data)}
               disabled={!newTemplateName.trim()}
               className="bg-green-600 hover:bg-green-700 text-white font-bold"
             >
