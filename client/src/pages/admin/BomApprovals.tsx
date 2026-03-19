@@ -25,6 +25,7 @@ type BOMApproval = {
     version_number: number;
     status: string;
     created_at: string;
+    type: "bom" | "boq";
 };
 
 type BOMItem = {
@@ -276,6 +277,7 @@ export default function BomApprovals() {
                             <TableHead>Project</TableHead>
                             <TableHead>Client</TableHead>
                             <TableHead>Version</TableHead>
+                            <TableHead>Type</TableHead>
                             <TableHead>Status</TableHead>
                             <TableHead>Date</TableHead>
                             {listHasPendingActions && <TableHead className="text-center">Actions</TableHead>}
@@ -306,6 +308,11 @@ export default function BomApprovals() {
                                     <TableCell className="font-bold">{approval.project_name}</TableCell>
                                     <TableCell>{approval.project_client}</TableCell>
                                     <TableCell>V{approval.version_number}</TableCell>
+                                    <TableCell>
+                                        <Badge variant="outline" className={approval.type === 'boq' ? "bg-purple-50 text-purple-700 border-purple-200" : "bg-blue-50 text-blue-700 border-blue-200"}>
+                                            {approval.type?.toUpperCase() || 'BOM'}
+                                        </Badge>
+                                    </TableCell>
                                     <TableCell>
                                         {approval.status === "approved" ? (
                                             <Badge className="bg-green-100 text-green-700 hover:bg-green-200 border-green-200">Approved</Badge>
