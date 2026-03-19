@@ -53,6 +53,7 @@ import {
 } from "lucide-react";
 import apiFetch from "@/lib/api";
 import { useToast } from "@/hooks/use-toast";
+import { useAuth } from "@/lib/auth-context";
 
 interface PurchaseOrder {
     id: string;
@@ -74,6 +75,7 @@ interface Project {
 export default function PurchaseOrders() {
     const [, setLocation] = useLocation();
     const { toast } = useToast();
+    const { user } = useAuth();
     const [purchaseOrders, setPurchaseOrders] = useState<PurchaseOrder[]>([]);
     const [projects, setProjects] = useState<Project[]>([]);
     const [loading, setLoading] = useState(true);
@@ -108,7 +110,7 @@ export default function PurchaseOrders() {
         } catch (error) {
             toast({
                 title: "Error",
-                description: "Failed to load purchase orders.",
+                description: "Failed to load Annexures.",
                 variant: "destructive",
             });
         } finally {
@@ -125,21 +127,21 @@ export default function PurchaseOrders() {
             if (res.ok) {
                 toast({
                     title: "Deleted",
-                    description: `Purchase order ${deletingPo.po_number} has been deleted.`,
+                    description: `Annexure ${deletingPo.po_number} has been deleted.`,
                 });
                 setPurchaseOrders((prev) => prev.filter((po) => po.id !== deletingPo.id));
             } else {
                 const data = await res.json();
                 toast({
                     title: "Error",
-                    description: data.message || "Failed to delete purchase order.",
+                    description: data.message || "Failed to delete Annexure.",
                     variant: "destructive",
                 });
             }
         } catch (error) {
             toast({
                 title: "Error",
-                description: "Failed to delete purchase order.",
+                description: "Failed to delete Annexure.",
                 variant: "destructive",
             });
         } finally {
@@ -175,7 +177,7 @@ export default function PurchaseOrders() {
             
             toast({
                 title: "Deleted",
-                description: `Successfully deleted ${selectedPoIds.size} purchase orders.`,
+                description: `Successfully deleted ${selectedPoIds.size} Annexures.`,
             });
             
             setPurchaseOrders((prev) => prev.filter((po) => !selectedPoIds.has(po.id)));
@@ -184,7 +186,7 @@ export default function PurchaseOrders() {
         } catch (error) {
             toast({
                 title: "Error",
-                description: "Failed to delete some purchase orders.",
+                description: "Failed to delete some Annexures.",
                 variant: "destructive",
             });
         } finally {
@@ -294,7 +296,7 @@ export default function PurchaseOrders() {
             <Layout>
                 <div className="flex flex-col items-center justify-center min-h-[60vh]">
                     <Loader2 className="h-10 w-10 animate-spin text-primary mb-4" />
-                    <p className="text-muted-foreground">Loading purchase orders...</p>
+                    <p className="text-muted-foreground">Loading Annexures...</p>
                 </div>
             </Layout>
         );
@@ -305,7 +307,7 @@ export default function PurchaseOrders() {
             <div className="space-y-6">
                 <div className="flex justify-between items-center">
                     <div>
-                        <h1 className="text-3xl font-bold tracking-tight">Purchase Orders</h1>
+                        <h1 className="text-3xl font-bold tracking-tight">Annexures</h1>
                         <p className="text-muted-foreground">Manage and track your procurement orders.</p>
                     </div>
                 </div>
@@ -317,7 +319,7 @@ export default function PurchaseOrders() {
                                 <div className="relative flex-1">
                                     <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
                                     <Input
-                                        placeholder="Search by PO #, project, or vendor..."
+                                        placeholder="Search by Annexure No., project, or vendor..."
                                         className="pl-9 h-9"
                                         value={searchQuery}
                                         onChange={(e) => setSearchQuery(e.target.value)}
@@ -350,7 +352,7 @@ export default function PurchaseOrders() {
                                         ))}
                                     </SelectContent>
                                 </Select>
-                                {selectedPoIds.size > 0 && (
+                                {selectedPoIds.size > 0 && user?.role !== 'purchase_team' && (
                                     <Button 
                                         variant="destructive" 
                                         onClick={() => setShowBulkDeleteDialog(true)}
@@ -369,15 +371,17 @@ export default function PurchaseOrders() {
                                 <TableHeader className="bg-slate-50">
                                     <TableRow>
                                         <TableHead className="w-12 text-center border-r">
-                                            <input 
-                                                type="checkbox" 
-                                                className="w-4 h-4 rounded border-gray-300 align-middle"
-                                                checked={filteredPOs.length > 0 && selectedPoIds.size === filteredPOs.length}
-                                                onChange={toggleSelectAll}
-                                            />
+                                            {user?.role !== 'purchase_team' && (
+                                                <input 
+                                                    type="checkbox" 
+                                                    className="w-4 h-4 rounded border-gray-300 align-middle"
+                                                    checked={filteredPOs.length > 0 && selectedPoIds.size === filteredPOs.length}
+                                                    onChange={toggleSelectAll}
+                                                />
+                                            )}
                                         </TableHead>
                                         <TableHead className="w-6"></TableHead>
-                                        <TableHead className="font-bold">PO Number</TableHead>
+                                        <TableHead className="font-bold">Annexure No.</TableHead>
                                         <TableHead className="font-bold">Project</TableHead>
                                         <TableHead className="font-bold">Vendor</TableHead>
                                         <TableHead className="font-bold text-right">Amount</TableHead>
@@ -390,7 +394,7 @@ export default function PurchaseOrders() {
                                     {sortedGroupBases.length === 0 ? (
                                         <TableRow>
                                             <TableCell colSpan={9} className="text-center py-10 text-muted-foreground">
-                                                No purchase orders found.
+                                                No Annexures found.
                                             </TableCell>
                                         </TableRow>
                                     ) : (
@@ -414,12 +418,14 @@ export default function PurchaseOrders() {
                                                 <>
                                                     <TableRow key={mainPo!.id} className="hover:bg-slate-50/50 cursor-pointer group" onClick={() => setLocation(`/purchase-orders/${mainPo!.id}`)}>
                                                         <TableCell className="text-center border-r" onClick={(e) => e.stopPropagation()}>
-                                                            <input 
-                                                                type="checkbox" 
-                                                                className="w-4 h-4 rounded border-gray-300 align-middle"
-                                                                checked={selectedPoIds.has(mainPo!.id)}
-                                                                onChange={(e) => toggleSelectPo(mainPo!.id, e)}
-                                                            />
+                                                            {user?.role !== 'purchase_team' && (
+                                                                <input 
+                                                                    type="checkbox" 
+                                                                    className="w-4 h-4 rounded border-gray-300 align-middle"
+                                                                    checked={selectedPoIds.has(mainPo!.id)}
+                                                                    onChange={(e) => toggleSelectPo(mainPo!.id, e)}
+                                                                />
+                                                            )}
                                                         </TableCell>
                                                         <TableCell className="p-0 text-center" onClick={(e) => hasMultiple && toggleGroup(base, e)}>
                                                             {hasMultiple && (
@@ -443,17 +449,19 @@ export default function PurchaseOrders() {
                                                         </TableCell>
                                                         <TableCell className="text-right">
                                                             <div className="flex items-center justify-end gap-1">
-                                                                <Button
-                                                                    variant="ghost"
-                                                                    size="sm"
-                                                                    className="h-8 w-8 p-0 text-red-500 hover:text-red-700 hover:bg-red-50"
-                                                                    onClick={(e) => {
-                                                                        e.stopPropagation();
-                                                                        setDeletingPo(mainPo!);
-                                                                    }}
-                                                                >
-                                                                    <Trash2 className="h-4 w-4" />
-                                                                </Button>
+                                                                {user?.role !== 'purchase_team' && (
+                                                                    <Button
+                                                                        variant="ghost"
+                                                                        size="sm"
+                                                                        className="h-8 w-8 p-0 text-red-500 hover:text-red-700 hover:bg-red-50"
+                                                                        onClick={(e) => {
+                                                                            e.stopPropagation();
+                                                                            setDeletingPo(mainPo!);
+                                                                        }}
+                                                                    >
+                                                                        <Trash2 className="h-4 w-4" />
+                                                                    </Button>
+                                                                )}
                                                                 <Button variant="ghost" size="sm" className="h-8 w-8 p-0">
                                                                     <ChevronRight className="h-4 w-4" />
                                                                 </Button>
@@ -465,12 +473,14 @@ export default function PurchaseOrders() {
                                                     {isExpanded && subPos.map((subPo) => (
                                                         <TableRow key={subPo.id} className="bg-slate-50/50 hover:bg-slate-100/50 cursor-pointer border-l-4 border-l-slate-200" onClick={() => setLocation(`/purchase-orders/${subPo.id}`)}>
                                                             <TableCell className="text-center border-r" onClick={(e) => e.stopPropagation()}>
-                                                                <input 
-                                                                    type="checkbox" 
-                                                                    className="w-4 h-4 rounded border-gray-300 align-middle ml-2"
-                                                                    checked={selectedPoIds.has(subPo.id)}
-                                                                    onChange={(e) => toggleSelectPo(subPo.id, e)}
-                                                                />
+                                                                {user?.role !== 'purchase_team' && (
+                                                                    <input 
+                                                                        type="checkbox" 
+                                                                        className="w-4 h-4 rounded border-gray-300 align-middle ml-2"
+                                                                        checked={selectedPoIds.has(subPo.id)}
+                                                                        onChange={(e) => toggleSelectPo(subPo.id, e)}
+                                                                    />
+                                                                )}
                                                             </TableCell>
                                                             <TableCell></TableCell>
                                                             <TableCell className="pl-8 text-sm text-slate-600 font-medium italic">
@@ -489,17 +499,19 @@ export default function PurchaseOrders() {
                                                                 {new Date(subPo.created_at).toLocaleDateString()}
                                                             </TableCell>
                                                             <TableCell className="text-right">
-                                                                <Button
-                                                                    variant="ghost"
-                                                                    size="sm"
-                                                                    className="h-7 w-7 p-0 text-red-400 hover:text-red-700"
-                                                                    onClick={(e) => {
-                                                                        e.stopPropagation();
-                                                                        setDeletingPo(subPo);
-                                                                    }}
-                                                                >
-                                                                    <Trash2 className="h-3.5 w-3.5" />
-                                                                </Button>
+                                                                {user?.role !== 'purchase_team' && (
+                                                                    <Button
+                                                                        variant="ghost"
+                                                                        size="sm"
+                                                                        className="h-7 w-7 p-0 text-red-400 hover:text-red-700"
+                                                                        onClick={(e) => {
+                                                                            e.stopPropagation();
+                                                                            setDeletingPo(subPo);
+                                                                        }}
+                                                                    >
+                                                                        <Trash2 className="h-3.5 w-3.5" />
+                                                                    </Button>
+                                                                )}
                                                             </TableCell>
                                                         </TableRow>
                                                     ))}
@@ -518,9 +530,9 @@ export default function PurchaseOrders() {
             <AlertDialog open={!!deletingPo} onOpenChange={(open) => { if (!open) setDeletingPo(null); }}>
                 <AlertDialogContent>
                     <AlertDialogHeader>
-                        <AlertDialogTitle>Delete Purchase Order</AlertDialogTitle>
+                        <AlertDialogTitle>Delete Annexure</AlertDialogTitle>
                         <AlertDialogDescription>
-                            Are you sure you want to delete <strong>{deletingPo?.po_number}</strong>? This will permanently remove the purchase order and all its items. This action cannot be undone.
+                            Are you sure you want to delete Annexure No. <strong>{deletingPo?.po_number}</strong>? This will permanently remove the purchase order and all its items. This action cannot be undone.
                         </AlertDialogDescription>
                     </AlertDialogHeader>
                     <AlertDialogFooter>
@@ -539,9 +551,9 @@ export default function PurchaseOrders() {
             <AlertDialog open={showBulkDeleteDialog} onOpenChange={setShowBulkDeleteDialog}>
                 <AlertDialogContent>
                     <AlertDialogHeader>
-                        <AlertDialogTitle>Delete Multiple Purchase Orders</AlertDialogTitle>
+                        <AlertDialogTitle>Delete Multiple Annexures</AlertDialogTitle>
                         <AlertDialogDescription>
-                            Are you sure you want to delete <strong>{selectedPoIds.size}</strong> purchase orders? This will permanently remove the orders and all their associated items. This action cannot be undone.
+                            Are you sure you want to delete <strong>{selectedPoIds.size}</strong> Annexures? This will permanently remove the orders and all their associated items. This action cannot be undone.
                         </AlertDialogDescription>
                     </AlertDialogHeader>
                     <AlertDialogFooter>
