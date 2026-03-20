@@ -19,7 +19,7 @@ export default function RaisePORequest() {
 
     const [projectName, setProjectName] = useState("");
     const [department, setDepartment] = useState<string>(user?.department || "");
-    const [items, setItems] = useState([{ item: "", category: "", subcategory: "", unit: "", qty: "" as number | "", remarks: "" }]);
+    const [items, setItems] = useState([{ material_id: "" as string, item: "", category: "", subcategory: "", unit: "", qty: "" as number | "", remarks: "" }]);
     const [isSubmitting, setIsSubmitting] = useState(false);
 
     useEffect(() => {
@@ -52,7 +52,7 @@ export default function RaisePORequest() {
     const materials = materialsData?.materials || [];
 
     const handleAddItem = () => {
-        setItems([...items, { item: "", category: "", subcategory: "", unit: "", qty: "", remarks: "" }]);
+        setItems([...items, { material_id: "", item: "", category: "", subcategory: "", unit: "", qty: "", remarks: "" }]);
     };
 
     const handleRemoveItem = (index: number) => {
@@ -68,6 +68,7 @@ export default function RaisePORequest() {
             if (selectedMat) {
                 newItems[index] = {
                     ...newItems[index],
+                    material_id: value,
                     item: selectedMat.name,
                     category: selectedMat.categoryId || "",
                     subcategory: selectedMat.subcategoryId || "",
@@ -181,7 +182,7 @@ export default function RaisePORequest() {
                         <CardHeader className="flex flex-row items-center justify-between">
                             <div>
                                 <CardTitle className="text-lg">Item Details</CardTitle>
-                                <CardDescription>Add the materials you need for the PO.</CardDescription>
+                                <CardDescription>Add the materials you need for the Annexure.</CardDescription>
                             </div>
                             <Button type="button" onClick={handleAddItem} variant="outline" size="sm" className="bg-blue-50 text-blue-700 hover:bg-blue-100 border-blue-200">
                                 <Plus className="h-4 w-4 mr-2" /> Add Item

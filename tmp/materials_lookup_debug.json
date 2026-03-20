@@ -1,0 +1,16 @@
+[
+  {
+    "id": "191a1ea3-3f8d-4c1e-8a4c-fc07075e5dee",
+    "name": "testing demo",
+    "category": null,
+    "subcategory": null,
+    "unit": "set"
+  },
+  {
+    "id": "13f1d069-d3fb-411f-8bae-f8f3ec49f073",
+    "name": "xyz item -testing",
+    "category": null,
+    "subcategory": null,
+    "unit": "pcs"
+  }
+]

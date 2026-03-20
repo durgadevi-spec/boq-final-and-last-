@@ -375,6 +375,68 @@ export async function registerRoutes(
     console.warn('[db] Could not update boq_projects/versions columns (continuing):', (err as any)?.message || err);
   }
 
+  // Ensure Sketch a Plan tables exist
+  try {
+    await query(`
+      CREATE TABLE IF NOT EXISTS sketch_plans (
+        id VARCHAR(100) PRIMARY KEY,
+        name VARCHAR(255) NOT NULL,
+        project_id VARCHAR(100),
+        location TEXT,
+        plan_date DATE,
+        created_by VARCHAR(100),
+        created_at TIMESTAMP DEFAULT NOW(),
+        updated_at TIMESTAMP DEFAULT NOW(),
+        FOREIGN KEY (project_id) REFERENCES boq_projects(id) ON DELETE SET NULL
+      )
+    `);
+    await query(`
+      CREATE TABLE IF NOT EXISTS sketch_plan_items (
+        id VARCHAR(100) PRIMARY KEY,
+        plan_id VARCHAR(100) NOT NULL,
+        item_name VARCHAR(255) NOT NULL,
+        description TEXT,
+        length DECIMAL(10, 2),
+        width DECIMAL(10, 2),
+        height DECIMAL(10, 2),
+        qty DECIMAL(10, 2),
+        unit VARCHAR(50),
+        remarks TEXT,
+        created_at TIMESTAMP DEFAULT NOW(),
+        FOREIGN KEY (plan_id) REFERENCES sketch_plans(id) ON DELETE CASCADE
+      )
+    `);
+    await query(`
+      CREATE TABLE IF NOT EXISTS sketch_plan_images (
+        id VARCHAR(100) PRIMARY KEY,
+        plan_id VARCHAR(100) NOT NULL,
+        item_id VARCHAR(100),
+        image_url TEXT NOT NULL,
+        created_at TIMESTAMP DEFAULT NOW(),
+        FOREIGN KEY (plan_id) REFERENCES sketch_plans(id) ON DELETE CASCADE
+      )
+    `);
+    await query(`
+      CREATE TABLE IF NOT EXISTS sketch_templates (
+        id VARCHAR(100) PRIMARY KEY,
+        name VARCHAR(255) NOT NULL,
+        template_data JSONB NOT NULL,
+        created_at TIMESTAMP DEFAULT NOW(),
+        updated_at TIMESTAMP DEFAULT NOW()
+      )
+    `);
+    console.log("[db] Sketch a Plan tables verified/created");
+  } catch (err) {
+    console.warn("[db] Could not create Sketch a Plan tables:", (err as any)?.message || err);
+  }
+
+  // Add new columns for enhanced Sketch a Plan items
+  try {
+    await query(`ALTER TABLE sketch_plan_items ADD COLUMN IF NOT EXISTS material_id UUID`);
+    await query(`ALTER TABLE sketch_plan_items ADD COLUMN IF NOT EXISTS dimension_unit VARCHAR(10) DEFAULT 'feet'`);
+  } catch (err) {
+    console.warn("[db] Could not add enhanced columns to sketch_plan_items:", (err as any)?.message || err);
+  }
 
   // Ensure boq_items table exists (stores BOQ line items captured from estimators)
   try {
@@ -528,6 +590,10 @@ export async function registerRoutes(
     // Ensure hsn_code and sac_code columns exist (for upgrades from older schema)
     await query(`ALTER TABLE purchase_order_items ADD COLUMN IF NOT EXISTS hsn_code VARCHAR(50)`);
     await query(`ALTER TABLE purchase_order_items ADD COLUMN IF NOT EXISTS sac_code VARCHAR(50)`);
+    await query(`ALTER TABLE purchase_order_items ADD COLUMN IF NOT EXISTS material_id VARCHAR(255)`);
+    await query(`ALTER TABLE purchase_order_items ADD COLUMN IF NOT EXISTS original_qty NUMERIC(10, 3)`);
+    await query(`ALTER TABLE purchase_order_items ADD COLUMN IF NOT EXISTS qty_modified BOOLEAN DEFAULT FALSE`);
+    await query(`ALTER TABLE purchase_order_items ADD COLUMN IF NOT EXISTS is_synced BOOLEAN DEFAULT FALSE`);
     console.log("[db] purchase_order_items table verified/created");
   } catch (err: unknown) {
     console.warn("[db] Could not create purchase_order_items table:", (err as any)?.message || err);
@@ -1505,6 +1571,62 @@ export async function registerRoutes(
       }
     },
   );
+
+
+  // ====== SKETCH A PLAN ROUTES (Moved for route precedence) ======
+
+  // GET /api/materials/search - Search materials, templates, and products
+  app.get("/api/materials/search", authMiddleware, async (req: Request, res: Response) => {
+    try {
+      const { q } = req.query;
+      const hasQuery = q && typeof q === "string" && q.trim().length > 0;
+      const searchPattern = hasQuery ? `%${q}%` : null;
+
+      let materialsRows: any[] = [];
+      let templatesRows: any[] = [];
+      let productsRows: any[] = [];
+
+      // Query materials table (independent try/catch)
+      try {
+        const r = hasQuery
+          ? await query(`SELECT id::text, name, COALESCE(code,'') as code, rate, unit, category, 'Material' as type FROM materials WHERE name ILIKE $1 OR COALESCE(code,'') ILIKE $1 ORDER BY name ASC LIMIT 50`, [searchPattern])
+          : await query(`SELECT id::text, name, COALESCE(code,'') as code, rate, unit, category, 'Material' as type FROM materials ORDER BY name ASC LIMIT 50`);
+        materialsRows = r.rows || [];
+        console.log(`[api/search] materials: ${materialsRows.length}`);
+      } catch (e) {
+        console.error("[api/search] materials query error:", e);
+      }
+
+      // Query material_templates table (independent try/catch)
+      try {
+        const r = hasQuery
+          ? await query(`SELECT id::text, name, COALESCE(code,'') as code, null as rate, null as unit, COALESCE(category,'') as category, 'Template' as type FROM material_templates WHERE name ILIKE $1 OR COALESCE(code,'') ILIKE $1 ORDER BY name ASC LIMIT 50`, [searchPattern])
+          : await query(`SELECT id::text, name, COALESCE(code,'') as code, null as rate, null as unit, COALESCE(category,'') as category, 'Template' as type FROM material_templates ORDER BY name ASC LIMIT 50`);
+        templatesRows = r.rows || [];
+        console.log(`[api/search] templates: ${templatesRows.length}`);
+      } catch (e) {
+        console.error("[api/search] material_templates query error:", e);
+      }
+
+      // Query products table (independent try/catch)
+      try {
+        const r = hasQuery
+          ? await query(`SELECT id::text, name, null as code, null as rate, null as unit, COALESCE(subcategory,'') as category, 'Product' as type FROM products WHERE name ILIKE $1 ORDER BY name ASC LIMIT 50`, [searchPattern])
+          : await query(`SELECT id::text, name, null as code, null as rate, null as unit, COALESCE(subcategory,'') as category, 'Product' as type FROM products ORDER BY name ASC LIMIT 50`);
+        productsRows = r.rows || [];
+        console.log(`[api/search] products: ${productsRows.length}`);
+      } catch (e) {
+        console.error("[api/search] products query error:", e);
+      }
+
+      const combined = [...materialsRows, ...templatesRows, ...productsRows];
+      console.log(`[api/search] total: ${combined.length} results for "${q || '(all)'}"`);
+      res.json({ materials: combined });
+    } catch (err) {
+      console.error("GET /api/materials/search error", err);
+      res.status(500).json({ message: "Failed to search materials" });
+    }
+  });
 
   // GET /api/materials - list materials
   app.get("/api/materials", async (_req, res) => {
@@ -6724,18 +6846,21 @@ export async function registerRoutes(
             totalAmount += amount;
 
             await query(
-              `INSERT INTO purchase_order_items (po_id, item, description, unit, qty, rate, amount, hsn_code, sac_code) 
-               VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
+              `INSERT INTO purchase_order_items (po_id, material_id, item, description, unit, qty, original_qty, rate, amount, hsn_code, sac_code, qty_modified) 
+               VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)`,
               [
                 poId,
+                item.material_id || item.materialId || item.id || null,
                 item.item || item.material_name || item.title || item.name || "Unknown Item",
                 item.description || item.location || null,
                 item.unit || null,
                 qty,
+                qty, // original_qty starts same as qty
                 rate,
                 amount,
                 item.hsn_code || item.hsn_sac_code || null,
-                item.sac_code || null
+                item.sac_code || null,
+                false // qty_modified starts false
               ],
             );
           }
@@ -6958,9 +7083,9 @@ export async function registerRoutes(
       for (const fItem of finalItems) {
         await query(
           `INSERT INTO purchase_order_items 
-           (po_id, material_id, item, description, unit, qty, rate, amount) 
-           VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
-          [newPo.id, fItem.material_id, fItem.item, fItem.description, fItem.unit, fItem.qty, fItem.rate, fItem.amount]
+           (po_id, material_id, item, description, unit, qty, original_qty, rate, amount, qty_modified) 
+           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)`,
+          [newPo.id, fItem.material_id, fItem.item, fItem.description, fItem.unit, fItem.qty, fItem.qty, fItem.rate, fItem.amount, false]
         );
       }
 
@@ -7073,10 +7198,27 @@ export async function registerRoutes(
 
       // 5. Insert new items
       for (const item of items) {
+        // Find if this item existed in the previous PO
+        const originalItem = existingItems.find((ei: any) => 
+          (ei.id === item.id) || 
+          (ei.material_id && ei.material_id === item.material_id) ||
+          ((ei.item || ei.item_name) === (item.item || item.item_name) && ei.description === item.description)
+        );
+
+        let originalQty = parseFloat(item.qty);
+        let qtyModified = false;
+
+        if (originalItem) {
+          // Carry forward the FIRST original_qty recorded in the chain
+          originalQty = parseFloat(originalItem.original_qty || originalItem.qty);
+          // qty_modified is true if current qty differs from original_qty
+          qtyModified = parseFloat(item.qty) !== originalQty;
+        }
+
         await query(
-          `INSERT INTO purchase_order_items (po_id, material_id, item, description, unit, qty, rate, amount, hsn_code, sac_code) 
-           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)`,
-          [newPo.id, item.material_id || item.id || null, item.item || item.item_name, item.description || null, item.unit || null, item.qty, item.rate, item.amount, item.hsn_code || null, item.sac_code || null]
+          `INSERT INTO purchase_order_items (po_id, material_id, item, description, unit, qty, original_qty, rate, amount, hsn_code, sac_code, qty_modified) 
+           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)`,
+          [newPo.id, item.material_id || item.id || null, item.item || item.item_name, item.description || null, item.unit || null, item.qty, originalQty, item.rate, item.amount, item.hsn_code || null, item.sac_code || null, qtyModified]
         );
       }
 
@@ -7096,10 +7238,14 @@ export async function registerRoutes(
         const defPo = defPoRes.rows[0];
         
         for (const ditem of deletedItems) {
+            const originalItem = existingItems.find((ei: any) => ei.id === ditem.id);
+            const originalQty = originalItem ? parseFloat(originalItem.original_qty || originalItem.qty) : parseFloat(ditem.qty);
+            const qtyModified = originalItem ? (parseFloat(ditem.qty) !== originalQty) : false;
+
             await query(
-              `INSERT INTO purchase_order_items (po_id, material_id, item, description, unit, qty, rate, amount, hsn_code, sac_code) 
-               VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)`,
-              [defPo.id, ditem.material_id || ditem.id || null, ditem.item || ditem.item_name, ditem.description || null, ditem.unit || null, ditem.qty, ditem.rate, ditem.amount, ditem.hsn_code || null, ditem.sac_code || null]
+              `INSERT INTO purchase_order_items (po_id, material_id, item, description, unit, qty, original_qty, rate, amount, hsn_code, sac_code, qty_modified) 
+               VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)`,
+              [defPo.id, ditem.material_id || ditem.id || null, ditem.item || ditem.item_name, ditem.description || null, ditem.unit || null, ditem.qty, originalQty, ditem.rate, ditem.amount, ditem.hsn_code || null, ditem.sac_code || null, qtyModified]
             );
         }
       }
@@ -7322,11 +7468,13 @@ export async function registerRoutes(
       // We exclude 'Deferred' POs as they are usually budget-split, not increases
       const result = await query(
         `SELECT DISTINCT ON (material_id) 
-           material_id, qty, po_id, p.po_number, p.updated_at
+           material_id, qty, original_qty, po_id, p.po_number, p.updated_at
          FROM purchase_order_items poi
          JOIN purchase_orders p ON poi.po_id = p.id
          WHERE material_id = ANY($1) 
            AND p.status = 'approved'
+           AND poi.qty_modified = true
+           AND (poi.is_synced = false OR poi.is_synced IS NULL)
            AND p.po_number NOT LIKE '%Deferred%'
          ORDER BY material_id, p.updated_at DESC`,
         [ids]
@@ -7336,6 +7484,7 @@ export async function registerRoutes(
       result.rows.forEach((row: any) => {
         increases[row.material_id] = {
           qty: parseFloat(row.qty),
+          originalQty: parseFloat(row.original_qty || row.qty),
           poNumber: row.po_number,
           poId: row.po_id,
           updatedAt: row.updated_at
@@ -7352,41 +7501,55 @@ export async function registerRoutes(
   // POST /api/products/update-template-qty - Update product template with new quantity
   app.post("/api/products/update-template-qty", authMiddleware, async (req: Request, res: Response) => {
     try {
-      const { productId, materialId, newQty } = req.body;
-      if (!productId || !materialId || newQty === undefined) {
-        return res.status(400).json({ message: "productId, materialId, and newQty are required" });
+      const { productId, materialId, newQty, originalQty, poId } = req.body;
+      if (!productId || !materialId || newQty === undefined || originalQty === undefined) {
+        return res.status(400).json({ message: "productId, materialId, newQty, and originalQty are required" });
+      }
+
+      const factor = parseFloat(newQty) / parseFloat(originalQty);
+      if (isNaN(factor) || factor <= 0) {
+        return res.status(400).json({ message: "Invalid quantity values for calculation" });
       }
 
       await query("BEGIN");
       try {
         // 1. Update product_step3_config_items
-        // We find the config for the product first
         const configRes = await query(`SELECT id FROM product_step3_config WHERE product_id = $1 LIMIT 1`, [productId]);
         if (configRes.rows.length > 0) {
           const configId = configRes.rows[0].id;
           await query(
             `UPDATE product_step3_config_items 
-             SET qty = $1, base_qty = $1
+             SET qty = qty * $1, base_qty = base_qty * $1
              WHERE step3_config_id = $2 AND material_id = $3`,
-            [newQty, configId, materialId]
+            [factor, configId, materialId]
           );
         }
 
-        // 2. Update step11_product_items (Product Master)
-        // Find the latest approved version for this product
+        // 2. Update step11_product_items (actual items in specific BOM versions)
+        // Find the latest version for this product
         const step11Res = await query(`SELECT id FROM step11_products WHERE product_id = $1 ORDER BY updated_at DESC LIMIT 1`, [productId]);
         if (step11Res.rows.length > 0) {
           const step11Id = step11Res.rows[0].id;
           await query(
             `UPDATE step11_product_items 
-             SET qty = $1
+             SET qty = qty * $1
              WHERE step11_product_id = $2 AND material_id = $3`,
-            [newQty, step11Id, materialId]
+            [factor, step11Id, materialId]
+          );
+        }
+
+        // 3. Mark the PO item as synced to avoid duplicate prompts
+        if (poId) {
+          await query(
+            `UPDATE purchase_order_items 
+             SET is_synced = true 
+             WHERE po_id = $1 AND material_id = $2`,
+            [poId, materialId]
           );
         }
 
         await query("COMMIT");
-        res.json({ message: "Product template updated successfully" });
+        res.json({ message: "Product template and BOM quantities updated successfully", factor });
       } catch (err) {
         await query("ROLLBACK");
         throw err;
@@ -7648,6 +7811,210 @@ ${list.rows.map((row: any) => `- ${row.name}`).join('\n')}`;
     } catch (err) {
       console.error('/api/my-permissions error:', err);
       res.status(500).json({ message: 'Failed to load permissions' });
+    }
+  });
+
+
+
+  // GET /api/sketch-plans - List all sketch plans
+  app.get("/api/sketch-plans", authMiddleware, async (req: Request, res: Response) => {
+    try {
+      const result = await query(
+        `SELECT sp.*, p.name as project_name 
+         FROM sketch_plans sp 
+         LEFT JOIN boq_projects p ON sp.project_id = p.id 
+         ORDER BY sp.created_at DESC`
+      );
+      res.json({ plans: result.rows || [] });
+    } catch (err) {
+      console.error("GET /api/sketch-plans error", err);
+      res.status(500).json({ message: "Failed to fetch sketch plans" });
+    }
+  });
+
+  // GET /api/sketch-plans/:id - Get plan details
+  app.get("/api/sketch-plans/:id", authMiddleware, async (req: Request, res: Response) => {
+    try {
+      const { id } = req.params;
+      const planRes = await query("SELECT * FROM sketch_plans WHERE id = $1", [id]);
+      if (planRes.rows.length === 0) {
+        return res.status(404).json({ message: "Plan not found" });
+      }
+
+      const itemsRes = await query("SELECT * FROM sketch_plan_items WHERE plan_id = $1 ORDER BY created_at ASC", [id]);
+      const imagesRes = await query("SELECT * FROM sketch_plan_images WHERE plan_id = $1", [id]);
+
+      res.json({
+        plan: planRes.rows[0],
+        items: itemsRes.rows || [],
+        images: imagesRes.rows || []
+      });
+    } catch (err) {
+      console.error("GET /api/sketch-plans/:id error", err);
+      res.status(500).json({ message: "Failed to fetch plan details" });
+    }
+  });
+
+  // POST /api/sketch-plans - Create a new sketch plan
+  app.post("/api/sketch-plans", authMiddleware, async (req: Request, res: Response) => {
+    try {
+      const { name, project_id, location, plan_date, items, images } = req.body;
+      const id = `skp-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+      const created_by = (req as any).user?.id || null;
+
+      await query(
+        `INSERT INTO sketch_plans (id, name, project_id, location, plan_date, created_by) 
+         VALUES ($1, $2, $3, $4, $5, $6)`,
+        [id, name, project_id || null, location || null, plan_date || null, created_by]
+      );
+
+      if (items && Array.isArray(items)) {
+        for (const item of items) {
+          const itemId = `ski-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+          await query(
+            `INSERT INTO sketch_plan_items (id, plan_id, item_name, description, length, width, height, qty, unit, remarks, material_id, dimension_unit) 
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)`,
+            [itemId, id, item.item_name, item.description, item.length, item.width, item.height, item.qty, item.unit, item.remarks, item.material_id || null, item.dimension_unit || 'feet']
+          );
+          
+          // Row-level images
+          if (item.images && Array.isArray(item.images)) {
+             for (const imgUrl of item.images) {
+                const imgId = `img-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+                await query(
+                   `INSERT INTO sketch_plan_images (id, plan_id, item_id, image_url) VALUES ($1, $2, $3, $4)`,
+                   [imgId, id, itemId, imgUrl]
+                );
+             }
+          }
+        }
+      }
+
+      // Plan-level images (legacy support)
+      if (images && Array.isArray(images)) {
+        for (const img of images) {
+          if (img.item_id) continue; // Already handled
+          const imgId = `img-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+          await query(
+            `INSERT INTO sketch_plan_images (id, plan_id, item_id, image_url) 
+             VALUES ($1, $2, $3, $4)`,
+            [imgId, id, img.item_id || null, img.image_url]
+          );
+        }
+      }
+
+      res.json({ id, message: "Sketch plan created successfully" });
+    } catch (err) {
+      console.error("POST /api/sketch-plans error", err);
+      res.status(500).json({ message: "Failed to create sketch plan" });
+    }
+  });
+
+  // PUT /api/sketch-plans/:id - Update sketch plan
+  app.put("/api/sketch-plans/:id", authMiddleware, async (req: Request, res: Response) => {
+    try {
+      const { id } = req.params;
+      const { name, project_id, location, plan_date, items, images } = req.body;
+
+      await query(
+        `UPDATE sketch_plans SET name = $1, project_id = $2, location = $3, plan_date = $4, updated_at = NOW() WHERE id = $5`,
+        [name, project_id || null, location || null, plan_date || null, id]
+      );
+
+      // Delete old items and images (simple update strategy)
+      await query("DELETE FROM sketch_plan_items WHERE plan_id = $1", [id]);
+      await query("DELETE FROM sketch_plan_images WHERE plan_id = $1", [id]);
+
+      if (items && Array.isArray(items)) {
+        for (const item of items) {
+          const itemId = `ski-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+          await query(
+            `INSERT INTO sketch_plan_items (id, plan_id, item_name, description, length, width, height, qty, unit, remarks, material_id, dimension_unit) 
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)`,
+            [itemId, id, item.item_name, item.description, item.length, item.width, item.height, item.qty, item.unit, item.remarks, item.material_id || null, item.dimension_unit || 'feet']
+          );
+
+          // Row-level images
+          if (item.images && Array.isArray(item.images)) {
+             for (const imgUrl of item.images) {
+                const imgId = `img-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+                await query(
+                   `INSERT INTO sketch_plan_images (id, plan_id, item_id, image_url) VALUES ($1, $2, $3, $4)`,
+                   [imgId, id, itemId, imgUrl]
+                );
+             }
+          }
+        }
+      }
+
+      // Plan-level images (legacy)
+      if (images && Array.isArray(images)) {
+        for (const img of images) {
+          if (img.item_id) continue;
+          const imgId = `img-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+          await query(
+            `INSERT INTO sketch_plan_images (id, plan_id, item_id, image_url) 
+             VALUES ($1, $2, $3, $4)`,
+            [imgId, id, img.item_id || null, img.image_url]
+          );
+        }
+      }
+
+      res.json({ message: "Sketch plan updated successfully" });
+    } catch (err) {
+      console.error("PUT /api/sketch-plans/:id error", err);
+      res.status(500).json({ message: "Failed to update sketch plan" });
+    }
+  });
+
+  // DELETE /api/sketch-plans/:id - Delete sketch plan
+  app.delete("/api/sketch-plans/:id", authMiddleware, async (req: Request, res: Response) => {
+    try {
+      const { id } = req.params;
+      await query("DELETE FROM sketch_plans WHERE id = $1", [id]);
+      res.json({ message: "Sketch plan deleted" });
+    } catch (err) {
+      console.error("DELETE /api/sketch-plans/:id error", err);
+      res.status(500).json({ message: "Failed to delete sketch plan" });
+    }
+  });
+
+  // GET /api/sketch-templates - List templates
+  app.get("/api/sketch-templates", authMiddleware, async (req: Request, res: Response) => {
+    try {
+      const result = await query("SELECT * FROM sketch_templates ORDER BY created_at DESC");
+      res.json({ templates: result.rows || [] });
+    } catch (err) {
+      console.error("GET /api/sketch-templates error", err);
+      res.status(500).json({ message: "Failed to fetch templates" });
+    }
+  });
+
+  // POST /api/sketch-templates - Create template
+  app.post("/api/sketch-templates", authMiddleware, async (req: Request, res: Response) => {
+    try {
+      const { name, template_data } = req.body;
+      const id = `skt-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+      await query(
+        `INSERT INTO sketch_templates (id, name, template_data) VALUES ($1, $2, $3)`,
+        [id, name, JSON.stringify(template_data)]
+      );
+      res.json({ id, message: "Template saved" });
+    } catch (err) {
+      console.error("POST /api/sketch-templates error", err);
+      res.status(500).json({ message: "Failed to save template" });
+    }
+  });
+
+  // DELETE /api/sketch-templates/:id - Delete template
+  app.delete("/api/sketch-templates/:id", authMiddleware, async (req: Request, res: Response) => {
+    try {
+      const { id } = req.params;
+      await query("DELETE FROM sketch_templates WHERE id = $1", [id]);
+      res.json({ message: "Template deleted" });
+    } catch (err) {
+      console.error("DELETE /api/sketch-templates/:id error", err);
+      res.status(500).json({ message: "Failed to delete template" });
     }
   });
 

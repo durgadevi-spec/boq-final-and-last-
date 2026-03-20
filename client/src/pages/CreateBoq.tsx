@@ -1349,12 +1349,14 @@ export default function CreateBom() {
           materialLines.forEach(ml => {
             const mId = ml.id || ml.materialId;
             const inc = increases[mId];
-            if (inc && inc.qty > ml.baseQty) {
+            if (inc) {
               detectedIncreases.push({
                 materialId: mId,
-                name: ml.name,
-                templateQty: ml.baseQty,
-                poQty: inc.qty,
+                name: ml.materialName || ml.name || "Unknown",
+                templateQty: inc.originalQty, // Use original qty from PO for "from" label
+                poQty: inc.qty,               // Use current qty from PO for "to" label
+                originalQty: inc.originalQty,
+                poId: inc.poId,
                 poNumber: inc.poNumber
               });
             }
@@ -2275,15 +2277,18 @@ export default function CreateBom() {
                         body: JSON.stringify({
                           productId: updatedTd.product_id,
                           materialId: inc.materialId,
-                          newQty: inc.poQty
+                          newQty: inc.poQty,
+                          originalQty: inc.originalQty,
+                          poId: inc.poId
                         })
                       });
 
-                      // Update local materialLines
+                      // Update local materialLines using factor
                       if (updatedTd.materialLines) {
+                        const factor = parseFloat(inc.poQty) / parseFloat(inc.originalQty);
                         updatedTd.materialLines = updatedTd.materialLines.map((ml: any) =>
                           (ml.id === inc.materialId || ml.materialId === inc.materialId)
-                            ? { ...ml, baseQty: inc.poQty }
+                            ? { ...ml, baseQty: ml.baseQty * factor }
                             : ml
                         );
                       }
@@ -2341,23 +2346,23 @@ export default function CreateBom() {
                 {bomTemplates
                   .filter(t => fuzzySearch(templateSearch, [t.name, t.config?.product_name || ""]))
                   .map((template) => (
-                  <div key={template.id} className="flex items-center justify-between p-3 border border-slate-200 rounded-lg hover:bg-slate-50 transition-colors">
-                    <div className="flex flex-col">
-                      <span className="text-sm font-bold text-slate-800">{template.name}</span>
-                      <span className="text-[10px] text-slate-500 uppercase font-medium">
-                        {template.config.product_name || "Custom Product"} • Created {new Date(template.created_at).toLocaleDateString()}
-                      </span>
+                    <div key={template.id} className="flex items-center justify-between p-3 border border-slate-200 rounded-lg hover:bg-slate-50 transition-colors">
+                      <div className="flex flex-col">
+                        <span className="text-sm font-bold text-slate-800">{template.name}</span>
+                        <span className="text-[10px] text-slate-500 uppercase font-medium">
+                          {template.config.product_name || "Custom Product"} • Created {new Date(template.created_at).toLocaleDateString()}
+                        </span>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <Button variant="outline" size="sm" onClick={() => handleApplyTemplate(template)} className="h-8 text-xs font-bold">
+                          Apply
+                        </Button>
+                        <Button variant="ghost" size="sm" onClick={() => handleDeleteTemplate(template.id)} className="h-8 w-8 p-0 text-slate-400 hover:text-red-600">
+                          <Trash2 className="h-4 w-4" />
+                        </Button>
+                      </div>
                     </div>
-                    <div className="flex items-center gap-2">
-                      <Button variant="outline" size="sm" onClick={() => handleApplyTemplate(template)} className="h-8 text-xs font-bold">
-                        Apply
-                      </Button>
-                      <Button variant="ghost" size="sm" onClick={() => handleDeleteTemplate(template.id)} className="h-8 w-8 p-0 text-slate-400 hover:text-red-600">
-                        <Trash2 className="h-4 w-4" />
-                      </Button>
-                    </div>
-                  </div>
-                ))}
+                  ))}
               </div>
             )}
           </div>

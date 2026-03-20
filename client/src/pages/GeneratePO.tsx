@@ -1,6 +1,6 @@
 import { useEffect, useState, useRef, useCallback } from "react";
 import { Reorder, useDragControls } from "framer-motion";
-import { ChevronUp, ChevronDown, Loader2, CheckCircle2, XCircle, Lock, History, Clock, Briefcase, MapPin, IndianRupee, AlertCircle, FileText, GripVertical } from "lucide-react";
+import { ChevronUp, ChevronDown, Loader2, CheckCircle2, XCircle, Lock, History, Clock, Briefcase, MapPin, IndianRupee, AlertCircle, FileText, GripVertical, Plus } from "lucide-react";
 import { Layout } from "@/components/layout/Layout";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -11,6 +11,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
 import { useLocation } from "wouter";
 import { useToast } from "@/hooks/use-toast";
+import { useAuth } from "@/lib/auth-context";
 import apiFetch from "@/lib/api";
 import { computeBoq, UnitType } from "@/lib/boqCalc";
 import { getEstimatorTypeFromProduct } from "@/lib/estimatorUtils";
@@ -142,7 +143,7 @@ function VersionStatusBanner({ version }: { version: BOMVersion }) {
 
 function BoqItemRow({ item, itemIdx, boqItem, tableData, isEngineBased, isVersionSubmitted,
   getEditedValue, updateEditedField, handleDeleteRow, checkBudgetEarly, handleSaveProject,
-  isDraggable, onDragStart, onDragOver, onDrop, isDragOver }: {
+  isDraggable, onDragStart, onDragOver, onDrop, isDragOver, isPurchaseTeam }: {
     item: any; itemIdx: number; boqItem: BOMItem; tableData: any; isEngineBased: boolean;
     isVersionSubmitted: boolean; getEditedValue: (k: string, f: string, v: any) => any;
     updateEditedField: (k: string, f: string, v: any) => void;
@@ -152,6 +153,7 @@ function BoqItemRow({ item, itemIdx, boqItem, tableData, isEngineBased, isVersio
     isDraggable?: boolean; onDragStart?: () => void;
     onDragOver?: (e: React.DragEvent) => void; onDrop?: () => void;
     isDragOver?: boolean;
+    isPurchaseTeam?: boolean;
   }) {
   const itemKey = item.itemKey || `${boqItem.id}-${itemIdx}`;
   const perItemIsEngine = isEngineBased && !item.manual;
@@ -168,7 +170,7 @@ function BoqItemRow({ item, itemIdx, boqItem, tableData, isEngineBased, isVersio
     ? <span className="ml-2 inline-flex items-center px-1.5 py-0.5 rounded-full text-[9px] font-bold bg-amber-100 text-amber-700 border border-amber-200 uppercase tracking-tighter">Manual</span>
     : null;
 
-  const DeleteBtn = () => (
+  const DeleteBtn = () => isPurchaseTeam ? null : (
     <Button title="Delete" variant="ghost" size="sm" className="h-7 w-7 p-0 text-red-600 hover:text-red-800 hover:bg-red-100 font-bold" disabled={isLocked}
       onClick={() => { if (confirm("Delete this item?")) handleDeleteRow(boqItem.id, tableData, itemIdx, item); }}>🗑</Button>
   );
@@ -183,8 +185,8 @@ function BoqItemRow({ item, itemIdx, boqItem, tableData, isEngineBased, isVersio
       onDragOver={isDraggable ? (e) => { e.preventDefault(); onDragOver?.(e); } : undefined}
       onDrop={isDraggable ? onDrop : undefined}
     >
-      <td className="border px-1 py-1 text-center bg-gray-50 w-8" style={{ cursor: isLocked ? "default" : "grab" }} title="Drag to reorder">
-        <GripVertical className={`h-3.5 w-3.5 mx-auto ${isLocked ? "text-gray-200" : "text-gray-400 hover:text-blue-500"}`} />
+      <td className="border px-1 py-1 text-center bg-gray-50 w-8" style={{ cursor: isLocked || isPurchaseTeam ? "default" : "grab" }} title={isPurchaseTeam ? "" : "Drag to reorder"}>
+        {!isPurchaseTeam && <GripVertical className={`h-3.5 w-3.5 mx-auto ${isLocked ? "text-gray-200" : "text-gray-400 hover:text-blue-500"}`} />}
       </td>
       <td className="border px-2 py-1 text-center">{itemIdx + 1}</td>
       <td className="border px-2 py-1 font-medium">{item.title}<ManualBadge /></td>
@@ -249,7 +251,7 @@ function BoqItemRow({ item, itemIdx, boqItem, tableData, isEngineBased, isVersio
 
 // ─── BOQ Item Card ─────────────────────────────────────────────────────────────
 
-function BoqItemCard({ boqItem, boqIdx, isVersionSubmitted, expandedProductIds, setExpandedProductIds, getEditedValue, updateEditedField, handleDeleteRow, handleFinalizeProduct, handleAddItem, loadBoqItemsAndEdits, setBoqItems, checkBudgetEarly, handleSaveProject }: {
+function BoqItemCard({ boqItem, boqIdx, isVersionSubmitted, expandedProductIds, setExpandedProductIds, getEditedValue, updateEditedField, handleDeleteRow, handleFinalizeProduct, handleAddItem, loadBoqItemsAndEdits, setBoqItems, checkBudgetEarly, handleSaveProject, isPurchaseTeam }: {
   boqItem: BOMItem; boqIdx: number; isVersionSubmitted: boolean;
   expandedProductIds: Set<string>; setExpandedProductIds: (fn: (p: Set<string>) => Set<string>) => void;
   getEditedValue: (k: string, f: string, v: any) => any;
@@ -261,6 +263,7 @@ function BoqItemCard({ boqItem, boqIdx, isVersionSubmitted, expandedProductIds, 
   setBoqItems: React.Dispatch<React.SetStateAction<BOMItem[]>>;
   checkBudgetEarly: () => Promise<boolean>;
   handleSaveProject: () => Promise<void>;
+  isPurchaseTeam?: boolean;
 }) {
   const tableData = parseTableData(boqItem.table_data);
   const step11Items = Array.isArray(tableData.step11_items) ? tableData.step11_items : [];
@@ -415,15 +418,19 @@ function BoqItemCard({ boqItem, boqIdx, isVersionSubmitted, expandedProductIds, 
         </div>
 
         <div className="flex gap-2">
-          {!tableData.is_finalized && (
+          {!isPurchaseTeam && !tableData.is_finalized && (
             <Button variant="outline" size="sm" className="h-7 text-xs" disabled={isVersionSubmitted} onClick={() => handleAddItem(boqItem.id)}>+ Add Item</Button>
           )}
-          <Button variant="default" size="sm" className="h-7 text-xs bg-green-600 hover:bg-green-700 text-white" disabled={isVersionSubmitted || tableData.is_finalized} onClick={() => handleFinalizeProduct(boqItem.id)}>Finalize</Button>
-          <Button variant="destructive" size="sm" className="h-7 text-xs" disabled={isVersionSubmitted}
-            onClick={async () => {
-              if (!confirm("Delete this product and all its items?")) return;
-              try { await apiFetch(`/api/boq-items/${boqItem.id}`, { method: "DELETE" }); loadBoqItemsAndEdits(); } catch { /* handled */ }
-            }}>Delete Product</Button>
+          {!isPurchaseTeam && (
+            <Button variant="default" size="sm" className="h-7 text-xs bg-green-600 hover:bg-green-700 text-white" disabled={isVersionSubmitted || tableData.is_finalized} onClick={() => handleFinalizeProduct(boqItem.id)}>Finalize</Button>
+          )}
+          {!isPurchaseTeam && (
+            <Button variant="destructive" size="sm" className="h-7 text-xs" disabled={isVersionSubmitted}
+              onClick={async () => {
+                if (!confirm("Delete this product and all its items?")) return;
+                try { await apiFetch(`/api/boq-items/${boqItem.id}`, { method: "DELETE" }); loadBoqItemsAndEdits(); } catch { /* handled */ }
+              }}>Delete Product</Button>
+          )}
         </div>
       </div>
 
@@ -459,7 +466,8 @@ function BoqItemCard({ boqItem, boqIdx, isVersionSubmitted, expandedProductIds, 
                       getEditedValue={getEditedValue} updateEditedField={updateEditedField}
                       handleDeleteRow={handleDeleteRow} checkBudgetEarly={checkBudgetEarly}
                       handleSaveProject={handleSaveProject}
-                      isDraggable={!isVersionSubmitted && !tableData.is_finalized}
+                      isDraggable={!isVersionSubmitted && !tableData.is_finalized && !isPurchaseTeam}
+                      isPurchaseTeam={isPurchaseTeam}
                       isDragOver={dragOverIdx === itemIdx}
                       onDragStart={() => { dragIdxRef.current = itemIdx; }}
                       onDragOver={() => setDragOverIdx(itemIdx)}
@@ -574,6 +582,8 @@ export default function GeneratePo() {
   const editedFieldsRef = useRef(editedFields);
   const [location, setLocation] = useLocation();
   const { toast } = useToast();
+  const { user } = useAuth();
+  const isPurchaseTeam = user?.role === 'purchase_team';
 
   const handleOpenPOModal = async () => {
     if (!selectedVersionId) return;
@@ -602,13 +612,13 @@ export default function GeneratePo() {
         body: JSON.stringify({ projectId: selectedProjectId, versionId: selectedVersionId }),
       });
       if (res.ok) {
-        toast({ title: "Success", description: "Purchase Orders generated successfully!" });
+        toast({ title: "Success", description: "Annexures generated successfully!" });
       } else {
         const err = await res.json();
-        toast({ title: "Error", description: err.message || "Failed to generate POs", variant: "destructive" });
+        toast({ title: "Error", description: err.message || "Failed to generate Annexures", variant: "destructive" });
       }
     } catch (err) {
-      toast({ title: "Error", description: "Failed to generate POs", variant: "destructive" });
+      toast({ title: "Error", description: "Failed to generate Annexures", variant: "destructive" });
     } finally {
       setIsGeneratingPO(false);
     }
@@ -625,10 +635,31 @@ export default function GeneratePo() {
   useEffect(() => {
     apiFetch("/api/boq-projects", { headers: {} })
       .then(r => r.ok ? r.json() : null)
-      .then(d => d && setProjects(d.projects || []))
+      .then(async d => {
+        if (!d) return;
+        let projectList = d.projects || [];
+        
+        if (isPurchaseTeam) {
+          // For purchase team, only show projects that have at least one approved version
+          const filtered = [];
+          for (const p of projectList) {
+            try {
+              const vRes = await apiFetch(`/api/boq-versions/${encodeURIComponent(p.id)}`);
+              if (vRes.ok) {
+                const vData = await vRes.json();
+                const hasApproved = (vData.versions || []).some((v: any) => v.status === 'approved');
+                if (hasApproved) filtered.push(p);
+              }
+            } catch (err) { console.error(err); }
+          }
+          projectList = filtered;
+        }
+        
+        setProjects(projectList);
+      })
       .catch(console.error)
       .finally(() => setLoading(false));
-  }, []);
+  }, [isPurchaseTeam]);
 
   // Load versions when project changes
   useEffect(() => {
@@ -637,16 +668,22 @@ export default function GeneratePo() {
       .then(r => r.ok ? r.json() : null)
       .then(data => {
         if (!data) return;
-        const list: BOMVersion[] = data.versions || [];
+        let list: BOMVersion[] = data.versions || [];
+        
+        if (isPurchaseTeam) {
+            list = list.filter(v => v.status === 'approved');
+        }
+
         setVersions(list);
         setSelectedVersionId((prev: string | null) => {
           if (prev && list.some((v: BOMVersion) => v.id === prev)) return prev;
+          if (isPurchaseTeam) return list[0]?.id ?? null;
           const draft = list.find((v: BOMVersion) => v.status === "draft");
           return draft?.id ?? list[0]?.id ?? null;
         });
       })
       .catch(console.error);
-  }, [selectedProjectId]);
+  }, [selectedProjectId, isPurchaseTeam]);
 
   // Load History
   const loadHistory = useCallback(async () => {
@@ -859,7 +896,7 @@ export default function GeneratePo() {
           })
         });
         if (!res.ok) throw new Error(`${res.status}`);
-        toast({ title: "Success", description: `Added ${template.name} to PO` });
+        toast({ title: "Success", description: `Added ${template.name} to Annexure` });
         loadBoqItemsAndEdits();
       } catch { toast({ title: "Error", description: "Failed to add material", variant: "destructive" }); }
     })();
@@ -1072,7 +1109,7 @@ export default function GeneratePo() {
 
       // Main Header
       const mainHeaders = ["Sl", "Item", "Shop", "Description", "Unit", "Qty/Unit", "Required Qty", "Round off", "Rate/Unit", "Amount"];
-      exportData.push(["PURCHASE ORDER (PO)"]);
+      exportData.push(["ANNEXURE"]);
       exportData.push([`Project: ${selectedProject?.name || "-"}`]);
       exportData.push([`Client: ${selectedProject?.client || "-"}`]);
       exportData.push([`Version: ${selectedVersion ? `V${selectedVersion.version_number} (${VERSION_LABEL[selectedVersion.status] || selectedVersion.status})` : "Draft"}`]);
@@ -1192,8 +1229,8 @@ export default function GeneratePo() {
         }
       }
 
-      XLSX.utils.book_append_sheet(workbook, worksheet, "PO");
-      const filename = `${selectedProject?.name || "PO"}_${selectedVersion ? `V${selectedVersion.version_number}` : "draft"}_PO.xlsx`;
+      XLSX.utils.book_append_sheet(workbook, worksheet, "Annexure");
+      const filename = `${selectedProject?.name || "Annexure"}_${selectedVersion ? `V${selectedVersion.version_number}` : "draft"}_Annexure.xlsx`;
 
       XLSX.writeFile(workbook, filename);
       toast({ title: "Success", description: `Downloaded ${filename}` });
@@ -1251,7 +1288,7 @@ export default function GeneratePo() {
 
       doc.setFontSize(14);
       doc.setFont("helvetica", "bold");
-      doc.text("PURCHASE ORDER (PO)", pageWidth / 2, 25, { align: "center" });
+      doc.text("ANNEXURE", pageWidth / 2, 25, { align: "center" });
 
       // 3. Prepare Table columns and body
       const tableHeaders = ["Sl", "Item / Component", "Shop", "Description", "Unit", "Qty/Unit", "Req Qty", "R.Off", "Rate", "Total (₹)"];
@@ -1371,7 +1408,7 @@ export default function GeneratePo() {
         doc.text("GST Extra", 10, finalY + 6);
       }
 
-      const filename = `${selectedProject?.name || "PO"}_${selectedVersion ? `V${selectedVersion.version_number}` : "draft"}_PO.pdf`;
+      const filename = `${selectedProject?.name || "Annexure"}_${selectedVersion ? `V${selectedVersion.version_number}` : "draft"}_Annexure.pdf`;
       doc.save(filename);
       toast({ title: "Success", description: `Downloaded ${filename}` });
     } catch (err) {
@@ -1396,7 +1433,7 @@ export default function GeneratePo() {
     <>
       <Layout>
         <div className="space-y-6">
-          <h1 className="text-2xl font-semibold">Generate PO</h1>
+          <h1 className="text-2xl font-semibold">Generate Annexure</h1>
 
           {/* Project Selector */}
           {/* Project & Version Selector (Compact & Professional) */}
@@ -1412,8 +1449,8 @@ export default function GeneratePo() {
                       <SelectTrigger className="w-full bg-slate-50 border-slate-200 h-9 px-3">
                         <SelectValue placeholder={projects.length === 0 ? "No projects" : "Select project"} />
                       </SelectTrigger>
-                      <SelectContent>
-                        {projects.map((p: Project) => <SelectItem value={p.id} key={p.id}>{p.name}</SelectItem>)}
+                      <SelectContent className="max-h-60 overflow-auto">
+      {projects.map((p: Project) => <SelectItem value={p.id} key={p.id}>{p.name}</SelectItem>)}
                       </SelectContent>
                     </Select>
                   </div>
@@ -1427,56 +1464,64 @@ export default function GeneratePo() {
                           <SelectTrigger className="flex-1 min-w-[140px] bg-slate-50 border-slate-200 h-9 px-3">
                             <SelectValue placeholder="Select version" />
                           </SelectTrigger>
-                          <SelectContent>
-                            {versions.map((v: BOMVersion) => <SelectItem value={v.id} key={v.id}>V{v.version_number} ({VERSION_LABEL[v.status] ?? v.status})</SelectItem>)}
+                          <SelectContent className="max-h-60 overflow-auto">
+                            {versions.map((v: BOMVersion) => <SelectItem value={v.id} key={v.id}>V{v.version_number} {!isPurchaseTeam && `(${VERSION_LABEL[v.status] ?? v.status})`}</SelectItem>)}
                           </SelectContent>
                         </Select>
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          className="h-9 px-3 bg-white border-slate-200 hover:bg-slate-50 text-slate-600 hover:text-blue-600 gap-2 font-semibold"
-                          title="View History"
-                          onClick={() => setShowHistoryModal(true)}
-                          disabled={!selectedVersionId || history.length === 0}
-                        >
-                          <History className="h-4 w-4" />
-                          <span>History</span>
-                        </Button>
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          className="h-9 px-3 bg-white border-slate-200 hover:bg-slate-50 text-slate-600 hover:text-red-600 gap-2 font-semibold"
-                          title="Delete Version"
-                          onClick={handleDeleteVersion}
-                          disabled={!selectedVersionId}
-                        >
-                          <XCircle className="h-4 w-4" />
-                          <span>Delete</span>
-                        </Button>
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          className="h-9 px-3 bg-white border-slate-200 hover:bg-slate-50 text-slate-600 hover:text-emerald-600 gap-2 font-semibold"
-                          title="New Version"
-                          onClick={() => {
-                            if (versions.length > 0) {
-                              const last = versions[0];
-                              handleCreateNewVersion(confirm(`Copy items from V${last.version_number}?`));
-                            } else {
-                              handleCreateNewVersion(false);
-                            }
-                          }}
-                        >
-                          <Clock className="h-4 w-4" />
-                          <span>New Version</span>
-                        </Button>
+                        {!isPurchaseTeam && (
+                          <>
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              className="h-9 px-3 bg-white border-slate-200 hover:bg-slate-50 text-slate-600 hover:text-blue-600 gap-2 font-semibold"
+                              title="View History"
+                              onClick={() => setShowHistoryModal(true)}
+                              disabled={!selectedVersionId || history.length === 0}
+                            >
+                              <History className="h-4 w-4" />
+                              <span>History</span>
+                            </Button>
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              className="h-9 px-3 bg-white border-slate-200 hover:bg-slate-50 text-slate-600 hover:text-red-600 gap-2 font-semibold"
+                              title="Delete Version"
+                              onClick={handleDeleteVersion}
+                              disabled={!selectedVersionId}
+                            >
+                              <XCircle className="h-4 w-4" />
+                              <span>Delete</span>
+                            </Button>
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              className="h-9 px-3 bg-white border-slate-200 hover:bg-slate-50 text-slate-600 hover:text-emerald-600 gap-2 font-semibold"
+                              title="New Version"
+                              onClick={() => {
+                                if (versions.length > 0) {
+                                  const last = versions[0];
+                                  handleCreateNewVersion(confirm(`Copy items from V${last.version_number}?`));
+                                } else {
+                                  handleCreateNewVersion(false);
+                                }
+                              }}
+                            >
+                              <Clock className="h-4 w-4" />
+                              <span>New Version</span>
+                            </Button>
+                          </>
+                        )}
                       </div>
                     </div>
                   )}
 
                   <div className="flex gap-2 h-9 ml-auto">
-                    <Button onClick={handleAddProduct} className="bg-primary text-white h-full px-5 text-xs font-bold shadow-sm" disabled={isVersionSubmitted || !selectedVersionId}>+ Add Product</Button>
-                    <Button onClick={handleAddProductManual} variant="outline" className="border-slate-200 h-full px-5 text-xs font-bold shadow-sm bg-white" disabled={isVersionSubmitted || !selectedVersionId}>+ Add Item</Button>
+                    {!isPurchaseTeam && (
+                      <>
+                        <Button onClick={() => setShowProductPicker(true)} className="bg-primary text-white h-full px-5 text-xs font-bold shadow-sm" disabled={isVersionSubmitted || !selectedVersionId}>+ Add Product</Button>
+                        <Button onClick={() => setShowMaterialPicker(true)} variant="outline" className="border-slate-200 h-full px-5 text-xs font-bold shadow-sm bg-white" disabled={isVersionSubmitted || !selectedVersionId}>+ Add Item</Button>
+                      </>
+                    )}
                   </div>
                 </div>
 
@@ -1568,7 +1613,7 @@ export default function GeneratePo() {
           {selectedProjectId && (
             <Card>
               <CardContent className="space-y-4 pt-6">
-                <h2 className="text-lg font-semibold">PO Items</h2>
+                <h2 className="text-lg font-semibold">Annexure Items</h2>
                 {boqItems.length === 0
                   ? <div className="text-gray-500 text-center py-4">No products added yet. Click Add Product +</div>
                   : <div className="space-y-8">
@@ -1578,8 +1623,11 @@ export default function GeneratePo() {
                         getEditedValue={getEditedValue} updateEditedField={updateEditedField}
                         handleDeleteRow={handleDeleteRow} handleFinalizeProduct={handleFinalizeProduct}
                         handleAddItem={handleAddItem} loadBoqItemsAndEdits={loadBoqItemsAndEdits} setBoqItems={setBoqItems}
-                        checkBudgetEarly={checkBudgetEarly} handleSaveProject={handleSaveProject} />
-                    ))}
+                        checkBudgetEarly={checkBudgetEarly}
+                    handleSaveProject={handleSaveProject}
+                    isPurchaseTeam={isPurchaseTeam}
+                  />
+                ))}
                   </div>
                 }
               </CardContent>
@@ -1600,7 +1648,7 @@ export default function GeneratePo() {
                     className="bg-green-600 hover:bg-green-700 text-white font-bold"
                   >
                     {isGeneratingPO ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <FileText className="h-4 w-4 mr-2" />}
-                    Generate PO
+                    Generate Annexure
                   </Button>
                   <Button onClick={handleDownloadExcel} variant="outline" disabled={boqItems.length === 0}>Download Excel</Button>
                   <Button onClick={handleDownloadPdf} variant="outline" disabled={boqItems.length === 0}>Download PDF</Button>
@@ -1643,9 +1691,9 @@ export default function GeneratePo() {
       <Dialog open={isPOModalOpen} onOpenChange={setIsPOModalOpen}>
         <DialogContent className="max-w-md">
           <DialogHeader>
-            <DialogTitle>Generate Purchase Orders</DialogTitle>
+            <DialogTitle>Generate Annexures</DialogTitle>
             <DialogDescription>
-              We found the following vendors for this PO. Individual POs will be created for each vendor.
+              We found the following vendors for this project. Individual Annexures will be created for each vendor.
             </DialogDescription>
           </DialogHeader>
 
@@ -1695,6 +1743,14 @@ export default function GeneratePo() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+      {/* Floating Action Menu - Hide for purchase team */}
+      {!isPurchaseTeam && (
+        <div className="fixed bottom-8 right-8 flex flex-col gap-4 z-50">
+          <Button size="icon" className="h-14 w-14 rounded-full bg-slate-900 shadow-2xl hover:bg-slate-800 transform transition-transform hover:scale-110" onClick={() => setShowProductPicker(true)}>
+            <Plus className="h-6 w-6 text-white" />
+          </Button>
+        </div>
+      )}
       {/* Budget warning dialogs removed for Generate BOM page */}
     </>
   );

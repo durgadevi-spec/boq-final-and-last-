@@ -1,0 +1,20 @@
+{
+  "product": {
+    "id": "f9c7c857-9174-4e67-89f2-fcd5b284d8cd",
+    "name": "demo test"
+  },
+  "items": [
+    {
+      "material_id": "13f1d069-d3fb-411f-8bae-f8f3ec49f073",
+      "material_name": "xyz item -testing",
+      "qty": "11.00",
+      "base_qty": "10.00"
+    },
+    {
+      "material_id": "191a1ea3-3f8d-4c1e-8a4c-fc07075e5dee",
+      "material_name": "testing demo",
+      "qty": "18.00",
+      "base_qty": "16.00"
+    }
+  ]
+}

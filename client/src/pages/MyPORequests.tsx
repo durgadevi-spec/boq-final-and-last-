@@ -33,7 +33,7 @@ export default function MyPORequests() {
             case 'rejected':
                 return <Badge variant="destructive">Rejected</Badge>;
             case 'po_generated':
-                return <Badge variant="secondary" className="bg-blue-100 text-blue-800">PO Generated</Badge>;
+                return <Badge variant="secondary" className="bg-blue-100 text-blue-800">Annexure Generated</Badge>;
             default:
                 return <Badge variant="outline">{status}</Badge>;
         }
@@ -58,7 +58,7 @@ export default function MyPORequests() {
                 <Card className="shadow-sm">
                     <CardHeader>
                         <CardTitle>Recent Requests</CardTitle>
-                        <CardDescription>A list of all your submitted Purchase Order requests.</CardDescription>
+                        <CardDescription>A list of all your submitted Annexure requests.</CardDescription>
                     </CardHeader>
                     <CardContent>
                         {isLoading ? (
@@ -67,7 +67,7 @@ export default function MyPORequests() {
                             </div>
                         ) : requests.length === 0 ? (
                             <div className="text-center py-12 text-slate-500 bg-slate-50 rounded-lg border border-dashed">
-                                <p>You haven't raised any PO requests yet.</p>
+                                <p>You haven't raised any Annexure requests yet.</p>
                                 <Button onClick={() => setLocation('/raise-po-request')} variant="link" className="mt-2 text-indigo-600">
                                     Raise your first request
                                 </Button>

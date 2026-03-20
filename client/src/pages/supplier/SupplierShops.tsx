@@ -31,6 +31,16 @@ const COUNTRY_CODES = [
   { code: "+49", country: "Germany" },
 ];
 
+const INDIAN_STATES = [
+  "Andhra Pradesh", "Arunachal Pradesh", "Assam", "Bihar", "Chhattisgarh",
+  "Goa", "Gujarat", "Haryana", "Himachal Pradesh", "Jharkhand", "Karnataka",
+  "Kerala", "Madhya Pradesh", "Maharashtra", "Manipur", "Meghalaya", "Mizoram",
+  "Nagaland", "Odisha", "Punjab", "Rajasthan", "Sikkim", "Tamil Nadu",
+  "Telangana", "Tripura", "Uttar Pradesh", "Uttarakhand", "West Bengal",
+  "Andaman and Nicobar Islands", "Chandigarh", "Dadra and Nagar Haveli and Daman and Diu",
+  "Delhi", "Jammu and Kashmir", "Ladakh", "Lakshadweep", "Puducherry"
+];
+
 const Required = () => <span className="text-red-500 ml-1">*</span>;
 
 export default function SupplierShops() {
@@ -46,10 +56,12 @@ export default function SupplierShops() {
     city: "",
     phoneCountryCode: "+91",
     contactNumber: "",
-    state: "",
-    country: "",
+    state: "Tamil Nadu",
+    country: "India",
     pincode: "",
     gstNo: "",
+    new_location: "",
+    terms_and_conditions: "",
   });
 
   // Load supplier's shops on mount
@@ -115,7 +127,7 @@ export default function SupplierShops() {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          Authorization: token ? `Bearer ${token}` : undefined,
+          ...(token ? { "Authorization": `Bearer ${token}` } : {}),
         },
         body: JSON.stringify(formData),
       });
@@ -139,10 +151,12 @@ export default function SupplierShops() {
         city: "",
         phoneCountryCode: "+91",
         contactNumber: "",
-        state: "",
-        country: "",
+        state: "Tamil Nadu",
+        country: "India",
         pincode: "",
         gstNo: "",
+        new_location: "",
+        terms_and_conditions: "",
       });
       setShowForm(false);
 
@@ -211,10 +225,10 @@ export default function SupplierShops() {
 
                     <div className="space-y-2">
                       <Label>
-                        Location <Required />
+                        Address <Required />
                       </Label>
                       <Input
-                        placeholder="Enter location"
+                        placeholder="Enter address"
                         value={formData.location}
                         onChange={(e) =>
                           setFormData({ ...formData, location: e.target.value })
@@ -223,8 +237,19 @@ export default function SupplierShops() {
                     </div>
                   </div>
 
-                  {/* City and State */}
+                  {/* New Location and City */}
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div className="space-y-2">
+                      <Label>Location</Label>
+                      <Input
+                        placeholder="Enter location"
+                        value={formData.new_location}
+                        onChange={(e) =>
+                          setFormData({ ...formData, new_location: e.target.value })
+                        }
+                      />
+                    </div>
+
                     <div className="space-y-2">
                       <Label>
                         City <Required />
@@ -237,21 +262,31 @@ export default function SupplierShops() {
                         }
                       />
                     </div>
-
-                    <div className="space-y-2">
-                      <Label>State</Label>
-                      <Input
-                        placeholder="Enter state"
-                        value={formData.state}
-                        onChange={(e) =>
-                          setFormData({ ...formData, state: e.target.value })
-                        }
-                      />
-                    </div>
                   </div>
 
-                  {/* Country and Pincode */}
+                  {/* State and Country */}
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div className="space-y-2">
+                      <Label>State</Label>
+                      <Select
+                        value={formData.state}
+                        onValueChange={(value) =>
+                          setFormData({ ...formData, state: value })
+                        }
+                      >
+                        <SelectTrigger>
+                          <SelectValue placeholder="Select state" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {INDIAN_STATES.map((state) => (
+                            <SelectItem key={state} value={state}>
+                              {state}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+
                     <div className="space-y-2">
                       <Label>Country</Label>
                       <Input
@@ -262,17 +297,18 @@ export default function SupplierShops() {
                         }
                       />
                     </div>
+                  </div>
 
-                    <div className="space-y-2">
-                      <Label>Pincode</Label>
-                      <Input
-                        placeholder="Enter pincode"
-                        value={formData.pincode}
-                        onChange={(e) =>
-                          setFormData({ ...formData, pincode: e.target.value })
-                        }
-                      />
-                    </div>
+                  {/* Pincode */}
+                  <div className="space-y-2">
+                    <Label>Pincode</Label>
+                    <Input
+                      placeholder="Enter pincode"
+                      value={formData.pincode}
+                      onChange={(e) =>
+                        setFormData({ ...formData, pincode: e.target.value })
+                      }
+                    />
                   </div>
 
                   {/* Phone Number */}
@@ -317,16 +353,29 @@ export default function SupplierShops() {
                     </div>
                   </div>
 
-                  {/* GST Number */}
-                  <div className="space-y-2">
-                    <Label>GST Number</Label>
-                    <Input
-                      placeholder="Enter GST number"
-                      value={formData.gstNo}
-                      onChange={(e) =>
-                        setFormData({ ...formData, gstNo: e.target.value })
-                      }
-                    />
+                  {/* GST and Terms */}
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div className="space-y-2">
+                      <Label>GST Number</Label>
+                      <Input
+                        placeholder="Enter GST number"
+                        value={formData.gstNo}
+                        onChange={(e) =>
+                          setFormData({ ...formData, gstNo: e.target.value })
+                        }
+                      />
+                    </div>
+
+                    <div className="space-y-2">
+                      <Label>Terms and Conditions</Label>
+                      <Input
+                        placeholder="Enter terms and conditions"
+                        value={formData.terms_and_conditions}
+                        onChange={(e) =>
+                          setFormData({ ...formData, terms_and_conditions: e.target.value })
+                        }
+                      />
+                    </div>
                   </div>
 
                   {/* Submit Buttons */}
@@ -373,13 +422,24 @@ export default function SupplierShops() {
                         <p className="text-xs text-muted-foreground">
                           {shop.location}, {shop.city}
                           {shop.state && `, ${shop.state}`}
+                          {shop.country && `, ${shop.country}`}
                         </p>
+                        {shop.new_location && (
+                          <p className="text-xs text-muted-foreground italic">
+                            Alt Location: {shop.new_location}
+                          </p>
+                        )}
                         <p className="text-xs text-muted-foreground mt-1">
                           {shop.phoneCountryCode} {shop.contactNumber}
                         </p>
                         {shop.gstNo && (
                           <p className="text-xs text-muted-foreground">
                             GST: {shop.gstNo}
+                          </p>
+                        )}
+                        {shop.terms_and_conditions && (
+                          <p className="text-xs text-muted-foreground mt-1 line-clamp-1">
+                             T&C: {shop.terms_and_conditions}
                           </p>
                         )}
                       </div>

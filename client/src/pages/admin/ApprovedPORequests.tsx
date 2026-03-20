@@ -116,9 +116,9 @@ export default function ApprovedPORequests() {
         <Layout>
             <div className="container mx-auto p-4 md:p-6 max-w-[1200px]">
                 <div className="mb-6">
-                    <h1 className="text-3xl font-bold tracking-tight text-slate-900">Approved PO Requests</h1>
-                    <p className="text-muted-foreground mt-1">
-                        Requests approved by management. Generate Purchase Orders from here.
+                    <h1 className="text-3xl font-bold tracking-tight text-slate-900">Approved Annexure Requests</h1>
+                    <p className="text-muted-foreground mt-2">
+                        View approved internal Annexure requests and generate the final documents.
                     </p>
                 </div>
 
@@ -134,7 +134,7 @@ export default function ApprovedPORequests() {
                             </div>
                         ) : requests.length === 0 ? (
                             <div className="text-center py-12 text-slate-500 bg-slate-50 rounded-lg border border-dashed">
-                                <p>No approved PO requests available.</p>
+                                <p>No approved Annexure requests at the moment.</p>
                             </div>
                         ) : (
                             <div className="overflow-x-auto">
@@ -220,13 +220,13 @@ export default function ApprovedPORequests() {
                 </Card>
             </div>
 
-            {/* Generate PO Dialog */}
-            <Dialog open={generateDialogOpen} onOpenChange={setGenerateDialogOpen}>
-                <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+            {/* Generate Annexure Dialog */}
+            <Dialog open={!!selectedRequest} onOpenChange={(open) => !open && setSelectedRequest(null)}>
+                <DialogContent className="max-w-[800px] max-h-[90vh] overflow-y-auto">
                     <DialogHeader>
-                        <DialogTitle>Generate Purchase Order</DialogTitle>
+                        <DialogTitle>Generate Annexure</DialogTitle>
                         <DialogDescription>
-                            Select a vendor and specify rates for each item to generate the PO.
+                            Select a vendor and specify rates for each item to generate the Annexure.
                         </DialogDescription>
                     </DialogHeader>
 
@@ -304,8 +304,8 @@ export default function ApprovedPORequests() {
                             disabled={isGenerating || !vendorId}
                             onClick={handleGeneratePO}
                         >
-                            {isGenerating && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
-                            Generate PO
+                            {isGenerating ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
+                            Generate Annexure
                         </Button>
                     </DialogFooter>
                 </DialogContent>

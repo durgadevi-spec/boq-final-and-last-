@@ -1,0 +1,122 @@
+[
+  {
+    "table_name": "messages"
+  },
+  {
+    "table_name": "user_management_registry"
+  },
+  {
+    "table_name": "materials"
+  },
+  {
+    "table_name": "material_templates"
+  },
+  {
+    "table_name": "material_submissions"
+  },
+  {
+    "table_name": "shops"
+  },
+  {
+    "table_name": "user_sidebar_permissions"
+  },
+  {
+    "table_name": "bom_templates"
+  },
+  {
+    "table_name": "product_approvals"
+  },
+  {
+    "table_name": "boq_products"
+  },
+  {
+    "table_name": "boq_product_items"
+  },
+  {
+    "table_name": "estimator_step11_finalize_boq"
+  },
+  {
+    "table_name": "users"
+  },
+  {
+    "table_name": "material_categories"
+  },
+  {
+    "table_name": "material_subcategories"
+  },
+  {
+    "table_name": "estimator_step12_qa_boq"
+  },
+  {
+    "table_name": "suppliers"
+  },
+  {
+    "table_name": "estimator_step9_cart"
+  },
+  {
+    "table_name": "product_approval_items"
+  },
+  {
+    "table_name": "boq_templates"
+  },
+  {
+    "table_name": "product_step3_config"
+  },
+  {
+    "table_name": "product_step3_config_items"
+  },
+  {
+    "table_name": "product_boq_snapshots"
+  },
+  {
+    "table_name": "vendor_categories"
+  },
+  {
+    "table_name": "alerts"
+  },
+  {
+    "table_name": "boq_items"
+  },
+  {
+    "table_name": "step11_product_items"
+  },
+  {
+    "table_name": "boq"
+  },
+  {
+    "table_name": "accumulated_products"
+  },
+  {
+    "table_name": "boq_versions"
+  },
+  {
+    "table_name": "step11_products"
+  },
+  {
+    "table_name": "global_settings"
+  },
+  {
+    "table_name": "boq_projects"
+  },
+  {
+    "table_name": "products"
+  },
+  {
+    "table_name": "boq_history"
+  },
+  {
+    "table_name": "purchase_order_items"
+  },
+  {
+    "table_name": "purchase_orders"
+  },
+  {
+    "table_name": "budget_exceed_logs"
+  },
+  {
+    "table_name": "po_requests"
+  },
+  {
+    "table_name": "po_request_items"
+  }
+]

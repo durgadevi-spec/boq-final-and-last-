@@ -53,7 +53,7 @@ export default function PORequestApprovals() {
 
             toast({
                 title: "Success",
-                description: `PO Request has been ${status}.`,
+                description: `Annexure Request has been ${status}.`,
             });
 
             queryClient.invalidateQueries({ queryKey: ['/api/po-requests'] });
@@ -74,9 +74,9 @@ export default function PORequestApprovals() {
         <Layout>
             <div className="container mx-auto p-4 md:p-6 max-w-[1200px]">
                 <div className="mb-6">
-                    <h1 className="text-3xl font-bold tracking-tight text-slate-900">Pending PO Requests</h1>
+                    <h1 className="text-3xl font-bold tracking-tight text-slate-900">Pending Annexure Requests</h1>
                     <p className="text-muted-foreground mt-1">
-                        Review and approve internal Purchase Order requests.
+                        Review and approve internal Annexure requests.
                     </p>
                 </div>
 
@@ -92,7 +92,7 @@ export default function PORequestApprovals() {
                             </div>
                         ) : requests.length === 0 ? (
                             <div className="text-center py-12 text-slate-500 bg-slate-50 rounded-lg border border-dashed">
-                                <p>No pending PO requests at the moment.</p>
+                                <p>No pending Annexure requests at the moment.</p>
                             </div>
                         ) : (
                             <div className="overflow-x-auto">

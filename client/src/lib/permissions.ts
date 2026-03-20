@@ -1,0 +1,84 @@
+export const ALL_SIDEBAR_MODULES = [
+  { key: "dashboard", label: "Dashboard" },
+  { key: "project_dashboard", label: "Project Dashboard" },
+  { key: "alerts", label: "Alerts" },
+  { key: "create_item", label: "Create Item" },
+  { key: "create_product", label: "Create Product" },
+  { key: "create_project", label: "Create Project" },
+  { key: "create_vendor_category", label: "Create Vendor Category" },
+  { key: "manage_product", label: "Manage Product" },
+  { key: "manage_materials", label: "Manage Materials" },
+  { key: "manage_shops", label: "Manage Shops" },
+  { key: "manage_categories", label: "Manage Categories" },
+  { key: "bulk_upload", label: "Bulk Upload" },
+  { key: "generate_bom", label: "Generate BOM" },
+  { key: "generate_po", label: "Generate PO" },
+  { key: "finalize_boq", label: "Finalize BOQ" },
+  { key: "purchase_orders", label: "Purchase Orders" },
+  { key: "po_approvals", label: "PO Approvals" },
+  { key: "raise_po_request", label: "Raise PO Request" },
+  { key: "my_po_requests", label: "My Requests" },
+  { key: "pending_approvals", label: "Pending Approvals" },
+  { key: "approved_requests", label: "Approved Requests" },
+  { key: "shop_approvals", label: "Shop Approvals" },
+  { key: "material_approvals", label: "Material Approvals" },
+  { key: "supplier_approvals", label: "Supplier Approvals" },
+  { key: "product_approvals", label: "Product Approvals" },
+  { key: "bom_approvals", label: "BOM Approvals" },
+  { key: "support_chat", label: "Support / Chat" },
+  { key: "subscription", label: "Subscription" },
+  { key: "user_manual", label: "User Manual" },
+];
+
+export function getDefaultPermissions(role: string): string[] {
+  const modules: string[] = [];
+
+  // Basics for everyone except some specific exclusions
+  if (role !== 'supplier' && role !== 'pre_sales' && role !== 'contractor' && role !== 'product_manager') {
+    modules.push('dashboard');
+  }
+  
+  if (role !== 'pre_sales' && role !== 'contractor') {
+    modules.push('user_manual');
+  }
+
+  // Admin & Software Team (Full Access mostly)
+  if (role === 'admin' || role === 'software_team') {
+    modules.push('project_dashboard', 'finalize_boq', 'purchase_orders', 'po_approvals', 'pending_approvals', 'approved_requests', 'bom_approvals');
+    if (role === 'admin') {
+      modules.push('alerts', 'supplier_approvals');
+    }
+  }
+
+  // Purchase Team, Admin, Software Team
+  if (role === 'admin' || role === 'software_team' || role === 'purchase_team') {
+    modules.push('create_item', 'create_vendor_category', 'manage_materials', 'manage_shops', 'manage_categories', 'bulk_upload', 'support_chat', 'shop_approvals', 'material_approvals');
+  }
+
+  // Creations & Management (Wide access)
+  if (role === 'admin' || role === 'software_team' || role === 'purchase_team' || role === 'pre_sales' || role === 'product_manager') {
+    modules.push('create_product', 'manage_product');
+  }
+
+  // Project Creation
+  if (role === 'admin' || role === 'software_team' || role === 'pre_sales') {
+    modules.push('create_project', 'generate_po');
+  }
+
+  // BOQ / Projects
+  if (role === 'admin' || role === 'software_team' || role === 'pre_sales' || role === 'product_manager') {
+    modules.push('generate_bom');
+  }
+
+  // PO Requests (Most roles)
+  if (role !== 'contractor' && role !== 'supplier') {
+    modules.push('raise_po_request', 'my_po_requests');
+  }
+
+  // Approvals (Specialized)
+  if (role === 'admin' || role === 'software_team' || role === 'product_manager') {
+     modules.push('product_approvals');
+  }
+
+  return modules;
+}

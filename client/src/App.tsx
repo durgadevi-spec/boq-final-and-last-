@@ -28,6 +28,7 @@ import ManageCategories from "@/pages/admin/ManageCategories";
 import BulkMaterialUpload from "@/pages/admin/BulkMaterialUpload";
 import ProductApprovals from "@/pages/admin/ProductApprovals";
 import BomApprovals from "@/pages/admin/BomApprovals";
+import AdminAccessControl from "@/pages/admin/AdminAccessControl";
 import GeneratePO from "@/pages/GeneratePO";
 
 
@@ -39,6 +40,10 @@ import CreateBoq from "@/pages/CreateBoq";
 import FinalizeBoq from "@/pages/FinalizeBoq";
 import CreateProject from "@/pages/CreateProject";
 import ProjectDashboard from "@/pages/ProjectDashboard";
+
+import SketchPlans from "@/pages/SketchPlans";
+import CreateSketchPlan from "@/pages/CreateSketchPlan";
+import SketchTemplates from "@/pages/SketchTemplates";
 
 import SupplierMaterials from "@/pages/supplier/SupplierMaterials";
 import SupplierShops from "@/pages/supplier/SupplierShops";
@@ -85,6 +90,12 @@ function Router() {
       <Route path="/bom-review" component={BoqReview} />
       <Route path="/user-manual" component={UserManual} />
 
+      {/* ================= SKETCH A PLAN ================= */}
+      <Route path="/sketch-plans" component={SketchPlans} />
+      <Route path="/create-sketch-plan" component={CreateSketchPlan} />
+      <Route path="/edit-sketch-plan/:id" component={CreateSketchPlan} />
+      <Route path="/sketch-templates" component={SketchTemplates} />
+
       {/* ================= PROCUREMENT ================= */}
       <Route path="/purchase-orders" component={PurchaseOrders} />
       <Route path="/purchase-orders/:id" component={PurchaseOrderDetail} />
@@ -106,6 +117,7 @@ function Router() {
       <Route path="/admin/vendor-categories" component={VendorCategories} />
       <Route path="/admin/product-approvals" component={ProductApprovals} />
       <Route path="/admin/bom-approvals" component={BomApprovals} />
+      <Route path="/admin/access-control" component={AdminAccessControl} />
       <Route path="/generate-po" component={GeneratePO} />
 
       {/* ✅ Supplier Approval (MAIN) */}

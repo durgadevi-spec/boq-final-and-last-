@@ -18,6 +18,7 @@ import { computeBoq, UnitType } from "@/lib/boqCalc";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { fuzzySearch } from "@/lib/utils";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 
 type Product = { id: string; name: string; subcategory: string; created_at: string; created_by?: string };
 type Material = { id: string; name: string; unit: string; rate: number; category: string; subcategory: string; description?: string; shop_name?: string; shop_id?: string; shopId?: string; code?: string; hsn_code?: string; sac_code?: string; technicalspecification?: string; technicalSpecification?: string; created_at?: string };
@@ -1073,7 +1074,18 @@ export default function ManageProduct() {
                                                             <TableCell className="text-center">
                                                                 <Button variant="ghost" size="sm" onClick={() => removeConfigMaterial(m.id!)} className="h-6 w-6 p-0 text-red-500 hover:text-red-700 hover:bg-red-50"><span className="text-xs font-bold">×</span></Button>
                                                             </TableCell>
-                                                            <TableCell className="font-semibold text-[10px] whitespace-nowrap overflow-hidden text-ellipsis max-w-[150px]">{m.name}</TableCell>
+                                                            <TableCell className="font-semibold text-[10px] whitespace-nowrap overflow-hidden text-ellipsis max-w-[150px]">
+                                                                <TooltipProvider>
+                                                                    <Tooltip>
+                                                                        <TooltipTrigger asChild>
+                                                                            <span className="cursor-help">{m.name}</span>
+                                                                        </TooltipTrigger>
+                                                                        <TooltipContent className="max-w-[300px] break-words">
+                                                                            <p className="text-xs font-bold">{m.name}</p>
+                                                                        </TooltipContent>
+                                                                    </Tooltip>
+                                                                </TooltipProvider>
+                                                            </TableCell>
                                                             <TableCell className="text-[10px] whitespace-nowrap overflow-hidden text-ellipsis max-w-[100px]">{m.shop_name || "N/A"}</TableCell>
                                                             <TableCell><Input value={m.location} onChange={e => updateConfig(m.id!, "location", e.target.value)} className="h-8 border-muted text-[10px] px-2" /></TableCell>
                                                             <TableCell className="text-[10px] font-medium">{m.unit}</TableCell>
