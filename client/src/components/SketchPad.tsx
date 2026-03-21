@@ -15,7 +15,8 @@ import {
   RotateCcw,
   Copy,
   ChevronRight,
-  Monitor
+  Monitor,
+  Hand
 } from "lucide-react";
 
 interface Point {
@@ -90,6 +91,7 @@ export function SketchPad({ onSave, initialData, width = 600, height = 400, unit
   const [zoom, setZoom] = useState(1);
   const [panOffset, setPanOffset] = useState<Point>({ x: 0, y: 0 });
   const [lastTouchPos, setLastTouchPos] = useState<Point | null>(null);
+  const [lastScreenPos, setLastScreenPos] = useState<Point | null>(null);
   const [lastTouchDist, setLastTouchDist] = useState<number | null>(null);
 
   // Smart features state
@@ -208,9 +210,75 @@ export function SketchPad({ onSave, initialData, width = 600, height = 400, unit
       containerRef.current.requestFullscreen().catch(err => {
         console.error(`Error attempting to enable full-screen mode: ${err.message}`);
       });
+      setReferenceScale(10); // Automatically default scale to 10 feet
     } else {
       document.exitFullscreen();
     }
+  };
+
+  const resetView = () => {
+    if (shapes.length === 0 && blocks.length === 0) {
+      setZoom(0.5);
+      setPanOffset({ x: 0, y: 0 });
+      return;
+    }
+
+    let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+    shapes.forEach(s => {
+      if (s.type === "circle" && s.points.length === 2) {
+        const center = s.points[0];
+        const radius = Math.sqrt(Math.pow(s.points[1].x - center.x, 2) + Math.pow(s.points[1].y - center.y, 2));
+        minX = Math.min(minX, center.x - radius);
+        maxX = Math.max(maxX, center.x + radius);
+        minY = Math.min(minY, center.y - radius);
+        maxY = Math.max(maxY, center.y + radius);
+      } else {
+        s.points.forEach(p => {
+          minX = Math.min(minX, p.x);
+          minY = Math.min(minY, p.y);
+          maxX = Math.max(maxX, p.x);
+          maxY = Math.max(maxY, p.y);
+        });
+      }
+    });
+
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+
+    const pixelsPerUnit = canvas.width / (referenceScale || 1);
+    blocks.forEach(b => {
+      const w = b.width * pixelsPerUnit;
+      const h = b.height * pixelsPerUnit;
+      minX = Math.min(minX, b.x - w / 2);
+      maxX = Math.max(maxX, b.x + w / 2);
+      minY = Math.min(minY, b.y - h / 2);
+      maxY = Math.max(maxY, b.y + h / 2);
+    });
+
+    if (minX === Infinity) {
+      setZoom(0.5);
+      setPanOffset({ x: 0, y: 0 });
+      return;
+    }
+
+    // Add padding (50 pixels)
+    const padding = 50;
+    const contentWidth = maxX - minX;
+    const contentHeight = maxY - minY;
+
+    const maxZoomX = canvas.width / (contentWidth + padding * 2 || 1);
+    const maxZoomY = canvas.height / (contentHeight + padding * 2 || 1);
+    let newZoom = Math.min(maxZoomX, maxZoomY, 1.5);
+    if (newZoom < 0.1) newZoom = 0.1;
+
+    // Calculate pan offset to center the diagram
+    const centerX = (minX + maxX) / 2;
+    const centerY = (minY + maxY) / 2;
+    const panX = (canvas.width / 2) - (centerX * newZoom);
+    const panY = (canvas.height / 2) - (centerY * newZoom);
+
+    setZoom(newZoom);
+    setPanOffset({ x: panX, y: panY });
   };
 
   const getNearestPoint = useCallback((p: Point): Point => {
@@ -301,51 +369,53 @@ export function SketchPad({ onSave, initialData, width = 600, height = 400, unit
       const right = (canvas.width - panOffset.x) / zoom;
       const bottom = (canvas.height - panOffset.y) / zoom;
 
-      // Use subdivision-aware lines
       const isFeet = unitPrefix.toLowerCase().startsWith("f");
       const subdivisions = isFeet ? 12 : 10;
       const pixelsPerUnit = gridSize * subdivisions;
 
-      // Extend grid beyond bounds slightly to ensure full coverage
-      const startX = Math.floor(left / gridSize) * gridSize;
-      const endX = Math.ceil(right / gridSize) * gridSize;
-      const startY = Math.floor(top / gridSize) * gridSize;
-      const endY = Math.ceil(bottom / gridSize) * gridSize;
+      const startXIndex = Math.floor(left / gridSize);
+      const endXIndex = Math.ceil(right / gridSize);
+      const startYIndex = Math.floor(top / gridSize);
+      const endYIndex = Math.ceil(bottom / gridSize);
 
-      // Draw minor grid lines
-      ctx.beginPath();
-      ctx.strokeStyle = "#f1f5f9"; // Slate 100 for minor lines
-      ctx.lineWidth = 1 / zoom;
+      // 1. Draw minor grid lines (subdivisions)
+      // Only draw if they are at least 8px apart for clarity
+      if (gridSize * zoom >= 8) {
+        ctx.beginPath();
+        ctx.strokeStyle = "rgba(241, 245, 249, 0.6)"; // Slate 100/50
+        ctx.lineWidth = 1 / zoom;
 
-
-      for (let x = startX; x <= endX; x += gridSize) {
-        // Skip if it's a major line (will draw major lines separately)
-        if (Math.abs(x % pixelsPerUnit) < 0.1) continue;
-        ctx.moveTo(x, startY);
-        ctx.lineTo(x, endY);
+        for (let i = startXIndex; i <= endXIndex; i++) {
+          if (i % subdivisions === 0) continue; // Skip major lines
+          const x = i * gridSize;
+          ctx.moveTo(x, top);
+          ctx.lineTo(x, bottom);
+        }
+        for (let i = startYIndex; i <= endYIndex; i++) {
+          if (i % subdivisions === 0) continue; // Skip major lines
+          const y = i * gridSize;
+          ctx.moveTo(left, y);
+          ctx.lineTo(right, y);
+        }
+        ctx.stroke();
       }
-      for (let y = startY; y <= endY; y += gridSize) {
-        if (Math.abs(y % pixelsPerUnit) < 0.1) continue;
-        ctx.moveTo(startX, y);
-        ctx.lineTo(endX, y);
-      }
-      ctx.stroke();
 
-      // Draw major grid lines
+      // 2. Draw major grid lines (the "boxes")
       ctx.beginPath();
-      ctx.strokeStyle = "#e2e8f0"; // Slate 200 for major lines
+      ctx.strokeStyle = "#cbd5e1"; // Slate 300 - clearly visible grid
       ctx.lineWidth = 1.5 / zoom;
 
-
-      for (let x = startX; x <= endX; x += gridSize) {
-        if (Math.abs(x % pixelsPerUnit) >= 0.1) continue;
-        ctx.moveTo(x, startY);
-        ctx.lineTo(x, endY);
+      for (let i = startXIndex; i <= endXIndex; i++) {
+        if (i % subdivisions !== 0) continue;
+        const x = i * gridSize;
+        ctx.moveTo(x, top);
+        ctx.lineTo(x, bottom);
       }
-      for (let y = startY; y <= endY; y += gridSize) {
-        if (Math.abs(y % pixelsPerUnit) >= 0.1) continue;
-        ctx.moveTo(startX, y);
-        ctx.lineTo(endX, y);
+      for (let i = startYIndex; i <= endYIndex; i++) {
+        if (i % subdivisions !== 0) continue;
+        const y = i * gridSize;
+        ctx.moveTo(left, y);
+        ctx.lineTo(right, y);
       }
       ctx.stroke();
     }
@@ -376,7 +446,9 @@ export function SketchPad({ onSave, initialData, width = 600, height = 400, unit
         ctx.shadowColor = "rgba(79, 70, 229, 0.4)";
       }
 
-      ctx.lineWidth = isSelected ? s.thickness + 2 / zoom : s.thickness;
+      ctx.lineWidth = isSelected 
+        ? Math.max(s.thickness, s.thickness / zoom) + 2 / zoom 
+        : Math.max(s.thickness, s.thickness / zoom);
       ctx.lineCap = "round";
       ctx.lineJoin = "round";
 
@@ -679,57 +751,15 @@ export function SketchPad({ onSave, initialData, width = 600, height = 400, unit
 
     if (mode === "pan") {
       setIsDrawing(true);
-      setLastTouchPos(pos);
+      const clientX = "touches" in e ? e.touches[0].clientX : (e as any).clientX;
+      const clientY = "touches" in e ? e.touches[0].clientY : (e as any).clientY;
+      setLastScreenPos({ x: clientX, y: clientY });
       return;
     }
 
-    // SMART SELECTION: Check if user is clicking an existing shape even in draw/line mode
-    if (mode === "pencil" || mode === "line" || mode === "rect" || mode === "circle" || mode === "select" || mode === "delete") {
-      const threshold = 15 / zoom;
-      let foundShapeId: string | null = null;
 
-      const targetShape = [...shapes].reverse().find(s => {
-        const pts = s.points;
-        if (pts.length < 1) return false;
 
-        if ((s.type === "line" || s.type === "measure") && pts.length >= 2) {
-          const dist = Math.sqrt(Math.pow(pts[1].x - pts[0].x, 2) + Math.pow(pts[1].y - pts[0].y, 2));
-          const realLen = (dist / canvas.width) * referenceScale;
-          if (realLen < 0.1) return false; // Don't select tiny fragments
-          return getPointToSegmentDist(pos, pts[0], pts[1]) < threshold;
-        } else if (s.type === "rect" && pts.length >= 2) {
-          const [p1, p2] = pts;
-          const hitEdge = getPointToSegmentDist(pos, p1, { x: p2.x, y: p1.y }) < threshold ||
-            getPointToSegmentDist(pos, { x: p2.x, y: p1.y }, p2) < threshold ||
-            getPointToSegmentDist(pos, p2, { x: p1.x, y: p2.y }) < threshold ||
-            getPointToSegmentDist(pos, { x: p1.x, y: p2.y }, p1) < threshold;
-          return hitEdge;
-        } else if (s.type === "circle" && pts.length >= 2) {
-          const dist = Math.sqrt(Math.pow(pos.x - pts[0].x, 2) + Math.pow(pos.y - pts[0].y, 2));
-          const radius = Math.sqrt(Math.pow(pts[1].x - pts[0].x, 2) + Math.pow(pts[1].y - pts[0].y, 2));
-          return Math.abs(dist - radius) < threshold;
-        } else if (s.type === "pencil") {
-          return pts.some(p => Math.sqrt(Math.pow(p.x - pos.x, 2) + Math.pow(p.y - pos.y, 2)) < threshold);
-        }
-        return false;
-      });
-
-      if (targetShape && (mode === "select" || mode === "delete" || (mode !== "delete" && !isDrawing))) {
-        if (mode === "delete") {
-          startDrawing(e as any); // Trigger the advanced erase logic
-          return;
-        }
-
-        setSelectedShapeId(targetShape.id);
-        if (mode === "select") {
-          setIsDrawing(true);
-          return;
-        }
-        // If in LINE/RECT mode, only select if it's a simple click (not starting a new one yet)
-      } else {
-        if (!isDrawing) setSelectedShapeId(null);
-      }
-    }
+    // (Smart Selection block removed: It hijacked the drawing tools and prevented drawing from endpoints. Select tool should be used for selection.)
 
     if (mode === "select" || mode === "delete") {
       const threshold = 15 / zoom;
@@ -818,11 +848,11 @@ export function SketchPad({ onSave, initialData, width = 600, height = 400, unit
 
       if (mode === "select") {
         setSelectedShapeId(foundId);
-      } else if (mode === "delete" && newShapes.length !== shapes.length) {
-        updateShapes(newShapes);
+        setIsDrawing(foundId !== null);
+      } else if (mode === "delete") {
+        if (newShapes.length !== shapes.length) updateShapes(newShapes);
+        setIsDrawing(true); // Always true so brush effect continues while dragging
       }
-
-      setIsDrawing(foundId !== null);
       return;
     }
 
@@ -869,7 +899,7 @@ export function SketchPad({ onSave, initialData, width = 600, height = 400, unit
     if (!isDrawing) return;
     const pos = getPos(e);
 
-    if ((mode === "delete" || mode === "select") && isDrawing) {
+    if (mode === "delete" && isDrawing) {
       startDrawing(e as any);
       return;
     }
@@ -887,25 +917,55 @@ export function SketchPad({ onSave, initialData, width = 600, height = 400, unit
       return;
     }
 
-    if (mode === "pan" || ("touches" in e && e.touches.length === 2)) {
-      if ("touches" in e && e.touches.length === 2) {
-        // Pinch zoom
-        const d = Math.sqrt(
-          Math.pow(e.touches[0].clientX - e.touches[1].clientX, 2) +
-          Math.pow(e.touches[0].clientY - e.touches[1].clientY, 2)
-        );
-        if (lastTouchDist) {
-          const delta = d / lastTouchDist;
-          setZoom(Math.min(Math.max(zoom * delta, 0.1), 10));
+    if (mode === "select" && selectedShapeId && isDrawing && lastTouchPos) {
+      const dx = pos.x - lastTouchPos.x;
+      const dy = pos.y - lastTouchPos.y;
+
+      setShapes(prev => prev.map(s =>
+        s.id === selectedShapeId
+          ? { ...s, points: s.points.map(p => ({ x: p.x + dx, y: p.y + dy })) }
+          : s
+      ));
+      setLastTouchPos(pos);
+      return;
+    }
+
+    if (mode === "pan" && lastScreenPos) {
+      const clientX = "touches" in e ? e.touches[0].clientX : (e as any).clientX;
+      const clientY = "touches" in e ? e.touches[0].clientY : (e as any).clientY;
+      const dx = clientX - lastScreenPos.x;
+      const dy = clientY - lastScreenPos.y;
+      setPanOffset(prev => ({
+        x: prev.x + dx,
+        y: prev.y + dy
+      }));
+      setLastScreenPos({ x: clientX, y: clientY });
+      return;
+    }
+
+    if ("touches" in e && e.touches.length === 2) {
+      // Pinch zoom
+      const d = Math.sqrt(
+        Math.pow(e.touches[0].clientX - e.touches[1].clientX, 2) +
+        Math.pow(e.touches[0].clientY - e.touches[1].clientY, 2)
+      );
+      if (lastTouchDist) {
+        const delta = d / lastTouchDist;
+        const canvas = canvasRef.current;
+        const newZoom = Math.min(Math.max(zoom * delta, 0.1), 10);
+        
+        if (canvas) {
+          const rect = canvas.getBoundingClientRect();
+          const centerX = (e.touches[0].clientX + e.touches[1].clientX) / 2 - rect.left;
+          const centerY = (e.touches[0].clientY + e.touches[1].clientY) / 2 - rect.top;
+          setPanOffset(prev => ({
+            x: centerX - (centerX - prev.x) * (newZoom / zoom),
+            y: centerY - (centerY - prev.y) * (newZoom / zoom)
+          }));
         }
-        setLastTouchDist(d);
-      } else if (lastTouchPos) {
-        // Pan
-        const currentPos = getPos(e);
-        const dx = (currentPos.x - lastTouchPos.x) * zoom;
-        const dy = (currentPos.y - lastTouchPos.y) * zoom;
-        setPanOffset({ x: panOffset.x + dx, y: panOffset.y + dy });
+        setZoom(newZoom);
       }
+      setLastTouchDist(d);
       return;
     }
 
@@ -982,6 +1042,7 @@ export function SketchPad({ onSave, initialData, width = 600, height = 400, unit
     setIsDrawing(false);
     setCurrentShape(null);
     setLastTouchPos(null);
+    setLastScreenPos(null);
     setLastTouchDist(null);
   };
 
@@ -1005,9 +1066,22 @@ export function SketchPad({ onSave, initialData, width = 600, height = 400, unit
         y: p1.y + (p2.y - p1.y) * ratio
       };
 
+      const screenX = newP2.x * zoom + panOffset.x;
+      const screenY = newP2.y * zoom + panOffset.y;
+      if (screenX < 0 || screenY < 0 || screenX > canvas.width || screenY > canvas.height) {
+        if (window.confirm(`This ${newLength}${unitPrefix} line extends outside the sheet. Do you want to automatically scale the sheet to fit it?`)) {
+          setTimeout(resetView, 50);
+        } else {
+          return s; // discard edit
+        }
+      }
+
       return { ...s, points: [p1, newP2], showMeasurement: true };
     });
-    updateShapes(newShapes);
+    const hasChanges = newShapes.some((s, idx) => s !== shapes[idx]);
+    if (hasChanges) {
+      updateShapes(newShapes);
+    }
   };
 
   const rotateShape = (shapeId: string, delta: number) => {
@@ -1035,12 +1109,24 @@ export function SketchPad({ onSave, initialData, width = 600, height = 400, unit
   };
 
   const handleWheel = (e: React.WheelEvent) => {
+    // Only zoom when Ctrl is held - this "keeps the scroll option" for the page
     if (e.ctrlKey) {
-      const delta = e.deltaY > 0 ? 0.9 : 1.1;
-      setZoom(Math.min(Math.max(zoom * delta, 0.1), 10));
       e.preventDefault();
-    } else {
-      setPanOffset({ x: panOffset.x - e.deltaX, y: panOffset.y - e.deltaY });
+      const canvas = canvasRef.current;
+      if (!canvas) return;
+      
+      const rect = canvas.getBoundingClientRect();
+      const mouseX = e.clientX - rect.left;
+      const mouseY = e.clientY - rect.top;
+
+      const delta = e.deltaY > 0 ? 0.9 : 1.1;
+      const newZoom = Math.min(Math.max(zoom * delta, 0.1), 10);
+      
+      setPanOffset(prev => ({
+        x: mouseX - (mouseX - prev.x) * (newZoom / zoom),
+        y: mouseY - (mouseY - prev.y) * (newZoom / zoom)
+      }));
+      setZoom(newZoom);
     }
   };
 
@@ -1088,10 +1174,10 @@ export function SketchPad({ onSave, initialData, width = 600, height = 400, unit
     <div
       ref={containerRef}
       className={cn(
-        "flex flex-col gap-2 border rounded-xl p-2 sm:p-3 bg-slate-50/50 shadow-sm overflow-hidden transition-all",
+        "flex flex-col gap-2 border rounded-xl p-2 sm:p-3 bg-slate-50/50 shadow-sm transition-all scrollbar-gutter-stable",
         isFullscreen
-          ? "fixed inset-0 z-[9999] w-screen h-screen bg-slate-50 p-4"
-          : "relative w-full min-h-[600px] lg:min-h-[700px]"
+          ? "fixed inset-0 z-[9999] w-screen h-screen bg-slate-50 p-4 overflow-y-scroll overflow-x-auto"
+          : "relative w-full h-full min-h-[500px] overflow-hidden"
       )}
     >
       <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as any)} className="w-full flex flex-col gap-2">
@@ -1116,7 +1202,7 @@ export function SketchPad({ onSave, initialData, width = 600, height = 400, unit
                     type="number"
                     value={referenceScale}
                     onChange={(e) => setReferenceScale(Number(e.target.value))}
-                    className="w-12 h-5 text-[10px] p-0 px-1 font-black bg-transparent border-none focus-visible:ring-0 h-min"
+                    className="w-16 h-5 text-[10px] p-0 px-1 font-black bg-transparent border-none focus-visible:ring-0 h-min"
                   />
                   <span className="text-[9px] font-black text-indigo-600 uppercase">{unitPrefix}</span>
                 </div>
@@ -1136,15 +1222,16 @@ export function SketchPad({ onSave, initialData, width = 600, height = 400, unit
         {/* Mode-specific Toolbar */}
         <div className="w-full">
           {activeTab === "drawing" ? (
-            <div className="flex flex-wrap items-center gap-1 bg-white p-1.5 rounded-lg border border-slate-200 shadow-sm overflow-x-auto no-scrollbar">
+            <div className="flex items-center gap-1 bg-white p-1.5 rounded-lg border border-slate-200 shadow-sm overflow-x-auto whitespace-nowrap">
               {/* Drawing Group */}
-              <div className="flex items-center gap-1 pr-1 border-r border-slate-100">
+              <div className="flex items-center gap-1 pr-1 border-r border-slate-100 flex-shrink-0">
                 {[
                   { id: "pencil", icon: Pencil, label: "Draw" },
                   { id: "line", icon: LineIcon, label: "Line" },
                   { id: "rect", icon: Square, label: "Rect" },
                   { id: "circle", icon: Circle, label: "Circle" },
                   { id: "select", icon: Monitor, label: "Select" },
+                  { id: "pan", icon: Hand, label: "Pan" },
                 ].map((tool) => (
                   <Button
                     key={tool.id}
@@ -1198,7 +1285,6 @@ export function SketchPad({ onSave, initialData, width = 600, height = 400, unit
                 {[
                   { id: "measure", icon: Ruler, label: "Measure", variant: "measure" },
                   { id: "calibrate", icon: Ruler, label: "Calibrate", variant: "calibrate" },
-                  { id: "pan", icon: Waypoints, label: "Pan", variant: "pan" },
                   { id: "delete", icon: Eraser, label: "Erase", variant: "delete" },
                 ].map((tool) => (
                   <Button
@@ -1320,28 +1406,16 @@ export function SketchPad({ onSave, initialData, width = 600, height = 400, unit
               </div>
               <div className="flex items-center gap-1 px-1 border-r border-slate-100">
                 <Button
-                  variant={mode !== "pan" ? "default" : "ghost"}
+                  variant={mode !== "select" ? "default" : "ghost"}
                   size="sm"
                   onClick={() => { setMode("pencil"); setIsDrawing(false); }}
                   className={cn(
                     "flex flex-col items-center gap-0.5 h-11 w-11 px-0 border border-transparent shadow-none",
-                    mode !== "pan" ? "bg-indigo-600 text-white shadow-md" : "text-slate-600 hover:bg-slate-100"
+                    mode !== "select" ? "bg-indigo-600 text-white shadow-md" : "text-slate-600 hover:bg-slate-100"
                   )}
                 >
                   <Monitor className="w-4 h-4" />
                   <span className="text-[8px] font-bold uppercase">Select</span>
-                </Button>
-                <Button
-                  variant={mode === "pan" ? "default" : "ghost"}
-                  size="sm"
-                  onClick={() => { setMode("pan"); setSelectedBlockId(null); setIsDrawing(false); }}
-                  className={cn(
-                    "flex flex-col items-center gap-0.5 h-11 w-11 px-0 border border-transparent shadow-none",
-                    mode === "pan" ? "bg-indigo-600 text-white shadow-md" : "text-slate-600 hover:bg-slate-100"
-                  )}
-                >
-                  <Waypoints className="w-4 h-4" />
-                  <span className="text-[8px] font-bold uppercase">Pan</span>
                 </Button>
               </div>
               <p className="hidden sm:block text-[9px] font-bold text-slate-400 uppercase px-3 italic">
@@ -1353,7 +1427,7 @@ export function SketchPad({ onSave, initialData, width = 600, height = 400, unit
       </Tabs>
 
       {/* Responsive Toggles Bar */}
-      <div className="flex flex-wrap items-center gap-x-4 gap-y-2 px-3 py-1.5 bg-white/30 rounded-lg border border-slate-200/50 backdrop-blur-sm">
+      <div className="flex items-center gap-x-4 px-3 py-1.5 bg-white/30 rounded-lg border border-slate-200/50 backdrop-blur-sm overflow-x-auto whitespace-nowrap scrollbar-thin">
         {[
           { id: "grid-toggle", checked: showGrid, onChange: setShowGrid, icon: Grid3X3, label: "Grid" },
           { id: "snap-toggle", checked: snapToGrid, onChange: setSnapToGrid, label: "Snap Grid" },
@@ -1361,14 +1435,14 @@ export function SketchPad({ onSave, initialData, width = 600, height = 400, unit
           { id: "snap-endpoints-toggle", checked: snapToEndpoints, onChange: setSnapToEndpoints, label: "Endpoints" },
           { id: "continuous-toggle", checked: isContinuous, onChange: setIsContinuous, icon: Waypoints, label: "Continuous" },
         ].map((toggle) => (
-          <div key={toggle.id} className="flex items-center gap-2">
+          <div key={toggle.id} className="flex items-center gap-2 flex-shrink-0">
             <Switch id={toggle.id} checked={toggle.checked} onCheckedChange={toggle.onChange} className="scale-75 origin-left" />
             <Label htmlFor={toggle.id} className="text-[9px] font-bold text-slate-500 flex items-center gap-1 uppercase cursor-pointer hover:text-indigo-600 transition-colors">
               {toggle.icon && <toggle.icon className="w-2.5 h-2.5" />} {toggle.label}
             </Label>
           </div>
         ))}
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 flex-shrink-0">
           <Switch id="show-measurements-toggle" checked={showAllMeasurements} onCheckedChange={setShowAllMeasurements} className="scale-75 origin-left" />
           <Label htmlFor="show-measurements-toggle" className="text-[9px] font-bold text-slate-500 flex items-center gap-1 uppercase cursor-pointer hover:text-indigo-600 transition-colors">
             <Ruler className="w-2.5 h-2.5" /> Show All Measurements
@@ -1382,7 +1456,7 @@ export function SketchPad({ onSave, initialData, width = 600, height = 400, unit
 
       <div className="flex gap-4 flex-1 min-h-[500px]">
         {activeTab === "block" && (
-          <div className="w-72 bg-slate-50/80 backdrop-blur-md border border-slate-200/60 rounded-2xl p-4 overflow-y-auto no-scrollbar shadow-xl hidden md:flex flex-col gap-5">
+          <div className="w-72 bg-slate-50/80 backdrop-blur-md border border-slate-200/60 rounded-2xl p-4 overflow-y-auto shadow-xl hidden md:flex flex-col gap-5">
             <div>
               <div className="flex items-center justify-between mb-4">
                 <div className="flex flex-col">
@@ -1541,10 +1615,33 @@ export function SketchPad({ onSave, initialData, width = 600, height = 400, unit
             </div>
           )}
 
-          {/* Floating Zoom Indicator */}
-          <div className="absolute bottom-3 right-3 flex flex-col items-center bg-white/80 backdrop-blur-sm border border-slate-200 px-2 py-1.5 rounded-lg shadow-sm pointer-events-none">
-            <span className="text-[8px] font-black text-slate-400 uppercase leading-none mb-1">Zoom</span>
-            <span className="text-xs font-black text-indigo-600 leading-none">{Math.round(zoom * 100)}%</span>
+          {/* Floating Zoom Controls */}
+          <div className="absolute bottom-3 right-3 flex flex-col gap-2">
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={resetView}
+              className="bg-white/90 backdrop-blur-md border-slate-200 shadow-md hover:bg-slate-50 text-[9px] font-black tracking-widest text-slate-600 hover:text-indigo-600 uppercase h-8 px-3"
+              title="Reset Graph Zoom & Position"
+            >
+              Reset View
+            </Button>
+            <div className="flex flex-col items-center bg-white/80 backdrop-blur-sm border border-slate-200 px-2 py-1.5 rounded-lg shadow-sm">
+              <span className="text-[8px] font-black text-slate-400 uppercase leading-none mb-1">Zoom</span>
+              <div className="flex items-center gap-0.5">
+                <input
+                  type="number"
+                  value={Math.round(zoom * 100)}
+                  onChange={(e) => {
+                    const val = parseInt(e.target.value);
+                    if (!isNaN(val)) setZoom(val / 100);
+                  }}
+                  className="w-10 h-4 text-[10px] font-black text-indigo-600 bg-transparent border-none p-0 text-center focus-visible:ring-0 outline-none"
+                />
+                <span className="text-[10px] font-black text-indigo-600 leading-none">%</span>
+              </div>
+            </div>
           </div>
         </div>
       </div>
@@ -1552,7 +1649,6 @@ export function SketchPad({ onSave, initialData, width = 600, height = 400, unit
       <div className="flex items-center justify-between text-[9px] text-slate-400 font-bold px-2 py-1">
         <div className="flex items-center gap-3">
           <span className="flex items-center gap-1"><Zap className="w-3 h-3 text-amber-500" /> Ctrl+Wheel to Zoom</span>
-          <span className="flex items-center gap-1"><Waypoints className="w-3 h-3 text-indigo-400" /> Drag to Pan</span>
           <span className="flex items-center gap-1"><Monitor className="w-3 h-3 text-slate-400" /> {activeTab === "block" ? "Select block to edit" : "Click to draw"}</span>
         </div>
         <p className="uppercase tracking-tighter opacity-70 italic text-right">Drawing Area: {Math.round(internalSize.width)} x {Math.round(internalSize.height)} px</p>

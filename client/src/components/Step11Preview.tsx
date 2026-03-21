@@ -25,6 +25,7 @@ type Product = {
   id: string;
   name: string;
   code: string;
+  image?: string;
   category?: string;
   subcategory?: string;
   description?: string;

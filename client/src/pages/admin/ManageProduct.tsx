@@ -20,7 +20,7 @@ import { fuzzySearch } from "@/lib/utils";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 
-type Product = { id: string; name: string; subcategory: string; created_at: string; created_by?: string };
+type Product = { id: string; name: string; subcategory: string; created_at: string; created_by?: string; image?: string };
 type Material = { id: string; name: string; unit: string; rate: number; category: string; subcategory: string; description?: string; shop_name?: string; shop_id?: string; shopId?: string; code?: string; hsn_code?: string; sac_code?: string; technicalspecification?: string; technicalSpecification?: string; created_at?: string };
 type SelectedMaterial = Material & { qty: number; baseQty: number; wastagePct?: number; amount: number; rate: number; supplyRate: number; installRate: number; location: string; applyWastage: boolean; applyRounding: boolean };
 
@@ -40,6 +40,16 @@ const EmptyState = ({ icon: Icon, title, subtitle, className = "" }: { icon: any
         {subtitle && <p className="text-[10px] text-muted-foreground/60">{subtitle}</p>}
     </div>
 );
+
+const parseImages = (imageField: string | null | undefined): string[] => {
+  if (!imageField) return [];
+  try {
+    if (imageField.startsWith('[')) return JSON.parse(imageField);
+    return [imageField];
+  } catch (e) {
+    return [imageField];
+  }
+};
 
 export default function ManageProduct() {
     const [step, setStep] = useState(1);
@@ -317,7 +327,22 @@ export default function ManageProduct() {
                 if (d.configurations?.length > 0) {
                     const latest = d.configurations[0];
                     applyConfig(latest.product, latest.items, `Loaded config "${latest.product.config_name || "Unnamed"}" for ${product.name}.`);
+                    return;
                 }
+            }
+            // Auto-load pending config if no other config exists
+            let pending = null;
+            if (allApprovals) {
+                pending = (allApprovals as any[]).find((a: any) => a.product_id === product.id && a.status === "pending");
+            } else {
+                const pRes = await apiFetch(`/api/product-approvals`);
+                if (pRes.ok) {
+                    const d = await pRes.json();
+                    pending = (d.approvals || []).find((a: any) => a.product_id === product.id && a.status === "pending");
+                }
+            }
+            if (pending) {
+                loadApprovalConfig(pending, "Pending");
             }
         } catch (e) { console.error(e); }
     };
@@ -327,13 +352,13 @@ export default function ManageProduct() {
         catch (e) { console.error(e); toast({ title: "Error", description: "Failed to load config.", variant: "destructive" }); }
     };
 
-    const loadRejectedConfig = async (config: any) => {
+    const loadApprovalConfig = async (config: any, statusLabel: string = "Rejected") => {
         try {
             setIsLoadingConfigs(true);
             const res = await apiFetch(`/api/product-approvals/${config.id}`);
-            if (res.ok) { const d = await res.json(); applyConfig(d.approval, d.items, `Rejected config "${config.config_name}" loaded for editing.`); }
+            if (res.ok) { const d = await res.json(); applyConfig(d.approval, d.items, `${statusLabel} config "${config.config_name}" loaded for viewing/editing.`); }
             else throw new Error("Failed to load details");
-        } catch (e) { console.error(e); toast({ title: "Error", description: "Failed to load rejected configuration.", variant: "destructive" }); }
+        } catch (e) { console.error(e); toast({ title: "Error", description: `Failed to load ${statusLabel.toLowerCase()} configuration.`, variant: "destructive" }); }
         finally { setIsLoadingConfigs(false); }
     };
 
@@ -556,11 +581,16 @@ export default function ManageProduct() {
                                                                         <Checkbox checked={selectedProduct?.id === product.id} onCheckedChange={checked => checked ? selectProduct(product) : setSelectedProduct(null)} />
                                                                     </TableCell>
                                                                     <TableCell className="font-semibold text-base py-4">
-                                                                        <div className="flex flex-col gap-1">
-                                                                            <span>{product.name}</span>
-                                                                            <div className="flex gap-2">
-                                                                                {isPending && <Badge variant="outline" className="bg-amber-100 text-amber-700 border-amber-200 text-[8px] h-4 px-1.5 font-bold uppercase flex items-center gap-1 w-fit"><Loader2 className="h-2 w-2 animate-spin" /> Pending Approval</Badge>}
-                                                                                {isRejected && <Badge variant="outline" className="bg-red-100 text-red-700 border-red-200 text-[8px] h-4 px-1.5 font-bold uppercase flex items-center gap-1 w-fit"><XCircle className="h-2 w-2" /> Rejected</Badge>}
+                                                                        <div className="flex items-center gap-3">
+                                                                            {parseImages(product.image).length > 0 && (
+                                                                                <img src={parseImages(product.image)[0]} alt={product.name} className="h-10 w-10 object-cover rounded shadow-sm border border-slate-200 shrink-0" />
+                                                                            )}
+                                                                            <div className="flex flex-col gap-1">
+                                                                                <span>{product.name}</span>
+                                                                                <div className="flex gap-2">
+                                                                                    {isPending && <Badge variant="outline" className="bg-amber-100 text-amber-700 border-amber-200 text-[8px] h-4 px-1.5 font-bold uppercase flex items-center gap-1 w-fit"><Loader2 className="h-2 w-2 animate-spin" /> Pending Approval</Badge>}
+                                                                                    {isRejected && <Badge variant="outline" className="bg-red-100 text-red-700 border-red-200 text-[8px] h-4 px-1.5 font-bold uppercase flex items-center gap-1 w-fit"><XCircle className="h-2 w-2" /> Rejected</Badge>}
+                                                                                </div>
                                                                             </div>
                                                                         </div>
                                                                     </TableCell>
@@ -616,9 +646,14 @@ export default function ManageProduct() {
                                                                         <Checkbox checked={selectedProduct?.id === product.id} onCheckedChange={checked => checked ? selectProduct(product) : setSelectedProduct(null)} />
                                                                     </TableCell>
                                                                     <TableCell className="font-semibold text-base py-4">
-                                                                        <div className="flex flex-col gap-1">
-                                                                            <span>{product.name}</span>
-                                                                            {isPendingRevision && <Badge variant="outline" className="bg-amber-100 text-amber-700 border-amber-200 text-[8px] h-4 px-1.5 font-bold uppercase flex items-center gap-1 w-fit"><Loader2 className="h-2 w-2 animate-spin" /> Revision Pending</Badge>}
+                                                                        <div className="flex items-center gap-3">
+                                                                            {parseImages(product.image).length > 0 && (
+                                                                                <img src={parseImages(product.image)[0]} alt={product.name} className="h-10 w-10 object-cover rounded shadow-sm border border-slate-200 shrink-0" />
+                                                                            )}
+                                                                            <div className="flex flex-col gap-1">
+                                                                                <span>{product.name}</span>
+                                                                                {isPendingRevision && <Badge variant="outline" className="bg-amber-100 text-amber-700 border-amber-200 text-[8px] h-4 px-1.5 font-bold uppercase flex items-center gap-1 w-fit"><Loader2 className="h-2 w-2 animate-spin" /> Revision Pending</Badge>}
+                                                                            </div>
                                                                         </div>
                                                                     </TableCell>
                                                                     <TableCell className="text-muted-foreground">{product.created_at ? new Date(product.created_at).toLocaleDateString() : "N/A"}</TableCell>
@@ -719,7 +754,7 @@ export default function ManageProduct() {
                                                                         <Badge variant="outline" className="h-4 text-[8px] uppercase px-1.5 font-black bg-amber-100 text-amber-700 border-amber-200">Pending</Badge>
                                                                     </div>
                                                                 </div>
-                                                                <Button variant="secondary" size="sm" disabled className="h-8 text-[10px] font-black uppercase tracking-tight bg-amber-100/50 text-amber-600 border-none opacity-70">Locked</Button>
+                                                                <Button variant="outline" size="sm" onClick={() => loadApprovalConfig(config, "Pending")} className="h-8 text-[10px] font-black uppercase tracking-tight border-amber-200 hover:bg-amber-50 text-amber-600 px-3">View / Load</Button>
                                                             </div>
                                                         )) : (
                                                             <div className="py-4 text-center border border-dashed border-amber-100 rounded-lg bg-amber-50/50 italic text-muted-foreground text-[10px] font-medium">No configurations pending review.</div>
@@ -738,7 +773,7 @@ export default function ManageProduct() {
                                                                         <div className="font-bold text-sm text-slate-800">{config.config_name || "Unnamed Config"}</div>
                                                                         <div className="text-[10px] text-red-600 font-bold italic line-clamp-1">{config.rejection_reason || "Check feedback"}</div>
                                                                     </div>
-                                                                    <Button variant="outline" size="sm" onClick={() => loadRejectedConfig(config)} className="h-8 text-[10px] font-black uppercase tracking-tight border-red-200 hover:bg-red-50 text-red-600 px-3">Resubmit</Button>
+                                                                    <Button variant="outline" size="sm" onClick={() => loadApprovalConfig(config, "Rejected")} className="h-8 text-[10px] font-black uppercase tracking-tight border-red-200 hover:bg-red-50 text-red-600 px-3">Resubmit</Button>
                                                                 </div>
                                                             ))}
                                                         </div>

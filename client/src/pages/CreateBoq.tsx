@@ -36,7 +36,7 @@ const PROJECT_STATUSES: { value: string; label: string; color: string }[] = [
 const getProjectStatusMeta = (s?: string) => PROJECT_STATUSES.find(x => x.value === s) ?? { label: s || 'Started', color: 'bg-blue-100 text-blue-700' };
 type BOMVersion = { id: string; project_id: string; version_number: number; status: "draft" | "submitted" | "pending_approval" | "approved" | "rejected" | "edit_requested"; created_at: string; rejection_reason?: string; updated_at: string; project_name?: string; project_client?: string; project_location?: string };
 type BOMItem = { id: string; estimator: string; session_id: string; table_data: any; created_at: string };
-type Product = { id: string; name: string; code: string; category?: string; subcategory?: string; description?: string; category_name?: string; subcategory_name?: string; tax_code_type?: string; tax_code_value?: string; hsn_code?: string; sac_code?: string };
+type Product = { id: string; name: string; code: string; image?: string; category?: string; subcategory?: string; description?: string; category_name?: string; subcategory_name?: string; tax_code_type?: string; tax_code_value?: string; hsn_code?: string; sac_code?: string };
 type Step11Item = { id?: string; s_no?: number; title?: string; description?: string; unit?: string; qty?: number; supply_rate?: number; install_rate?: number;[key: string]: any };
 type BOMHistory = { id: string; version_id: string; user_id: string; user_full_name: string; action: string; reason?: string; created_at: string };
 
@@ -45,6 +45,16 @@ type BOMHistory = { id: string; version_id: string; user_id: string; user_full_n
 const parseTableData = (raw: any): any => {
   if (typeof raw === "string") { try { return JSON.parse(raw); } catch { return {}; } }
   return raw || {};
+};
+
+const parseImages = (imageField: string | null | undefined): string[] => {
+  if (!imageField) return [];
+  try {
+    if (imageField.startsWith('[')) return JSON.parse(imageField);
+    return [imageField];
+  } catch (e) {
+    return [imageField];
+  }
 };
 
 const safeJson = async (res: Response): Promise<any> => {
@@ -525,6 +535,9 @@ function BoqItemCard({ boqItem, boqIdx, isVersionSubmitted, expandedProductIds, 
   const grandTotalValue = totalAmount; // Primary source of truth
   const ratePerUnit = calculationTarget > 0 ? grandTotalValue / calculationTarget : 0;
 
+  const images = parseImages(tableData.image);
+  const displayImage = images.length > 0 ? images[0] : null;
+
   return (
     <div
       className={`border rounded-lg overflow-hidden transition-all ${isCardDragOver ? 'ring-2 ring-blue-400 bg-blue-50/30' : ''}`}
@@ -538,6 +551,7 @@ function BoqItemCard({ boqItem, boqIdx, isVersionSubmitted, expandedProductIds, 
         <div className={`flex ${isCompactView ? 'items-center justify-between w-full' : 'flex-col gap-0.5 flex-1'}`}>
           <div className={`flex items-center gap-2 font-semibold text-gray-800 ${isCompactView ? 'text-xs' : 'text-sm'}`}>
             <GripVertical className={`h-4 w-4 flex-shrink-0 ${isVersionSubmitted ? 'text-gray-200' : 'text-gray-400 hover:text-blue-500 cursor-grab'}`} />
+            {displayImage && <img src={displayImage} alt={productName} className="h-8 w-8 object-cover rounded shadow-sm border border-slate-200" />}
             <span className="truncate max-w-[200px] sm:max-w-sm" title={productName}>{boqIdx + 1}. {productName}</span>
             {tableData.category && !isCompactView && <span className="text-xs text-gray-500 font-normal">({tableData.category})</span>}
             {tableData.is_finalized && <span className={`inline-block bg-green-100 text-green-700 px-2 py-0.5 rounded font-semibold ml-2 ${isCompactView ? 'text-[10px]' : 'text-xs'}`}>Finalized</span>}
@@ -1450,7 +1464,7 @@ export default function CreateBom() {
         configBasis = { requiredUnitType: "Sqft" as UnitType, baseRequiredQty: 1, wastagePctDefault: 0 };
         materialLines = pendingItems.map(i => ({ materialId: i.id || Math.random().toString(), materialName: i.title || "Item", unit: i.unit || "nos", baseQty: i.qty || 1, supplyRate: i.supply_rate || 0, installRate: i.install_rate || 0 }));
       }
-      const tableData = { product_name: selectedProduct.name, product_id: selectedProduct.id, category: selectedProduct.category, subcategory: selectedProduct.subcategory, hsn_sac_type: selectedProduct.tax_code_type || null, hsn_sac_code: selectedProduct.tax_code_value || null, hsn_code: selectedProduct.hsn_code || null, sac_code: selectedProduct.sac_code || null, targetRequiredQty, configBasis, materialLines, step11_items: pendingItems, finalize_description: pendingItems[0]?.description || "", created_at: new Date().toISOString() };
+      const tableData = { product_name: selectedProduct.name, product_id: selectedProduct.id, image: selectedProduct.image, category: selectedProduct.category, subcategory: selectedProduct.subcategory, hsn_sac_type: selectedProduct.tax_code_type || null, hsn_sac_code: selectedProduct.tax_code_value || null, hsn_code: selectedProduct.hsn_code || null, sac_code: selectedProduct.sac_code || null, targetRequiredQty, configBasis, materialLines, step11_items: pendingItems, finalize_description: pendingItems[0]?.description || "", created_at: new Date().toISOString() };
 
       // --- NEW: Check for Material Quantity Increases in Approved POs ---
       const materialIds = materialLines.map(ml => ml.id || ml.materialId).filter(Boolean);

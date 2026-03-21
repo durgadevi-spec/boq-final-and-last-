@@ -16,6 +16,7 @@ type Product = {
   id: string;
   name: string;
   code: string;
+  image?: string;
   category?: string;
   subcategory?: string;
   description?: string;
@@ -55,6 +56,7 @@ export default function ProductPicker({
             id: p.id, // Use base product ID
             name: p.name,
             code: p.code || "",
+            image: p.image,
             category: p.category,
             subcategory: p.subcategory,
             category_name: p.category_name,
