@@ -115,6 +115,7 @@ type BOQVersion = {
   project_id: string;
   version_number: number;
   status: "draft" | "submitted" | "pending_approval" | "approved" | "rejected" | "edit_requested";
+  is_locked?: boolean;
   type: "bom" | "boq";
   created_at: string;
   updated_at: string;
@@ -420,21 +421,18 @@ export default function FinalizeBoq() {
 
   const [globalColSettings, setGlobalColSettings] = useState<{ [colName: string]: any }>({});
 
-  // BOM versions: only show approved (+ legacy drafts created before cutoff date)
+  // BOM versions: include draft, submitted, and approved versions for selection
   const filteredBomVersions = React.useMemo(() => {
-    const CUTOFF_DATE = new Date("2026-03-02T00:00:00Z");
-    return bomVersions.filter(v => {
-      if (v.status === "approved") return true;
-      if (v.status === "pending_approval" || v.status === "rejected") return false;
-      // Legacy: keep old drafts that were visible before the cutoff
-      const createdAt = v.created_at ? new Date(v.created_at) : new Date();
-      return createdAt < CUTOFF_DATE;
-    });
+    return bomVersions.filter(v => 
+      v.status === "approved" || 
+      v.status === "draft" || 
+      v.status === "submitted"
+    );
   }, [bomVersions]);
 
   // BOQ versions: show draft and approved so users can work on them
   const filteredBoqVersions = React.useMemo(() => {
-    return boqVersions.filter(v => v.status === "draft" || v.status === "approved");
+    return boqVersions.filter(v => v.status === "draft" || v.status === "approved" || v.status === "submitted");
   }, [boqVersions]);
 
   const activeVersionId = selectedBoqVersionId || selectedBomVersionId;
@@ -1482,7 +1480,7 @@ export default function FinalizeBoq() {
       await apiFetch(`/api/boq-versions/${activeVersionId}`, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ status: "approved" }),
+        body: JSON.stringify({ status: "approved", is_locked: true }),
       });
 
       const [bomResp, boqResp] = await Promise.all([
@@ -2287,7 +2285,7 @@ export default function FinalizeBoq() {
   };
 
   const selectedProject = projects.find((p) => p.id === selectedProjectId);
-  const isVersionSubmitted = !!activeVersion && ["submitted", "pending_approval", "edit_requested", "approved"].includes(activeVersion.status);
+  const isVersionSubmitted = !!activeVersion && (activeVersion.is_locked || ["submitted", "pending_approval", "edit_requested"].includes(activeVersion.status));
 
   // Budget (read-only) should come from the generated BOQ total (sum of displayed item amounts)
   const calculateGeneratedBudget = () => {
@@ -3357,6 +3355,7 @@ export default function FinalizeBoq() {
                                 <input
                                   type="number"
                                   value={productQuantities[boqItem.id] ?? (tableData.materialLines && tableData.targetRequiredQty !== undefined ? tableData.targetRequiredQty : (currentStep11Items[0]?.qty || 0))}
+                                  disabled={isVersionSubmitted}
                                   onChange={e => setProductQuantities(prev => ({ ...prev, [boqItem.id]: e.target.value }))}
                                   onBlur={async () => { await saveItemLayout(boqItem.id, undefined, undefined, undefined, productQuantities[boqItem.id]); }}
                                   className="w-full border-none rounded p-0.5 text-[10px] focus:ring-1 ring-blue-300 outline-none bg-blue-100/50 text-center font-semibold h-7"
