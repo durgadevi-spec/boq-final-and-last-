@@ -85,6 +85,12 @@ export function Sidebar({ isOpen, setIsOpen }: SidebarProps) {
   const { user, logout, supportMessages, materialApprovalRequests } = useData();
   const [alertsCount, setAlertsCount] = useState(0);
 
+  const closeSidebarOnMobile = () => {
+    if (window.innerWidth < 768) {
+      setIsOpen(false);
+    }
+  };
+
   // Custom permission state (dynamic access control)
   const [customModules, setCustomModules] = useState<Set<string>>(new Set());
   const [isCustomManaged, setIsCustomManaged] = useState(false);
@@ -402,7 +408,7 @@ export function Sidebar({ isOpen, setIsOpen }: SidebarProps) {
                         ? "bg-sidebar-primary text-sidebar-primary-foreground"
                         : "text-sidebar-foreground hover:bg-sidebar-accent",
                     )}
-                    onClick={() => setIsOpen(false)}
+                    onClick={closeSidebarOnMobile}
                   >
                     <LayoutDashboard className="h-4 w-4" />
                     Dashboard
@@ -419,7 +425,7 @@ export function Sidebar({ isOpen, setIsOpen }: SidebarProps) {
                         ? "bg-sidebar-primary text-sidebar-primary-foreground"
                         : "text-sidebar-foreground hover:bg-sidebar-accent",
                     )}
-                    onClick={() => setIsOpen(false)}
+                    onClick={closeSidebarOnMobile}
                   >
                     <FolderKanban className="h-4 w-4" /> Project Dashboard
                   </span>
@@ -435,7 +441,7 @@ export function Sidebar({ isOpen, setIsOpen }: SidebarProps) {
                         ? "bg-sidebar-primary text-sidebar-primary-foreground"
                         : "text-sidebar-foreground hover:bg-sidebar-accent",
                     )}
-                    onClick={() => setIsOpen(false)}
+                    onClick={closeSidebarOnMobile}
                   >
                     <AlertCircle className="h-4 w-4" /> Alerts
                     {alertsCount > 0 && (
@@ -457,7 +463,7 @@ export function Sidebar({ isOpen, setIsOpen }: SidebarProps) {
                         ? "bg-sidebar-primary text-sidebar-primary-foreground"
                         : "text-sidebar-foreground hover:bg-sidebar-accent",
                     )}
-                    onClick={() => setIsOpen(false)}
+                    onClick={closeSidebarOnMobile}
                   >
                     <ShieldCheck className="h-4 w-4" /> Access Control
                   </span>
@@ -484,7 +490,7 @@ export function Sidebar({ isOpen, setIsOpen }: SidebarProps) {
                           ? "bg-sidebar-primary text-sidebar-primary-foreground"
                           : "text-sidebar-foreground hover:bg-sidebar-accent",
                       )}
-                      onClick={() => setIsOpen(false)}
+                      onClick={closeSidebarOnMobile}
                     >
                       <Package className="h-4 w-4" /> Create Item
                     </span>
@@ -499,7 +505,7 @@ export function Sidebar({ isOpen, setIsOpen }: SidebarProps) {
                           ? "bg-sidebar-primary text-sidebar-primary-foreground"
                           : "text-sidebar-foreground hover:bg-sidebar-accent",
                       )}
-                      onClick={() => setIsOpen(false)}
+                      onClick={closeSidebarOnMobile}
                     >
                       <Package className="h-4 w-4" /> Create Product
                     </span>
@@ -514,7 +520,7 @@ export function Sidebar({ isOpen, setIsOpen }: SidebarProps) {
                           ? "bg-sidebar-primary text-sidebar-primary-foreground"
                           : "text-sidebar-foreground hover:bg-sidebar-accent",
                       )}
-                      onClick={() => setIsOpen(false)}
+                      onClick={closeSidebarOnMobile}
                     >
                       <Building2 className="h-4 w-4" /> Create Project
                     </span>
@@ -529,7 +535,7 @@ export function Sidebar({ isOpen, setIsOpen }: SidebarProps) {
                           ? "bg-sidebar-primary text-sidebar-primary-foreground"
                           : "text-sidebar-foreground hover:bg-sidebar-accent",
                       )}
-                      onClick={() => setIsOpen(false)}
+                      onClick={closeSidebarOnMobile}
                     >
                       <Tags className="h-4 w-4" /> Create Vendor Category
                     </span>
@@ -544,7 +550,7 @@ export function Sidebar({ isOpen, setIsOpen }: SidebarProps) {
                           ? "bg-sidebar-primary text-sidebar-primary-foreground"
                           : "text-sidebar-foreground hover:bg-sidebar-accent",
                       )}
-                      onClick={() => setIsOpen(false)}
+                      onClick={closeSidebarOnMobile}
                     >
                       <span className="text-lg">📐</span> Sketch a Plan
                     </span>
@@ -572,7 +578,7 @@ export function Sidebar({ isOpen, setIsOpen }: SidebarProps) {
                           ? "bg-sidebar-primary text-sidebar-primary-foreground"
                           : "text-sidebar-foreground hover:bg-sidebar-accent",
                       )}
-                      onClick={() => setIsOpen(false)}
+                      onClick={closeSidebarOnMobile}
                     >
                       <Package className="h-4 w-4" /> Manage Product
                     </span>
@@ -589,7 +595,7 @@ export function Sidebar({ isOpen, setIsOpen }: SidebarProps) {
                               ? "bg-sidebar-primary text-sidebar-primary-foreground"
                               : "text-sidebar-foreground hover:bg-sidebar-accent",
                           )}
-                          onClick={() => setIsOpen(false)}
+                          onClick={closeSidebarOnMobile}
                         >
                           <Package className="h-4 w-4" /> Manage Materials
                         </span>
@@ -605,7 +611,7 @@ export function Sidebar({ isOpen, setIsOpen }: SidebarProps) {
                               ? "bg-sidebar-primary text-sidebar-primary-foreground"
                               : "text-sidebar-foreground hover:bg-sidebar-accent",
                           )}
-                          onClick={() => setIsOpen(false)}
+                          onClick={closeSidebarOnMobile}
                         >
                           <Building2 className="h-4 w-4" /> Manage Shops
                         </span>
@@ -621,7 +627,7 @@ export function Sidebar({ isOpen, setIsOpen }: SidebarProps) {
                               ? "bg-sidebar-primary text-sidebar-primary-foreground"
                               : "text-sidebar-foreground hover:bg-sidebar-accent",
                           )}
-                          onClick={() => setIsOpen(false)}
+                          onClick={closeSidebarOnMobile}
                         >
                           <Tags className="h-4 w-4" /> Manage Categories
                         </span>
@@ -637,7 +643,7 @@ export function Sidebar({ isOpen, setIsOpen }: SidebarProps) {
                               ? "bg-sidebar-primary text-sidebar-primary-foreground"
                               : "text-sidebar-foreground hover:bg-sidebar-accent",
                           )}
-                          onClick={() => setIsOpen(false)}
+                          onClick={closeSidebarOnMobile}
                         >
                           <Package className="h-4 w-4" /> Bulk Upload
                         </span>
@@ -665,7 +671,7 @@ export function Sidebar({ isOpen, setIsOpen }: SidebarProps) {
                           ? "bg-sidebar-primary text-sidebar-primary-foreground"
                           : "text-sidebar-foreground hover:bg-sidebar-accent",
                       )}
-                      onClick={() => setIsOpen(false)}
+                      onClick={closeSidebarOnMobile}
                     >
                       <ShoppingCart className="h-4 w-4" /> Generate BOM
                     </span>
@@ -680,7 +686,7 @@ export function Sidebar({ isOpen, setIsOpen }: SidebarProps) {
                           ? "bg-sidebar-primary text-sidebar-primary-foreground"
                           : "text-sidebar-foreground hover:bg-sidebar-accent",
                       )}
-                      onClick={() => setIsOpen(false)}
+                      onClick={closeSidebarOnMobile}
                     >
                       <FileText className="h-4 w-4" /> Generate PO
                     </span>
@@ -695,7 +701,7 @@ export function Sidebar({ isOpen, setIsOpen }: SidebarProps) {
                           ? "bg-sidebar-primary text-sidebar-primary-foreground"
                           : "text-sidebar-foreground hover:bg-sidebar-accent",
                       )}
-                      onClick={() => setIsOpen(false)}
+                      onClick={closeSidebarOnMobile}
                     >
                       <CheckCircle2 className="h-4 w-4" /> Finalize BOQ
                     </span>
@@ -720,7 +726,7 @@ export function Sidebar({ isOpen, setIsOpen }: SidebarProps) {
                           ? "bg-sidebar-primary text-sidebar-primary-foreground"
                           : "text-sidebar-foreground hover:bg-sidebar-accent",
                       )}
-                      onClick={() => setIsOpen(false)}
+                      onClick={closeSidebarOnMobile}
                     >
                       <FileText className="h-4 w-4" /> Purchase Orders
                     </span>
@@ -735,7 +741,7 @@ export function Sidebar({ isOpen, setIsOpen }: SidebarProps) {
                           ? "bg-sidebar-primary text-sidebar-primary-foreground"
                           : "text-sidebar-foreground hover:bg-sidebar-accent",
                       )}
-                      onClick={() => setIsOpen(false)}
+                      onClick={closeSidebarOnMobile}
                     >
                       <ClipboardCheck className="h-4 w-4" /> PO Approvals
                     </span>
@@ -762,7 +768,7 @@ export function Sidebar({ isOpen, setIsOpen }: SidebarProps) {
                           ? "bg-sidebar-primary text-sidebar-primary-foreground"
                           : "text-sidebar-foreground hover:bg-sidebar-accent",
                       )}
-                      onClick={() => setIsOpen(false)}
+                      onClick={closeSidebarOnMobile}
                     >
                       <FileText className="h-4 w-4" /> Raise PO Request
                       <Badge variant="outline" className="ml-auto text-[9px] px-1 py-0 h-3.5 border-amber-200 bg-amber-50 text-amber-700 font-medium tracking-wide leading-none flex items-center">
@@ -780,7 +786,7 @@ export function Sidebar({ isOpen, setIsOpen }: SidebarProps) {
                           ? "bg-sidebar-primary text-sidebar-primary-foreground"
                           : "text-sidebar-foreground hover:bg-sidebar-accent",
                       )}
-                      onClick={() => setIsOpen(false)}
+                      onClick={closeSidebarOnMobile}
                     >
                       <ClipboardCheck className="h-4 w-4" /> My Requests
                       <Badge variant="outline" className="ml-auto text-[9px] px-1 py-0 h-3.5 border-amber-200 bg-amber-50 text-amber-700 font-medium tracking-wide leading-none flex items-center">
@@ -800,7 +806,7 @@ export function Sidebar({ isOpen, setIsOpen }: SidebarProps) {
                               ? "bg-sidebar-primary text-sidebar-primary-foreground"
                               : "text-sidebar-foreground hover:bg-sidebar-accent",
                           )}
-                          onClick={() => setIsOpen(false)}
+                          onClick={closeSidebarOnMobile}
                         >
                           <CheckCircle2 className="h-4 w-4" /> Pending Approvals
                           <Badge variant="outline" className="ml-auto text-[9px] px-1 py-0 h-3.5 border-amber-200 bg-amber-50 text-amber-700 font-medium tracking-wide leading-none flex items-center">
@@ -818,7 +824,7 @@ export function Sidebar({ isOpen, setIsOpen }: SidebarProps) {
                               ? "bg-sidebar-primary text-sidebar-primary-foreground"
                               : "text-sidebar-foreground hover:bg-sidebar-accent",
                           )}
-                          onClick={() => setIsOpen(false)}
+                          onClick={closeSidebarOnMobile}
                         >
                           <ShoppingCart className="h-4 w-4" /> Approved Requests
                           <Badge variant="outline" className="ml-auto text-[9px] px-1 py-0 h-3.5 border-amber-200 bg-amber-50 text-amber-700 font-medium tracking-wide leading-none flex items-center">
@@ -851,7 +857,7 @@ export function Sidebar({ isOpen, setIsOpen }: SidebarProps) {
                           ? "bg-sidebar-primary text-sidebar-primary-foreground"
                           : "text-sidebar-foreground hover:bg-sidebar-accent",
                       )}
-                      onClick={() => setIsOpen(false)}
+                      onClick={closeSidebarOnMobile}
                     >
                       <ShieldAlert className="h-4 w-4" /> Shop Approvals
                       {pendingShopCount > 0 && (
@@ -872,7 +878,7 @@ export function Sidebar({ isOpen, setIsOpen }: SidebarProps) {
                           ? "bg-sidebar-primary text-sidebar-primary-foreground"
                           : "text-sidebar-foreground hover:bg-sidebar-accent",
                       )}
-                      onClick={() => setIsOpen(false)}
+                      onClick={closeSidebarOnMobile}
                     >
                       <CheckCircle2 className="h-4 w-4" /> Material Approvals
                       {pendingMaterialCount > 0 && (
@@ -895,7 +901,7 @@ export function Sidebar({ isOpen, setIsOpen }: SidebarProps) {
                           ? "bg-sidebar-primary text-sidebar-primary-foreground"
                           : "text-sidebar-foreground hover:bg-sidebar-accent",
                       )}
-                      onClick={() => setIsOpen(false)}
+                      onClick={closeSidebarOnMobile}
                     >
                       <Users className="h-4 w-4" /> Supplier Approvals
                     </span>
@@ -912,7 +918,7 @@ export function Sidebar({ isOpen, setIsOpen }: SidebarProps) {
                           ? "bg-sidebar-primary text-sidebar-primary-foreground"
                           : "text-sidebar-foreground hover:bg-sidebar-accent",
                       )}
-                      onClick={() => setIsOpen(false)}
+                      onClick={closeSidebarOnMobile}
                     >
                       <FolderKanban className="h-4 w-4" /> Product Approvals
                       {pendingProductCount > 0 && (
@@ -934,7 +940,7 @@ export function Sidebar({ isOpen, setIsOpen }: SidebarProps) {
                           ? "bg-sidebar-primary text-sidebar-primary-foreground"
                           : "text-sidebar-foreground hover:bg-sidebar-accent",
                       )}
-                      onClick={() => setIsOpen(false)}
+                      onClick={closeSidebarOnMobile}
                     >
                       <CheckCircle2 className="h-4 w-4" /> BOM Approvals
                       {pendingBomCount > 0 && (
@@ -1020,7 +1026,7 @@ export function Sidebar({ isOpen, setIsOpen }: SidebarProps) {
                   <Link href="/subscription">
                     <span 
                       className="flex items-center gap-3 rounded-md px-3 py-2 text-sm font-medium text-sidebar-foreground hover:bg-sidebar-accent cursor-pointer"
-                      onClick={() => setIsOpen(false)}
+                      onClick={closeSidebarOnMobile}
                     >
                       <Package className="h-4 w-4" />
                       Subscription
@@ -1036,7 +1042,7 @@ export function Sidebar({ isOpen, setIsOpen }: SidebarProps) {
                           ? "bg-sidebar-primary text-sidebar-primary-foreground"
                           : "text-sidebar-foreground hover:bg-sidebar-accent",
                       )}
-                      onClick={() => setIsOpen(false)}
+                      onClick={closeSidebarOnMobile}
                     >
                       <BookOpen className="h-4 w-4" />
                       User Manual
