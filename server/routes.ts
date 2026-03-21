@@ -114,7 +114,7 @@ export async function registerRoutes(
     // Ensure type column exists on boq_versions for BOM vs BOQ distinction
     await query("ALTER TABLE boq_versions ADD COLUMN IF NOT EXISTS type VARCHAR(20) DEFAULT 'bom'");
     console.log("[migrations] boq_versions 'type' column ensured");
-    
+
     // Ensure image column exists on products
     await query(`ALTER TABLE products ADD COLUMN IF NOT EXISTS image TEXT`);
     console.log("[migrations] products 'image' column ensured");
@@ -559,7 +559,7 @@ export async function registerRoutes(
     await query(`CREATE INDEX IF NOT EXISTS idx_purchase_orders_po_number ON purchase_orders(po_number)`);
     await query(`CREATE INDEX IF NOT EXISTS idx_purchase_orders_project_id ON purchase_orders(project_id)`);
     await query(`CREATE INDEX IF NOT EXISTS idx_purchase_orders_vendor_id ON purchase_orders(vendor_id)`);
-    
+
     await query(`ALTER TABLE purchase_orders ADD COLUMN IF NOT EXISTS shipping_address TEXT`);
     await query(`ALTER TABLE purchase_orders ADD COLUMN IF NOT EXISTS payment_terms TEXT`);
 
@@ -899,7 +899,8 @@ export async function registerRoutes(
 
     // Ensure type column exists on boq_versions for BOM vs BOQ distinction
     await query("ALTER TABLE boq_versions ADD COLUMN IF NOT EXISTS type VARCHAR(20) DEFAULT 'bom'");
-    console.log("[migrations] boq_versions 'type' column ensured");
+    await query("ALTER TABLE boq_versions ADD COLUMN IF NOT EXISTS is_locked BOOLEAN DEFAULT FALSE");
+    console.log("[migrations] boq_versions 'type' and 'is_locked' columns ensured");
   } catch (err: unknown) {
     console.warn("[migrations] failed:", (err as any)?.message || err);
   }
@@ -2352,19 +2353,6 @@ export async function registerRoutes(
         console.log('[PUT /api/material-templates/:id] body:', { ...req.body, image: req.body.image ? "present" : "absent" });
         const { name, code, category, subcategory, vendorCategory, taxCodeType, taxCodeValue, hsnCode, sacCode, hsn_code, sac_code, technicalspecification, technicalSpecification, vendor_category, tax_code_type, tax_code_value, image } = req.body;
 
-        // Fetch old subcategory and category BEFORE update so we can cascade to orphaned materials
-        let oldSubcategory: string | null = null;
-        let oldCategory: string | null = null;
-        if (subcategory !== undefined || category !== undefined) {
-          try {
-            const oldRow = await query("SELECT subcategory, category FROM material_templates WHERE id = $1", [id]);
-            oldSubcategory = oldRow.rows[0]?.subcategory ?? null;
-            oldCategory = oldRow.rows[0]?.category ?? null;
-          } catch (e) {
-            console.warn('[material-templates PUT] Could not fetch old subcategory/category:', e);
-          }
-        }
-
         // Only update fields that are provided
         const fields: string[] = [];
         const vals: any[] = [];
@@ -2455,29 +2443,6 @@ export async function registerRoutes(
           }
         } catch (cascadeErr) {
           console.warn("[material-templates PUT] Cascade to materials failed (non-fatal):", cascadeErr);
-        }
-
-        // Additionally cascade subcategory/category changes to orphaned materials
-        // (those that share the same subcategory/category name but have no template_id or a different template_id)
-        try {
-          const newSubcategory = subcategory !== undefined ? (subcategory || null) : undefined;
-          const newCategory = category !== undefined ? (category || null) : undefined;
-          
-          if ((newSubcategory !== undefined && oldSubcategory !== null && oldSubcategory !== newSubcategory) ||
-              (newCategory !== undefined && oldCategory !== null && oldCategory !== newCategory)) {
-            
-            // Default to old values if the fields weren't updated in this request
-            const finalNewSubcategory = newSubcategory !== undefined ? newSubcategory : oldSubcategory;
-            const finalNewCategory = newCategory !== undefined ? newCategory : oldCategory;
-
-            const orphanRes = await query(
-              `UPDATE materials SET subcategory = $1, category = $2 WHERE subcategory = $3 AND category = $4 AND (template_id IS NULL OR template_id != $5)`,
-              [finalNewSubcategory, finalNewCategory, oldSubcategory, oldCategory, id]
-            );
-            console.log(`[material-templates PUT] Cascaded sub/cat to ${orphanRes.rowCount} orphaned materials`);
-          }
-        } catch (orphanErr) {
-          console.warn("[material-templates PUT] Orphan cascade failed (non-fatal):", orphanErr);
         }
 
         res.json({ template: result.rows[0] });
@@ -3166,16 +3131,15 @@ export async function registerRoutes(
       try {
         const { id } = req.params;
 
-        // Find subcategory name and category first to query products/materials precisely
-        const subResult = await query("SELECT name, category FROM material_subcategories WHERE id = $1", [id]);
+        // Find subcategory name first to query products/materials
+        const subResult = await query("SELECT name FROM material_subcategories WHERE id = $1", [id]);
         if (subResult.rows.length === 0) {
           return res.status(404).json({ message: "Subcategory not found" });
         }
         const subName = subResult.rows[0].name;
-        const subCat = subResult.rows[0].category;
 
-        const products = await query("SELECT name FROM products WHERE subcategory = $1", [subName]);
-        const materials = await query("SELECT name FROM materials WHERE subcategory = $1 AND category = $2", [subName, subCat]);
+        const products = await query("SELECT name FROM products WHERE LOWER(TRIM(subcategory)) = LOWER(TRIM($1))", [subName]);
+        const materials = await query("SELECT name FROM materials WHERE LOWER(TRIM(subcategory)) = LOWER(TRIM($1))", [subName]);
 
         res.json({
           products: products.rows.map(r => r.name),
@@ -3188,52 +3152,53 @@ export async function registerRoutes(
     }
   );
 
-  // POST /api/subcategories/reassign - Bulk-reassign materials from one subcategory to another
+  // POST /api/subcategories/:id/reassign - Bulk move products/materials to a different subcategory before deletion
   app.post(
-    "/api/subcategories/reassign",
+    "/api/subcategories/:id/reassign",
     authMiddleware,
     requireRole("admin", "software_team", "purchase_team", "pre_sales", "product_manager"),
     async (req: Request, res: Response) => {
       try {
-        const { fromSubcategoryId, toSubcategoryId } = req.body;
-        if (!fromSubcategoryId || !toSubcategoryId) {
-          return res.status(400).json({ message: "fromSubcategoryId and toSubcategoryId are required" });
+        const { id } = req.params;
+        const { targetSubcategory } = req.body; // Name of the subcategory to move to
+
+        // Find source subcategory name
+        const subResult = await query("SELECT name FROM material_subcategories WHERE id = $1", [id]);
+        if (subResult.rows.length === 0) {
+          return res.status(404).json({ message: "Subcategory not found" });
+        }
+        const subName = subResult.rows[0].name;
+
+        if (!targetSubcategory) {
+          return res.status(400).json({ message: "targetSubcategory is required" });
         }
 
-        // 1. Fetch source details
-        const fromRes = await query("SELECT name, category FROM material_subcategories WHERE id = $1", [fromSubcategoryId]);
-        if (fromRes.rows.length === 0) return res.status(404).json({ message: "Source subcategory not found" });
-        const fromCat = fromRes.rows[0].category;
-        const fromSub = fromRes.rows[0].name;
-
-        // 2. Fetch destination details
-        const toRes = await query("SELECT name, category FROM material_subcategories WHERE id = $1", [toSubcategoryId]);
-        if (toRes.rows.length === 0) return res.status(404).json({ message: "Destination subcategory not found" });
-        const toCat = toRes.rows[0].category;
-        const toSub = toRes.rows[0].name;
-
-        // Reassign materials scoped by BOTH category and subcategory
-        const matRes = await query(
-          "UPDATE materials SET category = $1, subcategory = $2 WHERE category = $3 AND subcategory = $4",
-          [toCat, toSub, fromCat, fromSub]
+        // Reassign products
+        const prodResult = await query(
+          "UPDATE products SET subcategory = $1 WHERE LOWER(TRIM(subcategory)) = LOWER(TRIM($2))",
+          [targetSubcategory, subName]
         );
 
-        // Reassign material_templates
-        const tplRes = await query(
-          "UPDATE material_templates SET category = $1, subcategory = $2 WHERE category = $3 AND subcategory = $4",
-          [toCat, toSub, fromCat, fromSub]
+        // Reassign materials
+        const matResult = await query(
+          "UPDATE materials SET subcategory = $1 WHERE LOWER(TRIM(subcategory)) = LOWER(TRIM($2))",
+          [targetSubcategory, subName]
         );
 
-        console.log(`[POST /api/subcategories/reassign] Moved ${matRes.rowCount} materials + ${tplRes.rowCount} templates from "${fromCat} > ${fromSub}" → "${toCat} > ${toSub}"`);
+        // Reassign material templates
+        await query(
+          "UPDATE material_templates SET subcategory = $1 WHERE LOWER(TRIM(subcategory)) = LOWER(TRIM($2))",
+          [targetSubcategory, subName]
+        );
 
         res.json({
-          message: `Reassigned ${matRes.rowCount} material(s) and ${tplRes.rowCount} template(s) from "${fromCat} > ${fromSub}" to "${toCat} > ${toSub}"`,
-          materialsUpdated: matRes.rowCount,
-          templatesUpdated: tplRes.rowCount,
+          message: `Reassigned from "${subName}" to "${targetSubcategory}"`,
+          productsUpdated: prodResult.rowCount,
+          materialsUpdated: matResult.rowCount,
         });
       } catch (err) {
-        console.error("/api/subcategories/reassign error", err);
-        res.status(500).json({ message: "Failed to reassign subcategory" });
+        console.error("/api/subcategories/:id/reassign error", err);
+        res.status(500).json({ message: "failed to reassign subcategory" });
       }
     }
   );
@@ -3246,30 +3211,30 @@ export async function registerRoutes(
     async (req: Request, res: Response) => {
       try {
         const id = req.params.id;
-        // Find subcategory name and category first to update materials/templates correctly (handling namespace collisions)
-        const subResult = await query("SELECT name, category FROM material_subcategories WHERE id = $1", [id]);
+
+        // Find subcategory name first to update materials/templates
+        const subResult = await query("SELECT name FROM material_subcategories WHERE id = $1", [id]);
         if (subResult.rows.length === 0) {
           return res.status(404).json({ message: "Subcategory not found" });
         }
         const subName = subResult.rows[0].name;
-        const subCat = subResult.rows[0].category;
 
         // Update materials to be uncategorized for this subcategory
         await query(
-          "UPDATE materials SET subcategory = NULL WHERE subcategory = $1 AND category = $2",
-          [subName, subCat]
-        );
-
-        // Update products to be uncategorized for this subcategory
-        await query(
-          "UPDATE products SET subcategory = NULL WHERE subcategory = $1",
+          "UPDATE materials SET subcategory = NULL WHERE subcategory = $1",
           [subName]
         );
 
-        // Update templates to be uncategorized
+        // Update material templates
         await query(
-          "UPDATE material_templates SET subcategory = NULL WHERE subcategory = $1 AND category = $2",
-          [subName, subCat]
+          "UPDATE material_templates SET subcategory = NULL WHERE subcategory = $1",
+          [subName]
+        );
+
+        // Also clear products that were assigned this subcategory (products.subcategory is a text column)
+        await query(
+          "UPDATE products SET subcategory = NULL WHERE subcategory = $1",
+          [subName]
         );
 
         // Simply delete the subcategory record from lookup table
@@ -4190,7 +4155,7 @@ export async function registerRoutes(
         const { projectId } = req.params;
 
         const { type } = req.query;
-        let q = `SELECT id, project_id, project_name, project_client, project_location, version_number, status, type, created_at, updated_at 
+        let q = `SELECT id, project_id, project_name, project_client, project_location, version_number, status, type, is_locked, created_at, updated_at 
                  FROM boq_versions 
                  WHERE project_id = $1`;
         const params = [projectId];
@@ -4508,6 +4473,26 @@ export async function registerRoutes(
             `UPDATE boq_versions SET column_config = $1, updated_at = NOW() WHERE id = $2`,
             [req.body.column_config, versionId]
           );
+        }
+
+        if (req.body.is_locked !== undefined) {
+          await query(
+            `UPDATE boq_versions SET is_locked = $1, updated_at = NOW() WHERE id = $2`,
+            [req.body.is_locked, versionId]
+          );
+          
+          if (req.body.is_locked) {
+            try {
+              const user = (req as any).user;
+              await query(
+                `INSERT INTO boq_history (version_id, user_id, user_full_name, action, created_at)
+                 VALUES ($1, $2, $3, 'locked', NOW())`,
+                [versionId, user?.id, user?.fullName || user?.username]
+              );
+            } catch (hErr) {
+              console.warn("Failed to log lock history:", hErr);
+            }
+          }
         }
 
         if (status) {
@@ -7212,19 +7197,19 @@ export async function registerRoutes(
       let defCount = 1;
       let originalPoNumber = existingPo.po_number;
       let basePoNumber = originalPoNumber;
-      
+
       const revMatch = basePoNumber.match(/-R(\d+)$/);
       if (revMatch) {
         revCount = parseInt(revMatch[1], 10) + 1;
         basePoNumber = basePoNumber.replace(/-R\d+$/, "");
       }
       const newPoNumber = `${basePoNumber}-R${revCount}`;
-      
+
       // Look up existing deferred POs for numbering
       const defRes = await query(`SELECT boq_number FROM (SELECT po_number as boq_number FROM purchase_orders WHERE po_number LIKE $1) as tmp ORDER BY boq_number DESC LIMIT 1`, [`${basePoNumber}-Deferred%`]);
       if (defRes.rows.length > 0) {
-         const dMatch = defRes.rows[0].boq_number.match(/-Deferred(\d+)$/);
-         if (dMatch) defCount = parseInt(dMatch[1], 10) + 1;
+        const dMatch = defRes.rows[0].boq_number.match(/-Deferred(\d+)$/);
+        if (dMatch) defCount = parseInt(dMatch[1], 10) + 1;
       }
 
 
@@ -7242,12 +7227,12 @@ export async function registerRoutes(
       }
 
       const newStatus = "draft";
-      
+
       // Auto-generate Change Summary
       let changeSummary = "Change Log:\n";
       for (const item of items) {
-        const original = existingItems.find((i: any) => 
-            (i.item || i.item_name) === (item.item || item.item_name) && i.description === item.description
+        const original = existingItems.find((i: any) =>
+          (i.item || i.item_name) === (item.item || item.item_name) && i.description === item.description
         );
         if (original) {
           const oldQty = parseFloat(original.qty);
@@ -7259,10 +7244,10 @@ export async function registerRoutes(
           changeSummary += `- Added new item: ${item.item || item.item_name} (Qty: ${item.qty})\n`;
         }
       }
-      
+
       if (deletedItems && deletedItems.length > 0) {
         for (const ditem of deletedItems) {
-           changeSummary += `- Removed item: ${ditem.item || ditem.item_name} (Qty: ${ditem.qty}) -> Moved to Deferred PO\n`;
+          changeSummary += `- Removed item: ${ditem.item || ditem.item_name} (Qty: ${ditem.qty}) -> Moved to Deferred PO\n`;
         }
       }
 
@@ -7292,8 +7277,8 @@ export async function registerRoutes(
       // 5. Insert new items
       for (const item of items) {
         // Find if this item existed in the previous PO
-        const originalItem = existingItems.find((ei: any) => 
-          (ei.id === item.id) || 
+        const originalItem = existingItems.find((ei: any) =>
+          (ei.id === item.id) ||
           (ei.material_id && ei.material_id === item.material_id) ||
           ((ei.item || ei.item_name) === (item.item || item.item_name) && ei.description === item.description)
         );
@@ -7320,26 +7305,26 @@ export async function registerRoutes(
         const deferredPoNumber = `${basePoNumber}-Deferred${defCount}`;
         let deferredTotal = 0;
         for (const ditem of deletedItems) {
-            deferredTotal += parseFloat(ditem.amount) || (parseFloat(ditem.qty || 0) * parseFloat(ditem.rate || 0)) || 0;
+          deferredTotal += parseFloat(ditem.amount) || (parseFloat(ditem.qty || 0) * parseFloat(ditem.rate || 0)) || 0;
         }
-        
+
         const defPoRes = await query(
-            `INSERT INTO purchase_orders (po_number, project_id, project_name, vendor_id, vendor_name, subtotal, total, status, requested_by, approval_comments) 
+          `INSERT INTO purchase_orders (po_number, project_id, project_name, vendor_id, vendor_name, subtotal, total, status, requested_by, approval_comments) 
              VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10) RETURNING *`,
-            [deferredPoNumber, existingPo.project_id, existingPo.project_name, finalVendorId, finalVendorName, deferredTotal, deferredTotal, "draft", existingPo.requested_by, "Items deferred due to budget constraints during revision."]
+          [deferredPoNumber, existingPo.project_id, existingPo.project_name, finalVendorId, finalVendorName, deferredTotal, deferredTotal, "draft", existingPo.requested_by, "Items deferred due to budget constraints during revision."]
         );
         const defPo = defPoRes.rows[0];
-        
-        for (const ditem of deletedItems) {
-            const originalItem = existingItems.find((ei: any) => ei.id === ditem.id);
-            const originalQty = originalItem ? parseFloat(originalItem.original_qty || originalItem.qty) : parseFloat(ditem.qty);
-            const qtyModified = originalItem ? (parseFloat(ditem.qty) !== originalQty) : false;
 
-            await query(
-              `INSERT INTO purchase_order_items (po_id, material_id, item, description, unit, qty, original_qty, rate, amount, hsn_code, sac_code, qty_modified) 
+        for (const ditem of deletedItems) {
+          const originalItem = existingItems.find((ei: any) => ei.id === ditem.id);
+          const originalQty = originalItem ? parseFloat(originalItem.original_qty || originalItem.qty) : parseFloat(ditem.qty);
+          const qtyModified = originalItem ? (parseFloat(ditem.qty) !== originalQty) : false;
+
+          await query(
+            `INSERT INTO purchase_order_items (po_id, material_id, item, description, unit, qty, original_qty, rate, amount, hsn_code, sac_code, qty_modified) 
                VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)`,
-              [defPo.id, ditem.material_id || ditem.id || null, ditem.item || ditem.item_name, ditem.description || null, ditem.unit || null, ditem.qty, originalQty, ditem.rate, ditem.amount, ditem.hsn_code || null, ditem.sac_code || null, qtyModified]
-            );
+            [defPo.id, ditem.material_id || ditem.id || null, ditem.item || ditem.item_name, ditem.description || null, ditem.unit || null, ditem.qty, originalQty, ditem.rate, ditem.amount, ditem.hsn_code || null, ditem.sac_code || null, qtyModified]
+          );
         }
       }
 
@@ -7417,7 +7402,7 @@ export async function registerRoutes(
       const currentPo = poResult.rows[0];
       let fullPoNumber = currentPo.po_number;
       let basePoNumber = fullPoNumber.split('-R')[0].split('-Deferred')[0].split('-R')[0].trim();
-      
+
       const relatedPosResult = await query(
         `SELECT id, po_number, status, total, approval_comments, created_at 
          FROM purchase_orders 
@@ -7435,8 +7420,8 @@ export async function registerRoutes(
       const revMatch = fullPoNumber.match(/-R(\d+)$/);
       if (revMatch) {
         const revNum = parseInt(revMatch[1], 10);
-        let parentNumber = revNum === 1 
-          ? fullPoNumber.replace(/-R\d+$/, "") 
+        let parentNumber = revNum === 1
+          ? fullPoNumber.replace(/-R\d+$/, "")
           : fullPoNumber.replace(/-R\d+$/, `-R${revNum - 1}`);
 
         const parentRes = await query(
@@ -7661,7 +7646,7 @@ export async function registerRoutes(
 
       // 1. HELP / GUIDE
       if (q.match(/help|guide|what can you do|how to use/i)) {
-         answer = `**I'm your Assistant Bot!** I can help you find information quickly.
+        answer = `**I'm your Assistant Bot!** I can help you find information quickly.
 
 **Try asking me:**
 - 💰 **Prices**: "Price of MDF 18mm"
@@ -7672,69 +7657,69 @@ export async function registerRoutes(
       }
       // 2. PROJECT COUNT / LIST
       else if (q.match(/how many projects|list projects|active projects|show projects/i)) {
-         const r = await query(`SELECT COUNT(*) as count FROM boq_projects`);
-         const list = await query(`SELECT name FROM boq_projects ORDER BY created_at DESC LIMIT 5`);
-         answer = `We have **${r.rows[0].count} total projects**.
+        const r = await query(`SELECT COUNT(*) as count FROM boq_projects`);
+        const list = await query(`SELECT name FROM boq_projects ORDER BY created_at DESC LIMIT 5`);
+        answer = `We have **${r.rows[0].count} total projects**.
 
 **Recent Projects:**
 ${list.rows.map((row: any) => `- ${row.name}`).join('\n')}`;
       }
       // 3. CATEGORY LISTING
       else if (q.match(/list categories|show categories|what categories|all categories/i)) {
-         const r = await query(`SELECT name FROM material_categories ORDER BY name ASC`);
-         answer = `**Material Categories:**\n${r.rows.map((row: any) => `- ${row.name}`).join('\n')}`;
+        const r = await query(`SELECT name FROM material_categories ORDER BY name ASC`);
+        answer = `**Material Categories:**\n${r.rows.map((row: any) => `- ${row.name}`).join('\n')}`;
       }
       // 4. PRICE LOOKUP
       else if (q.match(/price of (.+)|cost of (.+)|rate of (.+)|how much is (.+)/i)) {
-         const priceMatch = q.match(/price of (.+)|cost of (.+)|rate of (.+)|how much is (.+)/i);
-         const matName = priceMatch![1] || priceMatch![2] || priceMatch![3] || priceMatch![4];
-         const r = await query(`SELECT name, rate, unit FROM materials WHERE name ILIKE $1 LIMIT 5`, [`%${matName.trim()}%`]);
-         if (r.rows.length === 0) {
-            answer = `I couldn't find any material matching "**${matName}**".`;
-         } else {
-            answer = `**Price Results for "${matName}":**\n\n| Material | Rate | Unit |\n| :--- | :--- | :--- |\n` + 
-                     r.rows.map((row: any) => `| ${row.name} | ₹${row.rate} | ${row.unit || 'unit'} |`).join('\n');
-         }
-      } 
+        const priceMatch = q.match(/price of (.+)|cost of (.+)|rate of (.+)|how much is (.+)/i);
+        const matName = priceMatch![1] || priceMatch![2] || priceMatch![3] || priceMatch![4];
+        const r = await query(`SELECT name, rate, unit FROM materials WHERE name ILIKE $1 LIMIT 5`, [`%${matName.trim()}%`]);
+        if (r.rows.length === 0) {
+          answer = `I couldn't find any material matching "**${matName}**".`;
+        } else {
+          answer = `**Price Results for "${matName}":**\n\n| Material | Rate | Unit |\n| :--- | :--- | :--- |\n` +
+            r.rows.map((row: any) => `| ${row.name} | ₹${row.rate} | ${row.unit || 'unit'} |`).join('\n');
+        }
+      }
       // 5. VENDOR INFO
       else if (q.match(/info for (.+)|vendor (.+)|who is (.+)/i)) {
-         const vendorMatch = q.match(/info for (.+)|vendor (.+)|who is (.+)/i);
-         const vName = vendorMatch![1] || vendorMatch![2] || vendorMatch![3];
-         const r = await query(`SELECT name, location, city, gstno FROM shops WHERE name ILIKE $1 LIMIT 1`, [`%${vName.trim()}%`]);
-         if (r.rows.length === 0) {
-            answer = `I couldn't find a vendor named "**${vName}**".`;
-         } else {
-            const v = r.rows[0];
-            answer = `**Vendor Information:**
+        const vendorMatch = q.match(/info for (.+)|vendor (.+)|who is (.+)/i);
+        const vName = vendorMatch![1] || vendorMatch![2] || vendorMatch![3];
+        const r = await query(`SELECT name, location, city, gstno FROM shops WHERE name ILIKE $1 LIMIT 1`, [`%${vName.trim()}%`]);
+        if (r.rows.length === 0) {
+          answer = `I couldn't find a vendor named "**${vName}**".`;
+        } else {
+          const v = r.rows[0];
+          answer = `**Vendor Information:**
 - **Name**: ${v.name}
 - **Location**: ${v.location || 'N/A'}, ${v.city || ''}
 - **GSTIN**: ${v.gstno || 'Not Provided'}`;
-         }
+        }
       }
       // 6. AVAILABILITY
       else if (q.match(/do we have (.+)|is (.+) available|is (.+) in stock|any (.+)/i)) {
-         const availMatch = q.match(/do we have (.+)|is (.+) available|is (.+) in stock|any (.+)/i);
-         const matName = availMatch![1] || availMatch![2] || availMatch![3] || availMatch![4];
-         const r = await query(`SELECT name FROM materials WHERE name ILIKE $1 LIMIT 5`, [`%${matName.trim()}%`]);
-         if (r.rows.length === 0) {
-            answer = `No, we don't have materials matching "**${matName}**" in our database.`;
-         } else {
-            answer = `**Yes, we have these matching items:**\n${r.rows.map((row: any) => '- ' + row.name).join('\n')}`;
-         }
+        const availMatch = q.match(/do we have (.+)|is (.+) available|is (.+) in stock|any (.+)/i);
+        const matName = availMatch![1] || availMatch![2] || availMatch![3] || availMatch![4];
+        const r = await query(`SELECT name FROM materials WHERE name ILIKE $1 LIMIT 5`, [`%${matName.trim()}%`]);
+        if (r.rows.length === 0) {
+          answer = `No, we don't have materials matching "**${matName}**" in our database.`;
+        } else {
+          answer = `**Yes, we have these matching items:**\n${r.rows.map((row: any) => '- ' + row.name).join('\n')}`;
+        }
       }
       // 7. FALLBACK SEARCH
       else {
-         const matRes = await query(`SELECT name, rate, unit FROM materials WHERE name ILIKE $1 LIMIT 3`, [`%${q}%`]);
-         if (matRes.rows.length > 0) {
-             answer = `I found these materials matching "**${q}**":\n${matRes.rows.map((row: any) => `- ${row.name} (₹${row.rate}/${row.unit || 'unit'})`).join('\n')}`;
-         } else {
-             const pRes = await query(`SELECT name FROM products WHERE name ILIKE $1 LIMIT 3`, [`%${q}%`]);
-             if (pRes.rows.length > 0) {
-                 answer = `I found these products matching "**${q}**":\n${pRes.rows.map((p: any) => `- ${p.name}`).join('\n')}`;
-             } else {
-                 answer = "I'm sorry, I couldn't find anything matching your query. Type **'help'** to see what I can do!";
-             }
-         }
+        const matRes = await query(`SELECT name, rate, unit FROM materials WHERE name ILIKE $1 LIMIT 3`, [`%${q}%`]);
+        if (matRes.rows.length > 0) {
+          answer = `I found these materials matching "**${q}**":\n${matRes.rows.map((row: any) => `- ${row.name} (₹${row.rate}/${row.unit || 'unit'})`).join('\n')}`;
+        } else {
+          const pRes = await query(`SELECT name FROM products WHERE name ILIKE $1 LIMIT 3`, [`%${q}%`]);
+          if (pRes.rows.length > 0) {
+            answer = `I found these products matching "**${q}**":\n${pRes.rows.map((p: any) => `- ${p.name}`).join('\n')}`;
+          } else {
+            answer = "I'm sorry, I couldn't find anything matching your query. Type **'help'** to see what I can do!";
+          }
+        }
       }
 
       res.json({ answer });
@@ -7969,16 +7954,16 @@ ${list.rows.map((row: any) => `- ${row.name}`).join('\n')}`;
              VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)`,
             [itemId, id, item.item_name, item.description, item.length, item.width, item.height, item.qty, item.unit, item.remarks, item.material_id || null, item.dimension_unit || 'feet']
           );
-          
+
           // Row-level images
           if (item.images && Array.isArray(item.images)) {
-             for (const imgUrl of item.images) {
-                const imgId = `img-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
-                await query(
-                   `INSERT INTO sketch_plan_images (id, plan_id, item_id, image_url) VALUES ($1, $2, $3, $4)`,
-                   [imgId, id, itemId, imgUrl]
-                );
-             }
+            for (const imgUrl of item.images) {
+              const imgId = `img-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+              await query(
+                `INSERT INTO sketch_plan_images (id, plan_id, item_id, image_url) VALUES ($1, $2, $3, $4)`,
+                [imgId, id, itemId, imgUrl]
+              );
+            }
           }
         }
       }
@@ -8029,13 +8014,13 @@ ${list.rows.map((row: any) => `- ${row.name}`).join('\n')}`;
 
           // Row-level images
           if (item.images && Array.isArray(item.images)) {
-             for (const imgUrl of item.images) {
-                const imgId = `img-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
-                await query(
-                   `INSERT INTO sketch_plan_images (id, plan_id, item_id, image_url) VALUES ($1, $2, $3, $4)`,
-                   [imgId, id, itemId, imgUrl]
-                );
-             }
+            for (const imgUrl of item.images) {
+              const imgId = `img-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+              await query(
+                `INSERT INTO sketch_plan_images (id, plan_id, item_id, image_url) VALUES ($1, $2, $3, $4)`,
+                [imgId, id, itemId, imgUrl]
+              );
+            }
           }
         }
       }
