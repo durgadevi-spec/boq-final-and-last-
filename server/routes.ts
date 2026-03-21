@@ -2352,6 +2352,19 @@ export async function registerRoutes(
         console.log('[PUT /api/material-templates/:id] body:', { ...req.body, image: req.body.image ? "present" : "absent" });
         const { name, code, category, subcategory, vendorCategory, taxCodeType, taxCodeValue, hsnCode, sacCode, hsn_code, sac_code, technicalspecification, technicalSpecification, vendor_category, tax_code_type, tax_code_value, image } = req.body;
 
+        // Fetch old subcategory and category BEFORE update so we can cascade to orphaned materials
+        let oldSubcategory: string | null = null;
+        let oldCategory: string | null = null;
+        if (subcategory !== undefined || category !== undefined) {
+          try {
+            const oldRow = await query("SELECT subcategory, category FROM material_templates WHERE id = $1", [id]);
+            oldSubcategory = oldRow.rows[0]?.subcategory ?? null;
+            oldCategory = oldRow.rows[0]?.category ?? null;
+          } catch (e) {
+            console.warn('[material-templates PUT] Could not fetch old subcategory/category:', e);
+          }
+        }
+
         // Only update fields that are provided
         const fields: string[] = [];
         const vals: any[] = [];
@@ -2442,6 +2455,29 @@ export async function registerRoutes(
           }
         } catch (cascadeErr) {
           console.warn("[material-templates PUT] Cascade to materials failed (non-fatal):", cascadeErr);
+        }
+
+        // Additionally cascade subcategory/category changes to orphaned materials
+        // (those that share the same subcategory/category name but have no template_id or a different template_id)
+        try {
+          const newSubcategory = subcategory !== undefined ? (subcategory || null) : undefined;
+          const newCategory = category !== undefined ? (category || null) : undefined;
+          
+          if ((newSubcategory !== undefined && oldSubcategory !== null && oldSubcategory !== newSubcategory) ||
+              (newCategory !== undefined && oldCategory !== null && oldCategory !== newCategory)) {
+            
+            // Default to old values if the fields weren't updated in this request
+            const finalNewSubcategory = newSubcategory !== undefined ? newSubcategory : oldSubcategory;
+            const finalNewCategory = newCategory !== undefined ? newCategory : oldCategory;
+
+            const orphanRes = await query(
+              `UPDATE materials SET subcategory = $1, category = $2 WHERE subcategory = $3 AND category = $4 AND (template_id IS NULL OR template_id != $5)`,
+              [finalNewSubcategory, finalNewCategory, oldSubcategory, oldCategory, id]
+            );
+            console.log(`[material-templates PUT] Cascaded sub/cat to ${orphanRes.rowCount} orphaned materials`);
+          }
+        } catch (orphanErr) {
+          console.warn("[material-templates PUT] Orphan cascade failed (non-fatal):", orphanErr);
         }
 
         res.json({ template: result.rows[0] });
@@ -3130,15 +3166,16 @@ export async function registerRoutes(
       try {
         const { id } = req.params;
 
-        // Find subcategory name first to query products/materials
-        const subResult = await query("SELECT name FROM material_subcategories WHERE id = $1", [id]);
+        // Find subcategory name and category first to query products/materials precisely
+        const subResult = await query("SELECT name, category FROM material_subcategories WHERE id = $1", [id]);
         if (subResult.rows.length === 0) {
           return res.status(404).json({ message: "Subcategory not found" });
         }
         const subName = subResult.rows[0].name;
+        const subCat = subResult.rows[0].category;
 
         const products = await query("SELECT name FROM products WHERE subcategory = $1", [subName]);
-        const materials = await query("SELECT name FROM materials WHERE subcategory = $1", [subName]);
+        const materials = await query("SELECT name FROM materials WHERE subcategory = $1 AND category = $2", [subName, subCat]);
 
         res.json({
           products: products.rows.map(r => r.name),
@@ -3151,6 +3188,56 @@ export async function registerRoutes(
     }
   );
 
+  // POST /api/subcategories/reassign - Bulk-reassign materials from one subcategory to another
+  app.post(
+    "/api/subcategories/reassign",
+    authMiddleware,
+    requireRole("admin", "software_team", "purchase_team", "pre_sales", "product_manager"),
+    async (req: Request, res: Response) => {
+      try {
+        const { fromSubcategoryId, toSubcategoryId } = req.body;
+        if (!fromSubcategoryId || !toSubcategoryId) {
+          return res.status(400).json({ message: "fromSubcategoryId and toSubcategoryId are required" });
+        }
+
+        // 1. Fetch source details
+        const fromRes = await query("SELECT name, category FROM material_subcategories WHERE id = $1", [fromSubcategoryId]);
+        if (fromRes.rows.length === 0) return res.status(404).json({ message: "Source subcategory not found" });
+        const fromCat = fromRes.rows[0].category;
+        const fromSub = fromRes.rows[0].name;
+
+        // 2. Fetch destination details
+        const toRes = await query("SELECT name, category FROM material_subcategories WHERE id = $1", [toSubcategoryId]);
+        if (toRes.rows.length === 0) return res.status(404).json({ message: "Destination subcategory not found" });
+        const toCat = toRes.rows[0].category;
+        const toSub = toRes.rows[0].name;
+
+        // Reassign materials scoped by BOTH category and subcategory
+        const matRes = await query(
+          "UPDATE materials SET category = $1, subcategory = $2 WHERE category = $3 AND subcategory = $4",
+          [toCat, toSub, fromCat, fromSub]
+        );
+
+        // Reassign material_templates
+        const tplRes = await query(
+          "UPDATE material_templates SET category = $1, subcategory = $2 WHERE category = $3 AND subcategory = $4",
+          [toCat, toSub, fromCat, fromSub]
+        );
+
+        console.log(`[POST /api/subcategories/reassign] Moved ${matRes.rowCount} materials + ${tplRes.rowCount} templates from "${fromCat} > ${fromSub}" → "${toCat} > ${toSub}"`);
+
+        res.json({
+          message: `Reassigned ${matRes.rowCount} material(s) and ${tplRes.rowCount} template(s) from "${fromCat} > ${fromSub}" to "${toCat} > ${toSub}"`,
+          materialsUpdated: matRes.rowCount,
+          templatesUpdated: tplRes.rowCount,
+        });
+      } catch (err) {
+        console.error("/api/subcategories/reassign error", err);
+        res.status(500).json({ message: "Failed to reassign subcategory" });
+      }
+    }
+  );
+
   // DELETE /api/subcategories/:id - Delete a subcategory (Admin/Software Team/Purchase Team)
   app.delete(
     "/api/subcategories/:id",
@@ -3159,24 +3246,30 @@ export async function registerRoutes(
     async (req: Request, res: Response) => {
       try {
         const id = req.params.id;
-
-        // Find subcategory name first to update materials/templates
-        const subResult = await query("SELECT name FROM material_subcategories WHERE id = $1", [id]);
+        // Find subcategory name and category first to update materials/templates correctly (handling namespace collisions)
+        const subResult = await query("SELECT name, category FROM material_subcategories WHERE id = $1", [id]);
         if (subResult.rows.length === 0) {
           return res.status(404).json({ message: "Subcategory not found" });
         }
         const subName = subResult.rows[0].name;
+        const subCat = subResult.rows[0].category;
 
         // Update materials to be uncategorized for this subcategory
         await query(
-          "UPDATE materials SET subcategory = NULL WHERE subcategory = $1",
+          "UPDATE materials SET subcategory = NULL WHERE subcategory = $1 AND category = $2",
+          [subName, subCat]
+        );
+
+        // Update products to be uncategorized for this subcategory
+        await query(
+          "UPDATE products SET subcategory = NULL WHERE subcategory = $1",
           [subName]
         );
 
-        // Update material templates
+        // Update templates to be uncategorized
         await query(
-          "UPDATE material_templates SET subcategory = NULL WHERE subcategory = $1",
-          [subName]
+          "UPDATE material_templates SET subcategory = NULL WHERE subcategory = $1 AND category = $2",
+          [subName, subCat]
         );
 
         // Simply delete the subcategory record from lookup table

@@ -72,31 +72,88 @@ function CodeBadge({ label, value }: { label: string; value: string }) {
   );
 }
 
-function PriceUpdateBanner({ count, onApplyAll, isUpdating }: { count: number; onApplyAll: () => void | Promise<void>; isUpdating?: boolean }) {
-  if (count === 0) return null;
+function PriceUpdateBanner({ 
+  mismatches, 
+  onApplyAll, 
+  onApplySingle,
+  onIgnoreSingle,
+  onViewSingle,
+  isUpdating 
+}: { 
+  mismatches: any[]; 
+  onApplyAll: () => void | Promise<void>; 
+  onApplySingle: (m: any) => void;
+  onIgnoreSingle: (m: any) => void;
+  onViewSingle: (m: any) => void;
+  isUpdating?: boolean; 
+}) {
+  const [isExpanded, setIsExpanded] = useState(false);
+  if (mismatches.length === 0) return null;
   return (
-    <div className="bg-amber-50 border border-amber-200 rounded p-4 text-sm text-amber-800 flex items-center justify-between gap-4 mb-4 shadow-sm animate-in fade-in slide-in-from-top-2 duration-300">
-      <div className="flex items-center gap-3">
-        <div className="bg-amber-100 p-2 rounded-full">
-          {isUpdating ? <Loader2 className="h-5 w-5 text-amber-700 animate-spin" /> : <IndianRupee className="h-5 w-5 text-amber-700" />}
-        </div>
-        <div>
-          <div className="font-bold text-amber-900">{isUpdating ? "Updating Rates..." : "Price Update Available!"}</div>
-          <div className="text-amber-700">
-            {count} items in this BOM have updated rates in the material library.
-            Would you like to update them to reflect the current market prices?
+    <div className="bg-amber-50 border border-amber-200 rounded text-sm text-amber-800 mb-4 shadow-sm animate-in fade-in slide-in-from-top-2 duration-300">
+      <div className="p-4 flex items-center justify-between gap-4">
+        <div className="flex items-center gap-3">
+          <div className="bg-amber-100 p-2 rounded-full hidden sm:block">
+            {isUpdating ? <Loader2 className="h-5 w-5 text-amber-700 animate-spin" /> : <IndianRupee className="h-5 w-5 text-amber-700" />}
+          </div>
+          <div>
+            <div className="font-bold text-amber-900">{isUpdating ? "Updating Rates..." : "Price Update Available!"}</div>
+            <div className="text-amber-700">
+              {mismatches.length} items in this BOM have updated rates in the material library.
+            </div>
           </div>
         </div>
+        <div className="flex items-center gap-2">
+          <Button
+            variant="outline"
+            size="sm"
+            className="border-amber-300 text-amber-800 hover:bg-amber-100 h-9 font-bold bg-white"
+            onClick={() => setIsExpanded(!isExpanded)}
+          >
+            {isExpanded ? "Hide Details" : "View Details"}
+          </Button>
+          <Button
+            variant="default"
+            size="sm"
+            className="bg-amber-600 hover:bg-amber-700 text-white font-bold px-4 h-9 shadow-sm"
+            onClick={onApplyAll}
+            disabled={isUpdating}
+          >
+            {isUpdating ? "Updating..." : "Update All"}
+          </Button>
+        </div>
       </div>
-      <Button
-        variant="default"
-        size="sm"
-        className="bg-amber-600 hover:bg-amber-700 text-white font-bold px-4 h-9 shadow-sm"
-        onClick={onApplyAll}
-        disabled={isUpdating}
-      >
-        {isUpdating ? "Updating..." : "Update All Rates"}
-      </Button>
+      
+      {isExpanded && (
+        <div className="border-t border-amber-200 bg-white/50 p-3 max-h-[250px] overflow-y-auto w-full">
+          <table className="w-full text-xs">
+            <thead className="text-left text-amber-900/70 border-b border-amber-200">
+              <tr>
+                <th className="pb-1.5 font-bold uppercase w-[15%]">Product</th>
+                <th className="pb-1.5 font-bold uppercase w-[35%]">Item Name</th>
+                <th className="pb-1.5 font-bold uppercase text-right w-[15%]">Old Rate</th>
+                <th className="pb-1.5 font-bold uppercase text-right w-[15%]">New Rate</th>
+                <th className="pb-1.5 font-bold uppercase text-center w-[20%]">Actions</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-amber-100">
+              {mismatches.map((m, idx) => (
+                <tr key={`${m.boqItemId}-${m.type}-${m.index}-${idx}`} className="hover:bg-amber-50/50">
+                  <td className="py-1.5 text-slate-500 font-semibold truncate max-w-[120px]" title={m.productName}>{m.productName}</td>
+                  <td className="py-1.5 font-bold truncate max-w-[200px]" title={m.name || "Item"}>{m.name || "Item"}</td>
+                  <td className="py-1.5 text-right">₹{m.old}</td>
+                  <td className="py-1.5 text-right font-bold text-red-600">₹{m.new}</td>
+                  <td className="py-1.5 flex justify-center gap-1">
+                    <Button variant="ghost" size="sm" className="h-6 text-[10px] px-1.5 text-blue-600 hover:bg-blue-50 font-bold" onClick={() => onViewSingle(m)}>View</Button>
+                    <Button variant="ghost" size="sm" className="h-6 text-[10px] px-1.5 text-slate-500 hover:bg-slate-100 font-bold" onClick={() => onIgnoreSingle(m)}>Ignore</Button>
+                    <Button variant="outline" size="sm" className="h-6 text-[10px] px-1.5 border-amber-300 text-amber-700 hover:bg-amber-100 font-bold bg-white" onClick={() => onApplySingle(m)}>Update</Button>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
     </div>
   );
 }
@@ -803,6 +860,7 @@ export default function CreateBom() {
   const [showQtyIncreaseDialog, setShowQtyIncreaseDialog] = useState(false);
   const [qtyIncreases, setQtyIncreases] = useState<any[]>([]);
   const [pendingAddProductData, setPendingAddProductData] = useState<any>(null);
+  const [ignoredMismatches, setIgnoredMismatches] = useState<Set<string>>(new Set());
 
   // BOM Template state
   const [bomTemplates, setBomTemplates] = useState<any[]>([]);
@@ -997,11 +1055,12 @@ export default function CreateBom() {
     const list: any[] = [];
     boqItems.forEach(boqItem => {
       const td = parseTableData(boqItem.table_data);
+      const productName = td.product_name || boqItem.estimator || "Unknown Product";
       if (td.materialLines) {
         td.materialLines.forEach((ml: any, idx: number) => {
           const latest = materialsById[ml.id || ml.materialId];
           if (latest && latest.rate > ml.supplyRate) {
-            list.push({ boqItemId: boqItem.id, type: 'materialLine', index: idx, old: ml.supplyRate, new: latest.rate });
+            list.push({ boqItemId: boqItem.id, type: 'materialLine', index: idx, old: ml.supplyRate, new: latest.rate, name: ml.materialName || ml.name || latest.name || "Material", productName });
           }
         });
       }
@@ -1009,7 +1068,7 @@ export default function CreateBom() {
         td.step11_items.forEach((s11: any, idx: number) => {
           const latest = materialsById[s11.id];
           if (latest && latest.rate > (s11.supply_rate || 0)) {
-            list.push({ boqItemId: boqItem.id, type: 'step11', index: idx, old: (s11.supply_rate || 0), new: latest.rate });
+            list.push({ boqItemId: boqItem.id, type: 'step11', index: idx, old: (s11.supply_rate || 0), new: latest.rate, name: s11.title || latest.name || "Item", productName });
           }
         });
       }
@@ -1017,15 +1076,19 @@ export default function CreateBom() {
     return list;
   }, [boqItems, materialsById]);
 
+  const activeMismatches = useMemo(() => {
+    return mismatches.filter(m => !ignoredMismatches.has(`${m.boqItemId}-${m.type}-${m.index}`));
+  }, [mismatches, ignoredMismatches]);
+
   const handleUpdateAllRates = async () => {
-    if (mismatches.length === 0 || isUpdatingRates) return;
-    if (!confirm(`This will update rates for ${mismatches.length} items to the latest market prices. Continue?`)) return;
+    if (activeMismatches.length === 0 || isUpdatingRates) return;
+    if (!confirm(`This will update rates for ${activeMismatches.length} items to the latest market prices. Continue?`)) return;
 
     setIsUpdatingRates(true);
     try {
       // Group mismatches by boqItemId to minimize API calls
       const byBoqItem: Record<string, any[]> = {};
-      mismatches.forEach(m => {
+      activeMismatches.forEach(m => {
         if (!byBoqItem[m.boqItemId]) byBoqItem[m.boqItemId] = [];
         byBoqItem[m.boqItemId].push(m);
       });
@@ -1060,6 +1123,57 @@ export default function CreateBom() {
       setIsUpdatingRates(false);
     }
   };
+
+  const handleUpdateSingleMismatch = async (m: any) => {
+    setIsUpdatingRates(true);
+    try {
+      const boqItem = boqItems.find(i => i.id === m.boqItemId);
+      if (!boqItem) return;
+
+      const td = parseTableData(boqItem.table_data);
+      if (m.type === 'materialLine') {
+        td.materialLines[m.index].supplyRate = m.new;
+      } else if (m.type === 'step11') {
+        td.step11_items[m.index].supply_rate = m.new;
+      }
+
+      await apiFetch(`/api/boq-items/${m.boqItemId}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ table_data: td }),
+      });
+      toast({ title: "Success", description: `Updated rate for ${m.name}` });
+      loadBoqItemsAndEdits();
+    } catch (err) {
+      console.error(err);
+      toast({ title: "Error", description: "Failed to update rate", variant: "destructive" });
+    } finally {
+      setIsUpdatingRates(false);
+    }
+  };
+
+  const handleIgnoreMismatch = (m: any) => {
+    setIgnoredMismatches(prev => {
+      const next = new Set(prev);
+      next.add(`${m.boqItemId}-${m.type}-${m.index}`);
+      return next;
+    });
+  };
+
+  const handleViewMismatch = (m: any) => {
+    setExpandedProductIds(prev => new Set(prev).add(m.boqItemId));
+    // Optional: scroll to the element. We'll add a slight delay to allow expansion.
+    setTimeout(() => {
+      const el = document.getElementById(`boq-item-card-${m.boqItemId}`);
+      if (el) {
+        el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        // Flash effect
+        el.classList.add('ring-2', 'ring-blue-500');
+        setTimeout(() => el.classList.remove('ring-2', 'ring-blue-500'), 1500);
+      }
+    }, 100);
+  };
+
 
   // Auto-select project from URL
   useEffect(() => {
@@ -1864,7 +1978,7 @@ export default function CreateBom() {
   return (
     <>
       <Layout>
-        <div className="space-y-6">
+        <div className="space-y-6 pb-24 md:pb-32">
           <h1 className="text-2xl font-semibold">Generate BOM</h1>
 
           {/* Project Selector */}
@@ -2108,12 +2222,13 @@ export default function CreateBom() {
                         return fuzzySearch(productSearch, [name, desc]);
                       })
                       .map((boqItem: BOMItem, boqIdx: number) => (
-                        <BoqItemCard key={boqItem.id} boqItem={boqItem} boqIdx={boqIdx} isVersionSubmitted={isVersionSubmitted}
-                          expandedProductIds={expandedProductIds} setExpandedProductIds={setExpandedProductIds}
-                          getEditedValue={getEditedValue} updateEditedField={updateEditedField}
-                          handleDeleteRow={handleDeleteRow} handleFinalizeProduct={handleFinalizeProduct}
-                          handleAddItem={handleAddItem} loadBoqItemsAndEdits={loadBoqItemsAndEdits} setBoqItems={setBoqItems}
-                          checkBudgetEarly={checkBudgetEarly} handleSaveProject={handleSaveProject}
+                        <div key={boqItem.id} id={`boq-item-card-${boqItem.id}`} className="transition-all duration-300">
+                          <BoqItemCard boqItem={boqItem} boqIdx={boqIdx} isVersionSubmitted={isVersionSubmitted}
+                            expandedProductIds={expandedProductIds} setExpandedProductIds={setExpandedProductIds}
+                            getEditedValue={getEditedValue} updateEditedField={updateEditedField}
+                            handleDeleteRow={handleDeleteRow} handleFinalizeProduct={handleFinalizeProduct}
+                            handleAddItem={handleAddItem} loadBoqItemsAndEdits={loadBoqItemsAndEdits} setBoqItems={setBoqItems}
+                            checkBudgetEarly={checkBudgetEarly} handleSaveProject={handleSaveProject}
                           isCardDragOver={cardDragOverIdx === boqIdx}
                           onCardDragStart={(e) => { cardDragIdxRef.current = boqIdx; e.dataTransfer.effectAllowed = 'move'; }}
                           onCardDragOver={(e) => { e.preventDefault(); e.dataTransfer.dropEffect = 'move'; setCardDragOverIdx(boqIdx); }}
@@ -2130,7 +2245,7 @@ export default function CreateBom() {
                             apiFetch('/api/boq-items/reorder', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ itemIds: reordered.map(i => i.id) }) }).catch(console.error);
                             cardDragIdxRef.current = null;
                           }}
-                          mismatches={mismatches.filter(m => m.boqItemId === boqItem.id)}
+                          mismatches={activeMismatches.filter(m => m.boqItemId === boqItem.id)}
                           isCompactView={isCompactView}
                           onSaveAsTemplate={(item) => {
                             setTemplateToSave(item);
@@ -2138,6 +2253,7 @@ export default function CreateBom() {
                             setShowSaveTemplateDialog(true);
                           }}
                         />
+                        </div>
                       ))}
                   </div>
                 }
@@ -2150,7 +2266,14 @@ export default function CreateBom() {
             <Card>
               <CardContent className="space-y-3 pt-6">
                 {selectedVersion && <VersionStatusBanner version={selectedVersion} />}
-                <PriceUpdateBanner count={mismatches.length} onApplyAll={handleUpdateAllRates} isUpdating={isUpdatingRates} />
+                <PriceUpdateBanner 
+                  mismatches={activeMismatches} 
+                  onApplyAll={handleUpdateAllRates} 
+                  onApplySingle={handleUpdateSingleMismatch}
+                  onIgnoreSingle={handleIgnoreMismatch}
+                  onViewSingle={handleViewMismatch}
+                  isUpdating={isUpdatingRates} 
+                />
 
                 {/* Version History Modal */}
                 <div className="grid grid-cols-1 md:grid-cols-6 gap-3">

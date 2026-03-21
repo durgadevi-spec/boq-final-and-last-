@@ -317,6 +317,7 @@ export default function AdminDashboard() {
     id?: string;
     impact: { subcategories?: string[], products?: string[], templates?: string[], materials?: string[] };
   } | null>(null);
+  const [reassignToSubcategory, setReassignToSubcategory] = useState<string>("none");
 
   const requestDeleteCategory = async (cat: string) => {
     try {
@@ -371,6 +372,21 @@ export default function AdminDashboard() {
         toast({ title: 'Deleted', description: `Category ${cat} removed` });
       } else {
         const id = deleteData.id!;
+
+        // If user picked a subcategory to reassign materials to, do that first
+        if (reassignToSubcategory && reassignToSubcategory !== "none" && reassignToSubcategory !== deleteData.id) {
+          try {
+            await apiFetch('/subcategories/reassign', {
+              method: 'POST',
+              body: JSON.stringify({ fromSubcategoryId: deleteData.id, toSubcategoryId: reassignToSubcategory }),
+            });
+            toast({ title: 'Reassigned', description: `Materials moved to "${reassignToSubcategory}"` });
+          } catch (reassignErr) {
+            console.error('reassign error', reassignErr);
+            toast({ title: 'Warning', description: 'Reassign failed, proceeding with delete (materials will be uncategorized)', variant: 'destructive' });
+          }
+        }
+
         const res = await apiFetch(`/subcategories/${id}`, { method: 'DELETE' });
         if (res.ok) {
           setSubCategories(prev => prev.filter(s => s.id !== id));
@@ -385,8 +401,10 @@ export default function AdminDashboard() {
     } finally {
       setDeleteConfirmOpen(false);
       setDeleteData(null);
+      setReassignToSubcategory("none");
     }
   };
+
 
 
   // Handle Add Category
@@ -4114,6 +4132,34 @@ export default function AdminDashboard() {
                             {deleteData.impact.materials.filter(m => m && m.trim()).length > 20 && (
                               <Badge variant="outline" className="text-[10px] py-0 h-5 border-dashed bg-white text-muted-foreground">+ {deleteData.impact.materials.filter(m => m && m.trim()).length - 20} more materials</Badge>
                             )}
+
+                            {/* Reassign option */}
+                            <div className="mt-2 p-3 bg-amber-50 border border-amber-200 rounded-lg space-y-1.5">
+                              <p className="text-xs font-semibold text-amber-800 flex items-center gap-1.5">
+                                ⚡ Reassign these materials to another subcategory?
+                              </p>
+                              <p className="text-[11px] text-amber-700">
+                                If not selected, these materials will become <strong>uncategorized</strong>.
+                              </p>
+                              <Select
+                                value={reassignToSubcategory}
+                                onValueChange={setReassignToSubcategory}
+                              >
+                                <SelectTrigger className="h-8 text-xs bg-white border-amber-300">
+                                  <SelectValue placeholder="Leave uncategorized (default)" />
+                                </SelectTrigger>
+                                <SelectContent className="max-h-52">
+                                  <SelectItem value="none" className="text-xs text-muted-foreground italic">Leave uncategorized</SelectItem>
+                                  {subCategories
+                                    .filter((s: any) => s.id !== deleteData?.id)
+                                    .map((s: any) => (
+                                      <SelectItem key={s.id} value={s.id} className="text-xs">
+                                        {s.name} <span className="text-muted-foreground">({s.category})</span>
+                                      </SelectItem>
+                                    ))}
+                                </SelectContent>
+                              </Select>
+                            </div>
                           </div>
                         )}
 
