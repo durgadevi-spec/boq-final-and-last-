@@ -405,7 +405,7 @@ export default function CreateSketchPlan() {
                                      onValueChange={setMaterialSearch} 
                                      className="h-10"
                                   />
-                                  <CommandList className="max-h-[400px]">
+                                  <CommandList className="max-h-[280px]">
                                      {searching && <CommandEmpty>Loading...</CommandEmpty>}
                                      {!searching && searchResults.length === 0 && <CommandEmpty>No items found.</CommandEmpty>}
                                      {!searching && searchResults.length > 0 && (
@@ -601,7 +601,7 @@ export default function CreateSketchPlan() {
                         <DialogTrigger asChild>
                             <Button size="sm" className="bg-slate-800 hover:bg-black text-white text-[10px] h-8 px-4 w-full mt-3">Open Sketch Editor</Button>
                         </DialogTrigger>
-                        <DialogContent className="max-w-[720px] max-h-[95vh] overflow-y-auto">
+                        <DialogContent className="max-w-[850px] w-[95vw] max-h-[95vh] h-[90vh] overflow-y-auto flex flex-col p-1 sm:p-4">
                             <DialogHeader className="px-2 sm:px-4">
                                 <DialogTitle className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2 pr-8">
                                    <span className="text-sm sm:text-base">Site Sketch Editor</span>

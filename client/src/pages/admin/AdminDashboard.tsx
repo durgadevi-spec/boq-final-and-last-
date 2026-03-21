@@ -56,6 +56,7 @@ import {
   ChevronDown,
   ChevronUp,
   Copy,
+  X,
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { postJSON, apiFetch } from "@/lib/api";
@@ -63,6 +64,51 @@ import { Link, useLocation } from "wouter";
 
 /* 🔴 REQUIRED ASTERISK */
 const Required = () => <span className="text-red-500 ml-1">*</span>;
+
+const parseImages = (imageField: string | null | undefined): string[] => {
+  if (!imageField) return [];
+  try {
+    if (imageField.startsWith('[')) {
+      return JSON.parse(imageField);
+    }
+    return [imageField];
+  } catch (e) {
+    return [imageField];
+  }
+};
+
+const ImageGallery = ({ images, onRemove, onPreview }: { images: string | null | undefined, onRemove?: (index: number) => void, onPreview?: (url: string) => void }) => {
+  const imageList = parseImages(images);
+  if (imageList.length === 0) return null;
+
+  return (
+    <div className="mt-4 grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-4">
+      {imageList.map((img, idx) => (
+        <div key={idx} className="relative group aspect-square border rounded-md overflow-hidden bg-gray-50 flex items-center justify-center cursor-pointer">
+          <img 
+            src={img} 
+            alt={`Preview ${idx + 1}`} 
+            className="max-w-full max-h-full object-contain" 
+            onClick={() => onPreview?.(img)}
+          />
+          {onRemove && (
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation();
+                onRemove(idx);
+              }}
+              className="absolute top-1 right-1 p-1 bg-white/80 hover:bg-red-500 hover:text-white text-red-500 rounded-full shadow-sm transition-all"
+              title="Remove image"
+            >
+              <X className="h-3 w-3" />
+            </button>
+          )}
+        </div>
+      ))}
+    </div>
+  );
+};
 
 const UNIT_OPTIONS = [
   "pcs", "kg", "meter", "sqft", "cum", "litre", "set", "nos",
@@ -102,9 +148,9 @@ export default function AdminDashboard() {
     addShop,
     addMaterial,
     user,
-    approvalRequests: shopRequests,
+    approvalRequests: shopRequests = [],
     setApprovalRequests: setShopRequests,
-    supportMessages,
+    supportMessages = [],
     submitShopForApproval,
     submitMaterialForApproval,
     approveShop,
@@ -113,41 +159,61 @@ export default function AdminDashboard() {
     deleteMaterial,
     addSupportMessage,
     deleteMessage,
-    materialApprovalRequests: materialRequests,
+    materialApprovalRequests: materialRequests = [],
     setMaterialApprovalRequests: setMaterialRequests,
-    supplierSubmissions,
     approveMaterial,
     rejectMaterial,
+    refreshMaterials,
+    refreshPendingApprovals,
   } = useData();
 
   const [rejectReason, setRejectReason] = useState("");
   const [rejectingId, setRejectingId] = useState<string | null>(null);
+  const [selectedPreviewImage, setSelectedPreviewImage] = useState<string | null>(null);
 
   // Helper to convert an uploaded image to a Base64 string
   const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>, callback: (base64: string) => void) => {
     const file = e.target.files?.[0];
     if (!file) return;
 
-    if (!file.type.startsWith('image/')) {
-      toast({ title: 'Error', description: 'Please upload a valid image file', variant: 'destructive' });
-      return;
-    }
+    const files = Array.from(e.target.files || []);
+    if (files.length === 0) return;
 
-    // Limit size to ~5MB for Base64 storage
-    if (file.size > 5 * 1024 * 1024) {
-      toast({ title: 'Error', description: 'Image size should be less than 5MB', variant: 'destructive' });
-      return;
-    }
+    // Filter out large files
+    const validFiles = files.filter(file => {
+      if (file.size > 5 * 1024 * 1024) { // 5MB limit
+        toast({ title: "Error", description: `File ${file.name} is too large (>5MB)`, variant: "destructive" });
+        return false;
+      }
+      return true;
+    });
 
-    const reader = new FileReader();
-    reader.onload = (event) => {
-      const base64String = event.target?.result as string;
-      callback(base64String);
-    };
-    reader.onerror = () => {
-      toast({ title: 'Error', description: 'Failed to read image file', variant: 'destructive' });
-    };
-    reader.readAsDataURL(file);
+    if (validFiles.length === 0) return;
+
+    const uploadedImages: string[] = [];
+    let processed = 0;
+
+    validFiles.forEach(file => {
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        uploadedImages.push(reader.result as string);
+        processed++;
+        if (processed === validFiles.length) {
+          // If multiple files, we'll return a JSON array string.
+          // If only one file, we'll return the base64 string directly for backward compatibility
+          // BUT if we want to support multiple images properly, we should always store as array
+          // To keep it simple, let's always store as a JSON-ified array if multiple are selected,
+          // or just append if we want to merge. 
+          // Actually, let's just return the new images as a JSON array string.
+          callback(JSON.stringify(uploadedImages));
+        }
+      };
+      reader.onerror = () => {
+        processed++;
+        toast({ title: "Error", description: `Failed to read ${file.name}`, variant: "destructive" });
+      };
+      reader.readAsDataURL(file);
+    });
   };
 
   // ==== CATEGORIES & SUBCATEGORIES (Admin/Software Team Created) ====
@@ -900,7 +966,7 @@ export default function AdminDashboard() {
 
     (async () => {
       try {
-        const result = await submitMaterialForApproval({ ...newMaterial, shopId });
+        const result = submitMaterialForApproval ? await submitMaterialForApproval({ ...newMaterial, shopId }) : null;
         if (result) {
           toast({
             title: "Success",
@@ -2494,17 +2560,27 @@ export default function AdminDashboard() {
                               </div>
                             </div>
                             <div className="space-y-2">
-                              <Label>Product Image</Label>
+                              <Label>Product Images</Label>
                               <Input
                                 type="file"
                                 accept="image/*"
-                                onChange={(e) => handleImageUpload(e, (base64) => setNewProduct({ ...newProduct, image: base64 as any }))}
+                                multiple
+                                onChange={(e) => handleImageUpload(e, (newImagesJson) => {
+                                  const newImages = JSON.parse(newImagesJson);
+                                  const existing = parseImages(newProduct.image);
+                                  setNewProduct({ ...newProduct, image: JSON.stringify([...existing, ...newImages]) });
+                                })}
+                                onPreview={(url) => setSelectedPreviewImage(url)}
                               />
-                              {(newProduct as any).image && (
-                                <div className="mt-2 text-xs text-green-600 font-medium">
-                                  ✅ Image selected
-                                </div>
-                              )}
+                              <ImageGallery 
+                                images={newProduct.image} 
+                                onRemove={(idx) => {
+                                  const images = parseImages(newProduct.image);
+                                  images.splice(idx, 1);
+                                  setNewProduct({ ...newProduct, image: images.length > 0 ? JSON.stringify(images) : null as any });
+                                }} 
+                                onPreview={(url) => setSelectedPreviewImage(url)}
+                              />
                             </div>
                             <Button
                               onClick={async () => {
@@ -2601,9 +2677,23 @@ export default function AdminDashboard() {
                           <div key={product.id} className="p-4 border rounded-lg bg-white hover:border-blue-400 transition">
                             <div className="flex items-center justify-between">
                               <div className="flex items-center gap-3 flex-1">
-                                <Package className="h-5 w-5 text-blue-600" />
-                                <div className="flex-1">
-                                  <span className="font-medium block">{product.name}</span>
+                                  <div className="h-10 w-10 border rounded bg-gray-50 overflow-hidden flex items-center justify-center shrink-0">
+                                    {product.image ? (
+                                      <img 
+                                        src={parseImages(product.image)[0]} 
+                                        alt="" 
+                                        className="max-w-full max-h-full object-contain cursor-pointer" 
+                                        onClick={(e) => {
+                                          e.stopPropagation();
+                                          setSelectedPreviewImage(parseImages(product.image)[0]);
+                                        }}
+                                      />
+                                    ) : (
+                                      <Package className="h-5 w-5 text-blue-600" />
+                                    )}
+                                  </div>
+                                  <div className="flex-1">
+                                    <span className="font-medium block">{product.name}</span>
                                   <span className="text-sm text-muted-foreground">
                                     Subcategories: {product.subcategory || "-"}
                                   </span>
@@ -2696,17 +2786,27 @@ export default function AdminDashboard() {
                           </div>
                         </div>
                         <div className="space-y-2">
-                          <Label>Product Image</Label>
+                          <Label>Product Images</Label>
                           <Input
                             type="file"
                             accept="image/*"
-                            onChange={(e) => handleImageUpload(e, (base64) => setEditingProduct((prev: any) => ({ ...prev, image: base64 })))}
+                            multiple
+                            onChange={(e) => handleImageUpload(e, (newImagesJson) => {
+                              const newImages = JSON.parse(newImagesJson);
+                              const existing = parseImages(editingProduct.image);
+                              setEditingProduct((prev: any) => ({ ...prev, image: JSON.stringify([...existing, ...newImages]) }));
+                            })}
+                            onPreview={(url) => setSelectedPreviewImage(url)}
                           />
-                          {editingProduct.image && (
-                            <div className="mt-2 text-xs text-green-600 font-medium">
-                              ✅ Image selected
-                            </div>
-                          )}
+                          <ImageGallery 
+                            images={editingProduct.image} 
+                            onRemove={(idx) => {
+                              const images = parseImages(editingProduct.image);
+                              images.splice(idx, 1);
+                              setEditingProduct((prev: any) => ({ ...prev, image: images.length > 0 ? JSON.stringify(images) : null }));
+                            }} 
+                            onPreview={(url) => setSelectedPreviewImage(url)}
+                          />
                         </div>
                         <div className="flex gap-2 justify-end">
                           <Button variant="outline" onClick={() => setEditingProduct(null)}>
@@ -2858,17 +2958,27 @@ export default function AdminDashboard() {
                       />
                     </div>
                     <div className="space-y-2 md:col-span-3">
-                      <Label>Product Image</Label>
+                      <Label>Product Images</Label>
                       <Input
                         type="file"
                         accept="image/*"
-                        onChange={(e) => handleImageUpload(e, (base64) => setNewMasterMaterial({ ...newMasterMaterial, image: base64 }))}
+                        multiple
+                        onChange={(e) => handleImageUpload(e, (newImagesJson) => {
+                          const newImages = JSON.parse(newImagesJson);
+                          const existing = parseImages(newMasterMaterial.image);
+                          setNewMasterMaterial({ ...newMasterMaterial, image: JSON.stringify([...existing, ...newImages]) });
+                        })}
+                        onPreview={(url) => setSelectedPreviewImage(url)}
                       />
-                      {newMasterMaterial.image && (
-                        <div className="mt-2 text-xs text-green-600 font-medium flex items-center gap-1">
-                          ✅ Image selected
-                        </div>
-                      )}
+                      <ImageGallery 
+                        images={newMasterMaterial.image} 
+                        onRemove={(idx) => {
+                          const images = parseImages(newMasterMaterial.image);
+                          images.splice(idx, 1);
+                          setNewMasterMaterial({ ...newMasterMaterial, image: images.length > 0 ? JSON.stringify(images) : null as any });
+                        }} 
+                        onPreview={(url) => setSelectedPreviewImage(url)}
+                      />
                     </div>
                   </div>
                   <div className="flex gap-2">
@@ -2894,7 +3004,8 @@ export default function AdminDashboard() {
                           taxCodeValue: "",
                           hsnCode: "",
                           sacCode: "",
-                          technicalSpecification: ""
+                          technicalSpecification: "",
+                          image: null
                         });
                         toast({
                           title: "Form Cleared",
@@ -3009,17 +3120,27 @@ export default function AdminDashboard() {
                                       />
                                     </div>
                                     <div className="md:col-span-2">
-                                      <Label>Product Image</Label>
+                                      <Label>Product Images</Label>
                                       <Input
                                         type="file"
                                         accept="image/*"
-                                        onChange={(e) => handleImageUpload(e, (base64) => setNewMaterial({ ...newMaterial, image: base64 }))}
+                                        multiple
+                                        onChange={(e) => handleImageUpload(e, (newImagesJson) => {
+                                          const newImages = JSON.parse(newImagesJson);
+                                          const existing = parseImages(newMaterial.image);
+                                          setNewMaterial({ ...newMaterial, image: JSON.stringify([...existing, ...newImages]) });
+                                        })}
+                                        onPreview={(url) => setSelectedPreviewImage(url)}
                                       />
-                                      {newMaterial.image && (
-                                        <div className="mt-2 text-xs text-green-600 font-medium">
-                                          ✅ Image selected
-                                        </div>
-                                      )}
+                                      <ImageGallery 
+                                        images={newMaterial.image} 
+                                        onRemove={(idx) => {
+                                          const images = parseImages(newMaterial.image);
+                                          images.splice(idx, 1);
+                                          setNewMaterial({ ...newMaterial, image: images.length > 0 ? JSON.stringify(images) : null as any });
+                                        }} 
+                                        onPreview={(url) => setSelectedPreviewImage(url)}
+                                      />
                                     </div>
                                   </div>
                                   <div className="flex gap-2 justify-end pt-2">
@@ -3072,10 +3193,27 @@ export default function AdminDashboard() {
                                   </div>
                                 </div>
                               ) : (
-                                <div>
-                                  <div className="font-medium text-sm">{template.name}</div>
-                                  <div className="text-xs text-muted-foreground">
-                                    {template.code}
+                                <div className="flex items-center gap-3">
+                                  <div className="h-10 w-10 border rounded bg-gray-50 overflow-hidden flex items-center justify-center shrink-0">
+                                    {template.image ? (
+                                      <img 
+                                        src={parseImages(template.image)[0]} 
+                                        alt="" 
+                                        className="max-w-full max-h-full object-contain cursor-pointer" 
+                                        onClick={(e) => {
+                                          e.stopPropagation();
+                                          setSelectedPreviewImage(parseImages(template.image)[0]);
+                                        }}
+                                      />
+                                    ) : (
+                                      <Package className="h-4 w-4 text-muted-foreground" />
+                                    )}
+                                  </div>
+                                  <div>
+                                    <div className="font-medium text-sm">{template.name}</div>
+                                    <div className="text-xs text-muted-foreground">
+                                      {template.code}
+                                    </div>
                                   </div>
                                 </div>
                               )}
@@ -3098,7 +3236,8 @@ export default function AdminDashboard() {
                                     vendorCategory: template.vendor_category || '',
                                     hsnCode: template.hsn_code || template.hsnCode || '',
                                     sacCode: template.sac_code || template.sacCode || '',
-                                    technicalSpecification: template.technicalspecification || template.technicalSpecification || ''
+                                    technicalSpecification: template.technicalspecification || template.technicalSpecification || '',
+                                    image: template.image || null
                                   });
                                 }}>Edit</Button>
                                 <Button size="sm" variant="destructive" onClick={async () => {
@@ -4040,6 +4179,13 @@ export default function AdminDashboard() {
         </AlertDialog>
 
       </div >
-    </Layout >
+      <Dialog open={!!selectedPreviewImage} onOpenChange={() => setSelectedPreviewImage(null)}>
+        <DialogContent className="max-w-4xl p-0 overflow-hidden bg-transparent border-none">
+          {selectedPreviewImage && (
+            <img src={selectedPreviewImage} alt="Full Preview" className="w-full h-auto max-h-[90vh] object-contain" />
+          )}
+        </DialogContent>
+      </Dialog>
+    </Layout>
   );
 }

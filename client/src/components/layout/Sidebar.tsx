@@ -72,9 +72,13 @@ const estimatorItems = [
   //{ icon: ShieldAlert, label: "Fire-Fighting", href: "/estimators/fire-fighting" },
 ];
 
-export function Sidebar() {
+interface SidebarProps {
+  isOpen: boolean;
+  setIsOpen: (open: boolean) => void;
+}
+
+export function Sidebar({ isOpen, setIsOpen }: SidebarProps) {
   const [location, setLocation] = useLocation();
-  const [isOpen, setIsOpen] = useState(true);
   const [estSearch, setEstSearch] = useState("");
   const [subcategories, setSubcategories] = useState<SubcategoryItem[]>([]);
   const [loadingSubcategories, setLoadingSubcategories] = useState(true);
@@ -341,25 +345,44 @@ export function Sidebar() {
 
   return (
     <>
-      <Button
-        variant="ghost"
-        size="icon"
-        className="fixed top-4 left-4 z-50 md:hidden"
-        onClick={() => setIsOpen(!isOpen)}
-      >
-        {isOpen ? <X className="h-6 w-6" /> : <Menu className="h-6 w-6" />}
-      </Button>
+      {/* Mobile/Desktop Overlay */}
+      {isOpen && (
+        <div 
+          className="fixed inset-0 bg-black/20 z-30 md:hidden" 
+          onClick={() => setIsOpen(false)}
+        />
+      )}
+
+      {/* Toggle Button (Trigger) when closed */}
+      {!isOpen && (
+        <Button
+          variant="ghost"
+          size="icon"
+          className="fixed top-4 left-4 z-50 bg-background shadow-sm border hover:bg-accent"
+          onClick={() => setIsOpen(true)}
+        >
+          <Menu className="h-5 w-5" />
+        </Button>
+      )}
 
       <aside
         className={cn(
-          "fixed inset-y-0 left-0 z-40 w-64 transform bg-sidebar border-r border-sidebar-border transition-transform duration-200 ease-in-out md:translate-x-0 flex flex-col",
+          "fixed inset-y-0 left-0 z-40 w-64 transform bg-sidebar border-r border-sidebar-border transition-transform duration-300 ease-in-out flex flex-col shadow-xl md:shadow-none",
           isOpen ? "translate-x-0" : "-translate-x-full",
         )}
       >
-        <div className="flex h-16 items-center justify-center border-b border-sidebar-border bg-sidebar-primary/10">
+        <div className="flex h-16 items-center justify-between px-4 border-b border-sidebar-border bg-gradient-to-r from-blue-50 to-indigo-50 dark:from-slate-900 dark:to-slate-800">
           <h1 className="text-xl font-bold tracking-tight text-sidebar-primary font-heading">
             BUILD<span className="text-foreground">ESTIMATE</span>
           </h1>
+          <Button 
+            variant="ghost" 
+            size="icon" 
+            className="h-8 w-8 text-muted-foreground hover:text-foreground"
+            onClick={() => setIsOpen(false)}
+          >
+            <X className="h-5 w-5" />
+          </Button>
         </div>
 
         <nav className="flex-1 overflow-y-auto py-4 px-3 space-y-1">
@@ -379,6 +402,7 @@ export function Sidebar() {
                         ? "bg-sidebar-primary text-sidebar-primary-foreground"
                         : "text-sidebar-foreground hover:bg-sidebar-accent",
                     )}
+                    onClick={() => setIsOpen(false)}
                   >
                     <LayoutDashboard className="h-4 w-4" />
                     Dashboard
@@ -511,19 +535,21 @@ export function Sidebar() {
                     </span>
                   </Link>
                 )}
-                <Link href="/sketch-plans">
-                  <span
-                    className={cn(
-                      "flex items-center gap-3 rounded-md px-3 py-2 text-sm font-medium transition-colors cursor-pointer",
-                      location === "/sketch-plans"
-                        ? "bg-sidebar-primary text-sidebar-primary-foreground"
-                        : "text-sidebar-foreground hover:bg-sidebar-accent",
-                    )}
-                    onClick={() => setIsOpen(false)}
-                  >
-                    <span className="text-lg">📐</span> Sketch a Plan
-                  </span>
-                </Link>
+                {isVisible('sketch_plan', canCreateBOQAndProject) && (
+                  <Link href="/sketch-plans">
+                    <span
+                      className={cn(
+                        "flex items-center gap-3 rounded-md px-3 py-2 text-sm font-medium transition-colors cursor-pointer",
+                        location === "/sketch-plans"
+                          ? "bg-sidebar-primary text-sidebar-primary-foreground"
+                          : "text-sidebar-foreground hover:bg-sidebar-accent",
+                      )}
+                      onClick={() => setIsOpen(false)}
+                    >
+                      <span className="text-lg">📐</span> Sketch a Plan
+                    </span>
+                  </Link>
+                )}
               </>
             )}
 
@@ -697,9 +723,6 @@ export function Sidebar() {
                       onClick={() => setIsOpen(false)}
                     >
                       <FileText className="h-4 w-4" /> Purchase Orders
-                      <Badge variant="outline" className="ml-auto text-[9px] px-1 py-0 h-3.5 border-amber-200 bg-amber-50 text-amber-700 font-medium tracking-wide leading-none flex items-center">
-                        Under Const.
-                      </Badge>
                     </span>
                   </Link>
                 )}
@@ -715,9 +738,6 @@ export function Sidebar() {
                       onClick={() => setIsOpen(false)}
                     >
                       <ClipboardCheck className="h-4 w-4" /> PO Approvals
-                      <Badge variant="outline" className="ml-auto text-[9px] px-1 py-0 h-3.5 border-amber-200 bg-amber-50 text-amber-700 font-medium tracking-wide leading-none flex items-center">
-                        Under Const.
-                      </Badge>
                     </span>
                   </Link>
                 )}
@@ -998,7 +1018,10 @@ export function Sidebar() {
                 </div>
                 {isVisible('subscription', !isVoltAmpele && !isPreSales && !isContractor) && (
                   <Link href="/subscription">
-                    <span className="flex items-center gap-3 rounded-md px-3 py-2 text-sm font-medium text-sidebar-foreground hover:bg-sidebar-accent cursor-pointer">
+                    <span 
+                      className="flex items-center gap-3 rounded-md px-3 py-2 text-sm font-medium text-sidebar-foreground hover:bg-sidebar-accent cursor-pointer"
+                      onClick={() => setIsOpen(false)}
+                    >
                       <Package className="h-4 w-4" />
                       Subscription
                     </span>
@@ -1006,12 +1029,15 @@ export function Sidebar() {
                 )}
                 {isVisible('user_manual', !isVoltAmpele && !isPreSales && !isContractor) && (
                   <Link href="/user-manual">
-                    <span className={cn(
-                      "flex items-center gap-3 rounded-md px-3 py-2 text-sm font-medium transition-colors cursor-pointer",
-                      location === "/user-manual"
-                        ? "bg-sidebar-primary text-sidebar-primary-foreground"
-                        : "text-sidebar-foreground hover:bg-sidebar-accent",
-                    )}>
+                    <span 
+                      className={cn(
+                        "flex items-center gap-3 rounded-md px-3 py-2 text-sm font-medium transition-colors cursor-pointer",
+                        location === "/user-manual"
+                          ? "bg-sidebar-primary text-sidebar-primary-foreground"
+                          : "text-sidebar-foreground hover:bg-sidebar-accent",
+                      )}
+                      onClick={() => setIsOpen(false)}
+                    >
                       <BookOpen className="h-4 w-4" />
                       User Manual
                     </span>

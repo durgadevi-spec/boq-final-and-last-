@@ -28,6 +28,7 @@ export const ALL_SIDEBAR_MODULES = [
   { key: "support_chat", label: "Support / Chat" },
   { key: "subscription", label: "Subscription" },
   { key: "user_manual", label: "User Manual" },
+  { key: "sketch_plan", label: "Sketch a Plan" },
 ];
 
 export function getDefaultPermissions(role: string): string[] {
@@ -44,7 +45,7 @@ export function getDefaultPermissions(role: string): string[] {
 
   // Admin & Software Team (Full Access mostly)
   if (role === 'admin' || role === 'software_team') {
-    modules.push('project_dashboard', 'finalize_boq', 'purchase_orders', 'po_approvals', 'pending_approvals', 'approved_requests', 'bom_approvals');
+    modules.push('project_dashboard', 'finalize_boq', 'purchase_orders', 'po_approvals', 'pending_approvals', 'approved_requests', 'bom_approvals', 'sketch_plan');
     if (role === 'admin') {
       modules.push('alerts', 'supplier_approvals');
     }
@@ -62,7 +63,7 @@ export function getDefaultPermissions(role: string): string[] {
 
   // Project Creation
   if (role === 'admin' || role === 'software_team' || role === 'pre_sales') {
-    modules.push('create_project', 'generate_po');
+    modules.push('create_project', 'generate_po', 'sketch_plan');
   }
 
   // BOQ / Projects

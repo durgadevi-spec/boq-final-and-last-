@@ -1,9 +1,10 @@
 import React, { useRef, useEffect, useState, useCallback } from "react";
 import { Button } from "@/components/ui/button";
-import { Eraser, Pencil, Trash2, Save, Square, Circle, LineChart as LineIcon, Grid3X3, Zap, Ruler, Maximize2, Minimize2, Waypoints } from "lucide-react";
+import { Eraser, Pencil, Trash2, Save, Square, Circle, LineChart as LineIcon, Grid3X3, Zap, Ruler, Maximize2, Minimize2, Waypoints, ArrowLeft } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
+import { cn } from "@/lib/utils";
 
 interface Point {
   x: number;
@@ -29,12 +30,20 @@ interface SketchPadProps {
 export function SketchPad({ onSave, initialData, width = 600, height = 400, unitPrefix = "ft" }: SketchPadProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [shapes, setShapes] = useState<Shape[]>([]);
+  const [undoStack, setUndoStack] = useState<Shape[][]>([]);
+  const [redoStack, setRedoStack] = useState<Shape[][]>([]);
   const [currentShape, setCurrentShape] = useState<Shape | null>(null);
   const [isDrawing, setIsDrawing] = useState(false);
   const [color, setColor] = useState("#000000");
   const [lineWidth, setLineWidth] = useState(2);
-  const [mode, setMode] = useState<"pencil" | "line" | "rect" | "measure" | "circle" | "delete">("pencil");
+  const [mode, setMode] = useState<"pencil" | "line" | "rect" | "measure" | "circle" | "delete" | "pan" | "calibrate">("pencil");
   
+  // Viewport state
+  const [zoom, setZoom] = useState(1);
+  const [panOffset, setPanOffset] = useState<Point>({ x: 0, y: 0 });
+  const [lastTouchPos, setLastTouchPos] = useState<Point | null>(null);
+  const [lastTouchDist, setLastTouchDist] = useState<number | null>(null);
+
   // Smart features state
   const [gridSize, setGridSize] = useState(20);
   const [showGrid, setShowGrid] = useState(true);
@@ -43,9 +52,31 @@ export function SketchPad({ onSave, initialData, width = 600, height = 400, unit
   const [snapToEndpoints, setSnapToEndpoints] = useState(true);
   const [isContinuous, setIsContinuous] = useState(false);
   const [isFullscreen, setIsFullscreen] = useState(false);
-  const [referenceScale, setReferenceScale] = useState(100); // represents total width
+  const [referenceScale, setReferenceScale] = useState(100); // represents total width in unitPrefix
 
   const containerRef = useRef<HTMLDivElement>(null);
+
+  const undo = () => {
+    if (shapes.length === 0) return;
+    setRedoStack([shapes, ...redoStack]);
+    const newShapes = shapes.slice(0, -1);
+    setShapes(newShapes);
+  };
+
+  const redo = () => {
+    if (redoStack.length === 0) return;
+    const nextShapes = redoStack[0];
+    setRedoStack(redoStack.slice(1));
+    setShapes(nextShapes);
+  };
+
+  useEffect(() => {
+    const handleFsChange = () => {
+      setIsFullscreen(!!document.fullscreenElement);
+    };
+    document.addEventListener("fullscreenchange", handleFsChange);
+    return () => document.removeEventListener("fullscreenchange", handleFsChange);
+  }, []);
 
   const toggleFullscreen = () => {
     if (!containerRef.current) return;
@@ -53,10 +84,8 @@ export function SketchPad({ onSave, initialData, width = 600, height = 400, unit
       containerRef.current.requestFullscreen().catch(err => {
         console.error(`Error attempting to enable full-screen mode: ${err.message}`);
       });
-      setIsFullscreen(true);
     } else {
       document.exitFullscreen();
-      setIsFullscreen(false);
     }
   };
 
@@ -131,6 +160,10 @@ export function SketchPad({ onSave, initialData, width = 600, height = 400, unit
     ctx.fillStyle = "#ffffff";
     ctx.fillRect(0, 0, canvas.width, canvas.height);
 
+    ctx.save();
+    ctx.translate(panOffset.x, panOffset.y);
+    ctx.scale(zoom, zoom);
+
     // Draw Initial Data (if any)
     if (initialImage) {
       ctx.drawImage(initialImage, 0, 0, canvas.width, canvas.height);
@@ -140,14 +173,27 @@ export function SketchPad({ onSave, initialData, width = 600, height = 400, unit
     if (showGrid) {
       ctx.beginPath();
       ctx.strokeStyle = "#f1f5f9";
-      ctx.lineWidth = 1;
-      for (let x = 0; x <= canvas.width; x += gridSize) {
-        ctx.moveTo(x, 0);
-        ctx.lineTo(x, canvas.height);
+      ctx.lineWidth = 1 / zoom; // Keep grid lines thin regardless of zoom
+      
+      // Calculate visible bounds in canvas coordinates
+      const left = -panOffset.x / zoom;
+      const top = -panOffset.y / zoom;
+      const right = (canvas.width - panOffset.x) / zoom;
+      const bottom = (canvas.height - panOffset.y) / zoom;
+
+      // Extend grid beyond bounds slightly to ensure full coverage
+      const startX = Math.floor(left / gridSize) * gridSize;
+      const endX = Math.ceil(right / gridSize) * gridSize;
+      const startY = Math.floor(top / gridSize) * gridSize;
+      const endY = Math.ceil(bottom / gridSize) * gridSize;
+
+      for (let x = startX; x <= endX; x += gridSize) {
+        ctx.moveTo(x, startY);
+        ctx.lineTo(x, endY);
       }
-      for (let y = 0; y <= canvas.height; y += gridSize) {
-        ctx.moveTo(0, y);
-        ctx.lineTo(canvas.width, y);
+      for (let y = startY; y <= endY; y += gridSize) {
+        ctx.moveTo(startX, y);
+        ctx.lineTo(endX, y);
       }
       ctx.stroke();
     }
@@ -241,24 +287,47 @@ export function SketchPad({ onSave, initialData, width = 600, height = 400, unit
 
     shapes.forEach(drawShape);
     if (currentShape) drawShape(currentShape);
-  }, [shapes, currentShape, showGrid, gridSize, referenceScale, unitPrefix, initialImage]);
+    ctx.restore();
+  }, [shapes, currentShape, showGrid, gridSize, referenceScale, unitPrefix, initialImage, zoom, panOffset]);
 
   useEffect(() => {
     render();
   }, [render]);
 
-  const getPos = (e: React.MouseEvent | React.TouchEvent): Point => {
+  const getPos = (e: React.MouseEvent | React.TouchEvent | PointerEvent): Point => {
     const canvas = canvasRef.current;
     if (!canvas) return { x: 0, y: 0 };
     const rect = canvas.getBoundingClientRect();
-    const clientX = "touches" in e ? e.touches[0].clientX : e.clientX;
-    const clientY = "touches" in e ? e.touches[0].clientY : e.clientY;
-    return { x: clientX - rect.left, y: clientY - rect.top };
+    const clientX = "touches" in e ? e.touches[0].clientX : (e as any).clientX;
+    const clientY = "touches" in e ? e.touches[0].clientY : (e as any).clientY;
+    
+    // Transform screen coordinates back to canvas (zoom/pan aware)
+    return { 
+      x: (clientX - rect.left - panOffset.x) / zoom, 
+      y: (clientY - rect.top - panOffset.y) / zoom 
+    };
   };
 
   const startDrawing = (e: React.MouseEvent | React.TouchEvent) => {
+    if ("touches" in e && e.touches.length === 2) {
+      // Handle pinch zoom start
+      const d = Math.sqrt(
+        Math.pow(e.touches[0].clientX - e.touches[1].clientX, 2) +
+        Math.pow(e.touches[0].clientY - e.touches[1].clientY, 2)
+      );
+      setLastTouchDist(d);
+      setIsDrawing(false);
+      return;
+    }
+
     const pos = getPos(e);
     const snappedPos = snapPoint(pos);
+
+    if (mode === "pan") {
+      setIsDrawing(true);
+      setLastTouchPos(pos);
+      return;
+    }
 
     if (mode === "delete") {
       // Find and remove the nearest shape
@@ -315,11 +384,12 @@ export function SketchPad({ onSave, initialData, width = 600, height = 400, unit
     }
 
     setIsDrawing(true);
+    setRedoStack([]); // Clear redo stack on new action
     setCurrentShape({
       id: Date.now().toString(),
-      type: mode as any,
+      type: mode === "calibrate" ? "measure" : mode as any,
       points: [snappedPos],
-      color: color,
+      color: mode === "calibrate" ? "#f59e0b" : color,
       thickness: lineWidth,
     });
   };
@@ -337,30 +407,24 @@ export function SketchPad({ onSave, initialData, width = 600, height = 400, unit
     if (!isDrawing) return;
     const pos = getPos(e);
 
-    if (mode === "delete") {
-      const threshold = 15;
-      const newShapes = shapes.filter(s => {
-        if ((s.type === "line" || s.type === "measure") && s.points.length >= 2) {
-          const [p1, p2] = s.points;
-          return getPointToSegmentDist(pos, p1, p2) > threshold;
-        } else if (s.type === "circle" && s.points.length >= 2) {
-          const center = s.points[0];
-          const radius = Math.sqrt(Math.pow(s.points[1].x - center.x, 2) + Math.pow(s.points[1].y - center.y, 2));
-          const dist = Math.sqrt(Math.pow(pos.x - center.x, 2) + Math.pow(pos.y - center.y, 2));
-          return Math.abs(dist - radius) > threshold;
-        } else if (s.type === "rect" && s.points.length >= 2) {
-          const [p1, p2] = s.points;
-          const inX = pos.x >= Math.min(p1.x, p2.x) - 5 && pos.x <= Math.max(p1.x, p2.x) + 5;
-          const inY = pos.y >= Math.min(p1.y, p2.y) - 5 && pos.y <= Math.max(p1.y, p2.y) + 5;
-          const onEdge = (Math.abs(pos.x - p1.x) < 10 || Math.abs(pos.x - p2.x) < 10 || Math.abs(pos.y - p1.y) < 10 || Math.abs(pos.y - p2.y) < 10);
-          return !(inX && inY && onEdge);
-        } else if (s.type === "pencil") {
-          return !s.points.some(p => Math.sqrt(Math.pow(p.x - pos.x, 2) + Math.pow(p.y - pos.y, 2)) < threshold);
+    if (mode === "pan" || ("touches" in e && e.touches.length === 2)) {
+      if ("touches" in e && e.touches.length === 2) {
+        // Pinch zoom
+        const d = Math.sqrt(
+          Math.pow(e.touches[0].clientX - e.touches[1].clientX, 2) +
+          Math.pow(e.touches[0].clientY - e.touches[1].clientY, 2)
+        );
+        if (lastTouchDist) {
+          const delta = d / lastTouchDist;
+          setZoom(Math.min(Math.max(zoom * delta, 0.1), 10));
         }
-        return true;
-      });
-      if (newShapes.length !== shapes.length) {
-        setShapes(newShapes);
+        setLastTouchDist(d);
+      } else if (lastTouchPos) {
+        // Pan
+        const currentPos = getPos(e);
+        const dx = (currentPos.x - lastTouchPos.x) * zoom;
+        const dy = (currentPos.y - lastTouchPos.y) * zoom;
+        setPanOffset({ x: panOffset.x + dx, y: panOffset.y + dy });
       }
       return;
     }
@@ -379,6 +443,26 @@ export function SketchPad({ onSave, initialData, width = 600, height = 400, unit
 
   const stopDrawing = () => {
     if (isDrawing && currentShape) {
+      if (mode === "calibrate" && currentShape.points.length >= 2) {
+        const dist = Math.sqrt(
+          Math.pow(currentShape.points[1].x - currentShape.points[0].x, 2) +
+          Math.pow(currentShape.points[1].y - currentShape.points[0].y, 2)
+        );
+        const length = prompt(`How long is this line in ${unitPrefix}?`, "1");
+        if (length) {
+          const l = parseFloat(length);
+          if (l > 0) {
+            // new referenceScale should satisfy: (dist / canvas_width) * newScale = l
+            const newScale = (l * (canvasRef.current?.width || 600)) / dist;
+            setReferenceScale(newScale);
+          }
+        }
+        setCurrentShape(null);
+        setIsDrawing(false);
+        setMode("measure");
+        return;
+      }
+
       const newShapes = [...shapes, currentShape];
       setShapes(newShapes);
       
@@ -397,6 +481,18 @@ export function SketchPad({ onSave, initialData, width = 600, height = 400, unit
     }
     setIsDrawing(false);
     setCurrentShape(null);
+    setLastTouchPos(null);
+    setLastTouchDist(null);
+  };
+
+  const handleWheel = (e: React.WheelEvent) => {
+    if (e.ctrlKey) {
+      const delta = e.deltaY > 0 ? 0.9 : 1.1;
+      setZoom(Math.min(Math.max(zoom * delta, 0.1), 10));
+      e.preventDefault();
+    } else {
+      setPanOffset({ x: panOffset.x - e.deltaX, y: panOffset.y - e.deltaY });
+    }
   };
 
   const handleSave = () => {
@@ -440,90 +536,155 @@ export function SketchPad({ onSave, initialData, width = 600, height = 400, unit
   };
 
   return (
-    <div ref={containerRef} className={`flex flex-col gap-3 border rounded-lg p-2 sm:p-4 bg-slate-50 shadow-sm overflow-hidden ${isFullscreen ? 'fixed inset-0 z-[9999] w-screen h-screen' : ''}`}>
-      {/* Primary Toolbar */}
-      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 bg-white p-2 rounded border border-slate-200">
-        <div className="flex flex-wrap items-center gap-1.5">
-          <Button variant={mode === "pencil" ? "default" : "outline"} size="icon" onClick={() => setMode("pencil")} title="Pencil" className="h-8 w-8">
-            <Pencil className="w-4 h-4" />
-          </Button>
-          <Button variant={mode === "line" ? "default" : "outline"} size="icon" onClick={() => setMode("line")} title="Line" className="h-8 w-8">
-            <LineIcon className="w-4 h-4" />
-          </Button>
-          <Button variant={mode === "rect" ? "default" : "outline"} size="icon" onClick={() => setMode("rect")} title="Rectangle" className="h-8 w-8">
-            <Square className="w-4 h-4" />
-          </Button>
-          <Button variant={mode === "circle" ? "default" : "outline"} size="icon" onClick={() => setMode("circle")} title="Circle" className="h-8 w-8">
-            <Circle className="w-4 h-4" />
-          </Button>
-          <Button variant={mode === "measure" ? "default" : "outline"} size="icon" onClick={() => { setMode("measure"); setCurrentShape(null); setIsDrawing(false); }} title="Measure" className="h-8 w-8">
-            <Ruler className="w-4 h-4" />
-          </Button>
-          <Button variant={mode === "delete" ? "default" : "outline"} size="icon" onClick={() => { setMode("delete"); setCurrentShape(null); setIsDrawing(false); }} title="Delete Shape" className="h-8 w-8">
-            <Eraser className="w-4 h-4" />
-          </Button>
-          <div className="w-[1px] h-6 bg-slate-200 mx-1" />
-          <input type="color" value={color} onChange={(e) => setColor(e.target.value)} disabled={mode === "delete"} className="w-7 h-7 cursor-pointer border-none p-0 bg-transparent" />
-          <select value={lineWidth} onChange={(e) => setLineWidth(Number(e.target.value))} className="border rounded h-7 text-xs px-1 bg-slate-50">
-            <option value="1">Thin</option>
-            <option value="3">Med</option>
-            <option value="6">Thick</option>
-          </select>
+    <div 
+      ref={containerRef} 
+      className={cn(
+        "flex flex-col gap-2 border rounded-xl p-2 sm:p-3 bg-slate-50/50 shadow-sm overflow-hidden transition-all",
+        isFullscreen 
+          ? "fixed inset-0 z-[9999] w-screen h-screen bg-slate-50 p-4" 
+          : "relative w-full min-h-[500px] lg:min-h-[600px]"
+      )}
+    >
+      {/* Redesigned Primary Toolbar */}
+      <div className="flex flex-col lg:flex-row items-stretch lg:items-center justify-between gap-2">
+        <div className="flex flex-wrap items-center gap-1 bg-white p-1.5 rounded-lg border border-slate-200 shadow-sm overflow-x-auto no-scrollbar">
+          {/* Drawing Group */}
+          <div className="flex items-center gap-1 pr-1 border-r border-slate-100">
+            {[
+              { id: "pencil", icon: Pencil, label: "Draw" },
+              { id: "line", icon: LineIcon, label: "Line" },
+              { id: "rect", icon: Square, label: "Rect" },
+              { id: "circle", icon: Circle, label: "Circle" },
+            ].map((tool) => (
+              <Button
+                key={tool.id}
+                variant={mode === tool.id ? "default" : "ghost"}
+                size="sm"
+                onClick={() => setMode(tool.id as any)}
+                className={cn(
+                  "flex flex-col items-center gap-0.5 h-11 w-11 px-0 border border-transparent shadow-none",
+                  mode === tool.id ? "bg-indigo-600 text-white shadow-md" : "text-slate-600 hover:bg-slate-100"
+                )}
+              >
+                <tool.icon className="w-4 h-4" />
+                <span className="text-[8px] font-bold uppercase">{tool.label}</span>
+              </Button>
+            ))}
+          </div>
+
+          {/* Precision Tools Group */}
+          <div className="flex items-center gap-1 px-1 border-r border-slate-100">
+            {[
+              { id: "measure", icon: Ruler, label: "Measure", variant: "measure" },
+              { id: "calibrate", icon: Ruler, label: "Calibrate", variant: "calibrate" },
+              { id: "pan", icon: Waypoints, label: "Pan", variant: "pan" },
+              { id: "delete", icon: Eraser, label: "Erase", variant: "delete" },
+            ].map((tool) => (
+              <Button
+                key={tool.id}
+                variant={mode === tool.id ? "default" : "ghost"}
+                size="sm"
+                onClick={() => { setMode(tool.id as any); setCurrentShape(null); setIsDrawing(false); }}
+                className={cn(
+                  "flex flex-col items-center gap-0.5 h-11 w-11 px-0 border border-transparent shadow-none",
+                  mode === tool.id 
+                    ? (tool.id === "calibrate" ? "bg-amber-500 text-white shadow-md" : "bg-indigo-600 text-white shadow-md")
+                    : (tool.id === "calibrate" ? "text-amber-600 hover:bg-amber-50" : "text-slate-600 hover:bg-slate-100")
+                )}
+              >
+                <tool.icon className="w-4 h-4" />
+                <span className="text-[8px] font-bold uppercase">{tool.label}</span>
+              </Button>
+            ))}
+          </div>
+
+          {/* History Group */}
+          <div className="flex items-center gap-1 px-1">
+            <Button variant="ghost" size="sm" onClick={undo} disabled={shapes.length === 0} className="flex flex-col items-center gap-0.5 h-11 w-11 px-0 text-slate-600">
+              <ArrowLeft className="w-4 h-4" />
+              <span className="text-[8px] font-bold uppercase">Undo</span>
+            </Button>
+            <Button variant="ghost" size="sm" onClick={redo} disabled={redoStack.length === 0} className="flex flex-col items-center gap-0.5 h-11 w-11 px-0 text-slate-600">
+              <ArrowLeft className="w-4 h-4 rotate-180" />
+              <span className="text-[8px] font-bold uppercase">Redo</span>
+            </Button>
+          </div>
+
+          <div className="w-[1px] h-8 bg-slate-100 mx-1 hidden sm:block" />
+
+          {/* Settings Group */}
+          <div className="flex items-center gap-2 pl-1">
+            <div className="flex flex-col items-center gap-1">
+              <input 
+                type="color" 
+                value={color} 
+                onChange={(e) => setColor(e.target.value)} 
+                disabled={mode === "delete" || mode === "pan" || mode === "calibrate"} 
+                className="w-5 h-5 cursor-pointer border rounded-full overflow-hidden p-0 ring-1 ring-slate-200" 
+              />
+              <span className="text-[8px] font-bold text-slate-400 uppercase leading-none">Color</span>
+            </div>
+            <div className="flex flex-col gap-0.5">
+               <span className="text-[8px] font-bold text-slate-400 uppercase leading-none px-1">Width</span>
+               <select value={lineWidth} onChange={(e) => setLineWidth(Number(e.target.value))} className="border rounded h-6 text-[10px] px-1 bg-slate-50 font-bold text-slate-700 outline-none">
+                <option value="1">Thin</option>
+                <option value="3">Med</option>
+                <option value="6">Thick</option>
+              </select>
+            </div>
+          </div>
         </div>
 
-        <div className="flex items-center gap-2">
-          <div className="flex items-center gap-1.5 bg-slate-50 px-2 py-1 rounded border">
-            <Ruler className="w-3.5 h-3.5 text-slate-500" />
-            <span className="text-[10px] font-bold text-slate-400 uppercase">Scale:</span>
-            <Input 
-              type="number" 
-              value={referenceScale} 
-              onChange={(e) => setReferenceScale(Number(e.target.value))} 
-              className="w-16 h-6 text-[10px] p-1 font-bold"
-            />
-            <span className="text-[10px] font-bold text-slate-600 uppercase">{unitPrefix}</span>
+        {/* View Actions */}
+        <div className="flex items-center justify-between lg:justify-end gap-2 bg-white/50 p-1 rounded-lg">
+          <div className="flex items-center gap-1 bg-white px-2 py-1 rounded-lg border border-indigo-100 shadow-sm">
+            <Ruler className="w-3.5 h-3.5 text-indigo-500" />
+            <div className="flex flex-col items-start mr-1">
+               <span className="text-[7px] font-bold text-indigo-400 uppercase leading-none">Current Scale</span>
+               <div className="flex items-center gap-1">
+                  <Input 
+                    type="number" 
+                    value={referenceScale} 
+                    onChange={(e) => setReferenceScale(Number(e.target.value))} 
+                    className="w-12 h-5 text-[10px] p-0 px-1 font-black bg-transparent border-none focus-visible:ring-0 h-min"
+                  />
+                  <span className="text-[9px] font-black text-indigo-600 uppercase">{unitPrefix}</span>
+               </div>
+            </div>
           </div>
-          <Button variant="outline" size="icon" onClick={toggleFullscreen} title="Fullscreen" className="h-8 w-8 text-slate-500">
-            {isFullscreen ? <Minimize2 className="w-4 h-4" /> : <Maximize2 className="w-4 h-4" />}
-          </Button>
-          <Button size="sm" onClick={handleSave} className="bg-indigo-600 hover:bg-indigo-700 text-white h-8 text-xs font-bold gap-1.5">
-            <Zap className="w-3.5 h-3.5" /> Save Sketch
-          </Button>
+          <div className="flex items-center gap-1">
+            <Button variant="outline" size="icon" onClick={toggleFullscreen} className="h-9 w-9 text-slate-500 bg-white border-slate-200">
+              {isFullscreen ? <Minimize2 className="w-4 h-4" /> : <Maximize2 className="w-4 h-4" />}
+            </Button>
+            <Button onClick={handleSave} className="bg-indigo-600 hover:bg-indigo-700 text-white h-9 px-4 text-xs font-bold gap-2 shadow-lg shadow-indigo-200">
+              <Save className="w-4 h-4" /> Save
+            </Button>
+          </div>
         </div>
       </div>
 
-      {/* Toggles Bar */}
-      <div className="flex flex-wrap items-center gap-4 px-2 py-1">
-          <div className="flex items-center gap-2">
-            <Switch id="grid-toggle" checked={showGrid} onCheckedChange={setShowGrid} />
-            <Label htmlFor="grid-toggle" className="text-[10px] font-bold text-slate-500 flex items-center gap-1 uppercase cursor-pointer">
-               <Grid3X3 className="w-3 h-3" /> Grid
-            </Label>
-          </div>
-          <div className="flex items-center gap-2">
-            <Switch id="snap-toggle" checked={snapToGrid} onCheckedChange={setSnapToGrid} />
-            <Label htmlFor="snap-toggle" className="text-[10px] font-bold text-slate-500 uppercase cursor-pointer">Snap to Grid</Label>
-          </div>
-          <div className="flex items-center gap-2">
-            <Switch id="straight-toggle" checked={autoStraighten} onCheckedChange={setAutoStraighten} />
-            <Label htmlFor="straight-toggle" className="text-[10px] font-bold text-slate-500 uppercase cursor-pointer">Auto-Straighten</Label>
-          </div>
-          <div className="flex items-center gap-2">
-            <Switch id="snap-endpoints-toggle" checked={snapToEndpoints} onCheckedChange={setSnapToEndpoints} />
-            <Label htmlFor="snap-endpoints-toggle" className="text-[10px] font-bold text-slate-500 uppercase cursor-pointer">Snap to Endpoints</Label>
-          </div>
-          <div className="flex items-center gap-2">
-            <Switch id="continuous-toggle" checked={isContinuous} onCheckedChange={setIsContinuous} />
-            <Label htmlFor="continuous-toggle" className="text-[10px] font-bold text-slate-500 flex items-center gap-1 uppercase cursor-pointer">
-               <Waypoints className="w-3 h-3" /> Continuous
-            </Label>
-          </div>
-          <Button variant="ghost" size="sm" onClick={() => setShapes([])} className="ml-auto h-6 text-[10px] text-red-500 hover:text-red-600 hover:bg-red-50 uppercase font-bold gap-1">
-             <Trash2 className="w-3 h-3" /> Clear
+      {/* Responsive Toggles Bar */}
+      <div className="flex flex-wrap items-center gap-x-4 gap-y-2 px-3 py-1.5 bg-white/30 rounded-lg border border-slate-200/50 backdrop-blur-sm">
+          {[
+            { id: "grid-toggle", checked: showGrid, onChange: setShowGrid, icon: Grid3X3, label: "Grid" },
+            { id: "snap-toggle", checked: snapToGrid, onChange: setSnapToGrid, label: "Snap Grid" },
+            { id: "straight-toggle", checked: autoStraighten, onChange: setAutoStraighten, label: "Straighten" },
+            { id: "snap-endpoints-toggle", checked: snapToEndpoints, onChange: setSnapToEndpoints, label: "Endpoints" },
+            { id: "continuous-toggle", checked: isContinuous, onChange: setIsContinuous, icon: Waypoints, label: "Continuous" },
+          ].map((toggle) => (
+            <div key={toggle.id} className="flex items-center gap-2">
+              <Switch id={toggle.id} checked={toggle.checked} onCheckedChange={toggle.onChange} className="scale-75 origin-left" />
+              <Label htmlFor={toggle.id} className="text-[9px] font-bold text-slate-500 flex items-center gap-1 uppercase cursor-pointer hover:text-indigo-600 transition-colors">
+                {toggle.icon && <toggle.icon className="w-2.5 h-2.5" />} {toggle.label}
+              </Label>
+            </div>
+          ))}
+          <Button variant="ghost" size="sm" onClick={() => setShapes([])} className="ml-auto h-7 text-[10px] text-red-500 hover:text-red-600 hover:bg-red-50 uppercase font-black gap-1.5 px-3">
+             <Trash2 className="w-3.5 h-3.5" /> Clear All
           </Button>
       </div>
 
-      <div className="relative bg-white border rounded shadow-inner overflow-auto cursor-crosshair group">
+      <div className="relative bg-white border border-slate-200 rounded-xl shadow-inner overflow-hidden cursor-crosshair group flex-1 min-h-[300px]">
         <canvas
           ref={canvasRef}
           width={width}
@@ -535,21 +696,32 @@ export function SketchPad({ onSave, initialData, width = 600, height = 400, unit
           onTouchStart={startDrawing}
           onTouchMove={draw}
           onTouchEnd={stopDrawing}
-          className="bg-transparent touch-none"
+          onWheel={handleWheel}
+          className="bg-transparent touch-none selection:bg-transparent"
         />
         {!isDrawing && shapes.length === 0 && (
-          <div className="absolute inset-0 flex items-center justify-center pointer-events-none opacity-20">
-             <div className="text-center">
-                <Grid3X3 className="w-12 h-12 mx-auto mb-2" />
-                <p className="text-sm font-bold uppercase tracking-widest text-slate-800">Smart Draw Area</p>
-                <p className="text-[10px] font-medium text-slate-500">Pick a tool and start sketching with scale assistance</p>
+          <div className="absolute inset-0 flex items-center justify-center pointer-events-none transition-opacity duration-300">
+             <div className="text-center opacity-10 group-hover:opacity-20 transition-opacity">
+                <Grid3X3 className="w-16 h-16 mx-auto mb-3" />
+                <p className="text-lg font-black uppercase tracking-[0.2em] text-slate-800">Smart Canvas</p>
+                <p className="text-xs font-bold text-slate-500 mt-1">Select a tool to start your technical sketch</p>
              </div>
           </div>
         )}
+        
+        {/* Floating Zoom Indicator */}
+        <div className="absolute bottom-3 right-3 flex flex-col items-center bg-white/80 backdrop-blur-sm border border-slate-200 px-2 py-1.5 rounded-lg shadow-sm pointer-events-none">
+           <span className="text-[8px] font-black text-slate-400 uppercase leading-none mb-1">Zoom</span>
+           <span className="text-xs font-black text-indigo-600 leading-none">{Math.round(zoom * 100)}%</span>
+        </div>
       </div>
-      <div className="flex items-center justify-between text-[10px] text-slate-400 font-medium px-1">
-         <p>Tip: Hold Shift for freehand even in line mode (coming soon).</p>
-         <p>Resolution: {width} x {height}</p>
+
+      <div className="flex items-center justify-between text-[9px] text-slate-400 font-bold px-2 py-1">
+         <div className="flex items-center gap-3">
+            <span className="flex items-center gap-1"><Zap className="w-3 h-3 text-amber-500" /> Ctrl+Wheel to Zoom</span>
+            <span className="flex items-center gap-1"><Waypoints className="w-3 h-3 text-indigo-400" /> Drag to Pan</span>
+         </div>
+         <p className="uppercase tracking-tighter opacity-70 italic text-right">Drawing: {width} x {height} px</p>
       </div>
     </div>
   );
