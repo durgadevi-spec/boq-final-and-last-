@@ -33,31 +33,30 @@ import {
     Eye,
     Building2,
     Truck,
-    IndianRupee,
     Clock,
+    User,
 } from "lucide-react";
 import apiFetch from "@/lib/api";
 import { useToast } from "@/hooks/use-toast";
 
-interface PurchaseOrder {
+interface ApprovalItem {
     id: string;
+    type: 'Annexure' | 'Request';
     po_number: string;
-    project_id: string;
-    vendor_id: string;
-    status: string;
+    project_name: string;
+    vendor_name: string;
     total_amount: string;
     created_at: string;
-    project_name?: string;
-    vendor_name?: string;
+    status: string;
 }
 
 export default function POApprovals() {
     const [, setLocation] = useLocation();
     const { toast } = useToast();
-    const [approvals, setApprovals] = useState<PurchaseOrder[]>([]);
+    const [approvals, setApprovals] = useState<ApprovalItem[]>([]);
     const [loading, setLoading] = useState(true);
     const [showApprovalDialog, setShowApprovalDialog] = useState(false);
-    const [selectedPO, setSelectedPO] = useState<PurchaseOrder | null>(null);
+    const [selectedItem, setSelectedItem] = useState<ApprovalItem | null>(null);
     const [approvalAction, setApprovalAction] = useState<"approve" | "reject">("approve");
     const [comment, setComment] = useState("");
     const [isSubmitting, setIsSubmitting] = useState(false);
@@ -69,11 +68,38 @@ export default function POApprovals() {
     const fetchApprovals = async () => {
         try {
             setLoading(true);
-            const res = await apiFetch("/api/purchase-orders?status=pending_approval");
-            if (res.ok) {
-                const data = await res.json();
-                setApprovals(data.purchaseOrders || []);
-            }
+            const [poData, reqData] = await Promise.all([
+                apiFetch("/api/purchase-orders?status=pending_approval").then(r => r.ok ? r.json() : { purchaseOrders: [] }),
+                apiFetch("/api/po-requests?status=pending_approval").then(r => r.ok ? r.json() : { poRequests: [] })
+            ]);
+
+            const mappedPos = (poData.purchaseOrders || []).map((po: any) => ({
+                id: po.id,
+                type: 'Annexure',
+                po_number: po.po_number,
+                project_name: po.project_name || "N/A",
+                vendor_name: po.vendor_name || "N/A",
+                total_amount: po.total_amount,
+                created_at: po.created_at,
+                status: po.status
+            }));
+
+            const mappedReqs = (reqData.poRequests || []).map((req: any) => ({
+                id: req.id,
+                type: 'Request',
+                po_number: `Anx-${req.id.slice(0, 4).toUpperCase()}-${req.id.slice(4, 8).toUpperCase()}`,
+                project_name: req.project_name || "N/A",
+                vendor_name: req.requester_name || "N/A",
+                total_amount: "0.00",
+                created_at: req.created_at,
+                status: req.status
+            }));
+
+            const combined = [...mappedPos, ...mappedReqs].sort((a, b) => 
+                new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
+            );
+
+            setApprovals(combined);
         } catch (error) {
             toast({
                 title: "Error",
@@ -86,21 +112,29 @@ export default function POApprovals() {
     };
 
     const handleApproval = async () => {
-        if (!selectedPO) return;
+        if (!selectedItem) return;
         setIsSubmitting(true);
         try {
-            const res = await apiFetch(`/api/purchase-orders/${selectedPO.id}/approve`, {
-                method: "POST",
+            const isRequest = selectedItem.type === 'Request';
+            const endpoint = isRequest 
+                ? `/api/po-requests/${selectedItem.id}/status`
+                : `/api/purchase-orders/${selectedItem.id}/approve`;
+            
+            const method = isRequest ? "PATCH" : "POST";
+            const body = isRequest 
+                ? { status: approvalAction === "approve" ? "approved" : "rejected" }
+                : { approve: approvalAction === "approve", comment };
+
+            const res = await apiFetch(endpoint, {
+                method,
                 headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({
-                    approve: approvalAction === "approve",
-                    comment
-                }),
+                body: JSON.stringify(body),
             });
+
             if (res.ok) {
                 toast({
                     title: approvalAction === "approve" ? "Approved" : "Rejected",
-                    description: `Annexure ${selectedPO.po_number} has been ${approvalAction === "approve" ? "approved" : "rejected"}.`,
+                    description: `${selectedItem.type} ${selectedItem.po_number} has been ${approvalAction === "approve" ? "approved" : "rejected"}.`,
                 });
                 setShowApprovalDialog(false);
                 setComment("");
@@ -156,39 +190,52 @@ export default function POApprovals() {
                                         </TableCell>
                                     </TableRow>
                                 ) : (
-                                    approvals.map((po) => (
-                                        <TableRow key={po.id} className="hover:bg-slate-50/50">
-                                            <TableCell className="font-bold text-primary">{po.po_number}</TableCell>
+                                    approvals.map((item) => (
+                                        <TableRow key={item.id} className="hover:bg-slate-50/50">
+                                            <TableCell className="font-bold text-primary">
+                                                {item.po_number}
+                                                {item.type === 'Request' && (
+                                                    <Badge variant="secondary" className="ml-2 bg-orange-50 text-orange-600 border-orange-200 text-[10px] h-4 px-1">REQ</Badge>
+                                                )}
+                                            </TableCell>
                                             <TableCell>
                                                 <div className="flex items-center gap-2">
                                                     <Building2 className="h-4 w-4 text-slate-400" />
-                                                    <span className="font-medium">{po.project_name || "N/A"}</span>
+                                                    <span className="font-medium">{item.project_name}</span>
                                                 </div>
                                             </TableCell>
                                             <TableCell>
                                                 <div className="flex items-center gap-2">
-                                                    <Truck className="h-4 w-4 text-slate-400" />
-                                                    <span>{po.vendor_name || "N/A"}</span>
+                                                    {item.type === 'Annexure' ? (
+                                                        <Truck className="h-4 w-4 text-slate-400" />
+                                                    ) : (
+                                                        <User className="h-4 w-4 text-slate-400" />
+                                                    )}
+                                                    <span>{item.vendor_name}</span>
                                                 </div>
                                             </TableCell>
                                             <TableCell className="text-right font-bold text-green-700">
-                                                ₹{parseFloat(po.total_amount).toLocaleString(undefined, { minimumFractionDigits: 2 })}
+                                                {item.type === 'Annexure' ? (
+                                                    `₹${parseFloat(item.total_amount).toLocaleString(undefined, { minimumFractionDigits: 2 })}`
+                                                ) : (
+                                                    <span className="text-slate-400 italic font-normal text-xs">Pending</span>
+                                                )}
                                             </TableCell>
                                             <TableCell className="text-xs text-muted-foreground">
                                                 <div className="flex items-center gap-1">
                                                     <Clock className="h-3 w-3" />
-                                                    {new Date(po.created_at).toLocaleDateString()}
+                                                    {new Date(item.created_at).toLocaleDateString()}
                                                 </div>
                                             </TableCell>
                                             <TableCell className="text-right">
                                                 <div className="flex justify-end gap-2">
-                                                    <Button variant="outline" size="sm" onClick={() => setLocation(`/purchase-orders/${po.id}?mode=approval`)}>
+                                                    <Button variant="outline" size="sm" onClick={() => setLocation(item.type === 'Annexure' ? `/purchase-orders/${item.id}?mode=approval` : `/po-requests/${item.id}?mode=approval`)}>
                                                         <Eye className="h-4 w-4 mr-1" /> View
                                                     </Button>
-                                                    <Button variant="outline" size="sm" className="border-red-600 text-red-600 hover:bg-red-50" onClick={() => { setSelectedPO(po); setApprovalAction("reject"); setShowApprovalDialog(true); }}>
+                                                    <Button variant="outline" size="sm" className="border-red-600 text-red-600 hover:bg-red-50" onClick={() => { setSelectedItem(item); setApprovalAction("reject"); setShowApprovalDialog(true); }}>
                                                         <XCircle className="h-4 w-4 mr-1" /> Reject
                                                     </Button>
-                                                    <Button size="sm" className="bg-green-600 hover:bg-green-700 text-white" onClick={() => { setSelectedPO(po); setApprovalAction("approve"); setShowApprovalDialog(true); }}>
+                                                    <Button size="sm" className="bg-green-600 hover:bg-green-700 text-white" onClick={() => { setSelectedItem(item); setApprovalAction("approve"); setShowApprovalDialog(true); }}>
                                                         <CheckCircle2 className="h-4 w-4 mr-1" /> Approve
                                                     </Button>
                                                 </div>
@@ -206,11 +253,11 @@ export default function POApprovals() {
             <Dialog open={showApprovalDialog} onOpenChange={setShowApprovalDialog}>
                 <DialogContent>
                     <DialogHeader>
-                        <DialogTitle>{approvalAction === "approve" ? "Approve Annexure" : "Reject Annexure"}</DialogTitle>
+                        <DialogTitle>{approvalAction === "approve" ? "Approve" : "Reject"} {selectedItem?.type === 'Annexure' ? 'Annexure' : 'Request'}</DialogTitle>
                         <DialogDescription>
                             {approvalAction === "approve"
-                                ? `Confirming approval for Annexure No. ${selectedPO?.po_number}.`
-                                : `Please provide a reason for rejecting Annexure No. ${selectedPO?.po_number}.`}
+                                ? `Confirming approval for ${selectedItem?.type === 'Annexure' ? 'Annexure' : 'Request'} No. ${selectedItem?.po_number}.`
+                                : `Please provide a reason for rejecting ${selectedItem?.type === 'Annexure' ? 'Annexure' : 'Request'} No. ${selectedItem?.po_number}.`}
                         </DialogDescription>
                     </DialogHeader>
                     <div className="py-4">

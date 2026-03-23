@@ -392,7 +392,7 @@ function BoqItemRow({ item, itemIdx, boqItem, tableData, isEngineBased, isVersio
 
 // ─── BOQ Item Card ─────────────────────────────────────────────────────────────
 
-function BoqItemCard({ boqItem, boqIdx, isVersionSubmitted, expandedProductIds, setExpandedProductIds, getEditedValue, updateEditedField, handleDeleteRow, handleFinalizeProduct, handleAddItem, loadBoqItemsAndEdits, setBoqItems, checkBudgetEarly, handleSaveProject, onCardDragStart, onCardDragOver, onCardDrop, isCardDragOver, mismatches, isCompactView, onSaveAsTemplate }: {
+function BoqItemCard({ boqItem, boqIdx, isVersionSubmitted, expandedProductIds, setExpandedProductIds, getEditedValue, updateEditedField, handleDeleteRow, handleFinalizeProduct, handleAddItem, loadBoqItemsAndEdits, setBoqItems, checkBudgetEarly, handleSaveProject, onCardDragStart, onCardDragOver, onCardDrop, isCardDragOver, mismatches, isCompactView, onSaveAsTemplate, editedFields }: {
   boqItem: BOMItem; boqIdx: number; isVersionSubmitted: boolean;
   expandedProductIds: Set<string>; setExpandedProductIds: (fn: (p: Set<string>) => Set<string>) => void;
   getEditedValue: (k: string, f: string, v: any) => any;
@@ -411,6 +411,7 @@ function BoqItemCard({ boqItem, boqIdx, isVersionSubmitted, expandedProductIds, 
   mismatches?: any[];
   isCompactView?: boolean;
   onSaveAsTemplate?: (boqItem: BOMItem) => void;
+  editedFields: Record<string, any>;
 }) {
   const { toast } = useToast();
   const tableData = parseTableData(boqItem.table_data);
@@ -484,7 +485,7 @@ function BoqItemCard({ boqItem, boqIdx, isVersionSubmitted, expandedProductIds, 
     setLocalItems(displayLines);
     setReorderInit(true);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [step11Items.length, isEngineBased, boqItem.id, tableData.materialLines?.length, boqItem.table_data, calculationTarget]);
+  }, [step11Items.length, isEngineBased, boqItem.id, tableData.materialLines?.length, boqItem.table_data, calculationTarget, editedFields]);
 
   // use localItems for rendering always (gives immediate reorder feedback)
   const renderLines = (reorderInit ? localItems : displayLines);
@@ -1211,43 +1212,54 @@ export default function CreateBom() {
   // ── Budget Helpers ──────────────────────────────────────────────────────────
 
   const calculateCurrentProjectValue = () => {
-    // Sum amounts as displayed in the BOQ items table to ensure UI budget matches totals
     return boqItems.reduce((acc, bi) => {
-      let total = 0;
       const td = parseTableData(bi.table_data);
-      const step11 = Array.isArray(td.step11_items) ? td.step11_items : [];
+      const isEngine = !!(td.materialLines && td.targetRequiredQty !== undefined);
+      const target = td.targetRequiredQty || 1;
+      let cardTotal = 0;
 
-      if (td.materialLines && td.targetRequiredQty !== undefined) {
+      if (isEngine) {
+        // Match BoqItemCard engine logic
         try {
-          const res = computeBoq(td.configBasis, td.materialLines, td.targetRequiredQty);
+          const res = computeBoq(td.configBasis, td.materialLines, target);
           if (Array.isArray(res.computed)) {
-            res.computed.forEach((l: any) => {
-              const lineAmount = Number(l.lineTotal ?? ((Number(l.scaledQty) || 0) * (Number(l.supplyRate) + Number(l.installRate)))) || 0;
-              total += lineAmount;
+            res.computed.forEach((line, idx) => {
+              const itemKey = `${bi.id}-engine-${idx}`;
+              const qty = Number(getEditedValue(itemKey, "qty", line.perUnitQty));
+              const sRate = Number(getEditedValue(itemKey, "supply_rate", line.supplyRate));
+              const iRate = Number(getEditedValue(itemKey, "install_rate", line.installRate));
+              const rate = Number(getEditedValue(itemKey, "rate", sRate + iRate)) || (sRate + iRate);
+              const reqQty = Number((qty * target).toFixed(2));
+              const roundOff = line.applyRounding !== false ? Math.ceil(reqQty) : reqQty;
+              cardTotal += Number((roundOff * rate).toFixed(2));
             });
           }
         } catch { }
-        // include manual step11 items (user-added) which are displayed below computed lines
-        step11.filter((i: any) => i.manual).forEach((i: any, idx: number) => {
-          const key = i.itemKey || `${bi.id}-manual-${i._s11Idx ?? idx}`;
-          const qty = Number(getEditedValue(key, "qty", i.qty ?? 0)) || 0;
-          const sr = Number(getEditedValue(key, "supply_rate", i.supply_rate ?? 0)) || 0;
-          const ir = Number(getEditedValue(key, "install_rate", i.install_rate ?? 0)) || 0;
-          const amt = Number(i.amount ?? (qty * (sr + ir))) || 0;
-          total += amt;
+
+        // Manual items within engine
+        const step11 = Array.isArray(td.step11_items) ? td.step11_items : [];
+        step11.filter((it: any) => it?.manual).forEach((it: any, s11Idx: number) => {
+          const itemKey = `${bi.id}-manual-${s11Idx}`;
+          const qty = Number(getEditedValue(itemKey, "qty", it.qty ?? 0)) || 0;
+          const sRate = Number(getEditedValue(itemKey, "supply_rate", it.supply_rate ?? 0)) || 0;
+          const iRate = Number(getEditedValue(itemKey, "install_rate", it.install_rate ?? 0)) || 0;
+          const rate = Number(getEditedValue(itemKey, "rate", sRate + iRate)) || (sRate + iRate);
+          cardTotal += Number((qty * rate).toFixed(2));
         });
       } else {
-        step11.forEach((it: any, idx: number) => {
-          const key = it.itemKey || `${bi.id}-${idx}`;
-          const qty = Number(getEditedValue(key, "qty", it.qty ?? 0)) || 0;
-          const sr = Number(getEditedValue(key, "supply_rate", it.supply_rate ?? 0)) || 0;
-          const ir = Number(getEditedValue(key, "install_rate", it.install_rate ?? 0)) || 0;
-          const amt = Number(it.amount ?? (qty * (sr + ir))) || 0;
-          total += amt;
+        // Match BoqItemCard non-engine logic
+        const step11 = Array.isArray(td.step11_items) ? td.step11_items : [];
+        step11.forEach((it: any, s11Idx: number) => {
+          const itemKey = it.itemKey || `${bi.id}-${s11Idx}`;
+          const baseQty = Number(getEditedValue(itemKey, "qty", it.qty ?? 0)) || 0;
+          const sRate = Number(getEditedValue(itemKey, "supply_rate", it.supply_rate ?? 0)) || 0;
+          const iRate = Number(getEditedValue(itemKey, "install_rate", it.install_rate ?? 0)) || 0;
+          const rate = Number(getEditedValue(itemKey, "rate", sRate + iRate)) || (sRate + iRate);
+          const scaledQty = Number((baseQty * target).toFixed(2));
+          cardTotal += Number((scaledQty * rate).toFixed(2));
         });
       }
-
-      return acc + total;
+      return acc + cardTotal;
     }, 0);
   };
 
@@ -2266,6 +2278,7 @@ export default function CreateBom() {
                             setNewTemplateName(parseTableData(item.table_data).product_name || item.estimator);
                             setShowSaveTemplateDialog(true);
                           }}
+                          editedFields={editedFields}
                         />
                         </div>
                       ))}

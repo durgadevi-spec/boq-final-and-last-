@@ -797,42 +797,7 @@ export function Sidebar({ isOpen, setIsOpen }: SidebarProps) {
                 )}
                 {isAdminOrSoftware && (
                   <>
-                    {isVisible('pending_approvals', true) && (
-                      <Link href="/admin/po-request-approvals">
-                        <span
-                          className={cn(
-                            "flex items-center gap-3 rounded-md px-3 py-2 text-sm font-medium transition-colors cursor-pointer",
-                            location === "/admin/po-request-approvals"
-                              ? "bg-sidebar-primary text-sidebar-primary-foreground"
-                              : "text-sidebar-foreground hover:bg-sidebar-accent",
-                          )}
-                          onClick={closeSidebarOnMobile}
-                        >
-                          <CheckCircle2 className="h-4 w-4" /> Pending Approvals
-                          <Badge variant="outline" className="ml-auto text-[9px] px-1 py-0 h-3.5 border-amber-200 bg-amber-50 text-amber-700 font-medium tracking-wide leading-none flex items-center">
-                            Under Const.
-                          </Badge>
-                        </span>
-                      </Link>
-                    )}
-                    {isVisible('approved_requests', true) && (
-                      <Link href="/admin/approved-po-requests">
-                        <span
-                          className={cn(
-                            "flex items-center gap-3 rounded-md px-3 py-2 text-sm font-medium transition-colors cursor-pointer",
-                            location === "/admin/approved-po-requests"
-                              ? "bg-sidebar-primary text-sidebar-primary-foreground"
-                              : "text-sidebar-foreground hover:bg-sidebar-accent",
-                          )}
-                          onClick={closeSidebarOnMobile}
-                        >
-                          <ShoppingCart className="h-4 w-4" /> Approved Requests
-                          <Badge variant="outline" className="ml-auto text-[9px] px-1 py-0 h-3.5 border-amber-200 bg-amber-50 text-amber-700 font-medium tracking-wide leading-none flex items-center">
-                            Under Const.
-                          </Badge>
-                        </span>
-                      </Link>
-                    )}
+
                   </>
                 )}
               </>

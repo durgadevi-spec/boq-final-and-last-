@@ -68,3 +68,43 @@ export async function sendResetPasswordEmail(
         throw error;
     }
 }
+
+/**
+ * Send sketch plan report email with PDF attachment
+ */
+export async function sendSketchPlanEmail(
+  to: string,
+  planName: string,
+  pdfBase64: string
+) {
+  if (!resend) {
+    throw new Error("RESEND_API_KEY not configured");
+  }
+
+  try {
+    const response = await resend.emails.send({
+      from: fromEmail,
+      to,
+      subject: `Sketch Plan Report: ${planName}`,
+      html: `
+        <div style="font-family: sans-serif; max-width: 600px; margin: 0 auto; padding: 20px;">
+          <h1 style="color: #2563eb;">Sketch Plan Report</h1>
+          <p>Please find the requested sketch plan report for <strong>${planName}</strong> attached to this email.</p>
+          <hr style="border: 1px solid #eee; margin: 20px 0;" />
+          <p style="font-size: 12px; color: #666;">Sent from BOQ Management System</p>
+        </div>
+      `,
+      attachments: [
+        {
+          filename: `${planName.replace(/\s+/g, '_')}_Report.pdf`,
+          content: pdfBase64,
+        },
+      ],
+    });
+
+    return response;
+  } catch (error) {
+    console.error("[EMAIL ERROR] sendSketchPlanEmail:", error);
+    throw error;
+  }
+}

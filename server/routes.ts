@@ -412,10 +412,12 @@ export async function registerRoutes(
         plan_id VARCHAR(100) NOT NULL,
         item_id VARCHAR(100),
         image_url TEXT NOT NULL,
+        image_name VARCHAR(255),
         created_at TIMESTAMP DEFAULT NOW(),
         FOREIGN KEY (plan_id) REFERENCES sketch_plans(id) ON DELETE CASCADE
       )
     `);
+    await query(`ALTER TABLE sketch_plan_images ADD COLUMN IF NOT EXISTS image_name VARCHAR(255)`);
     await query(`
       CREATE TABLE IF NOT EXISTS sketch_templates (
         id VARCHAR(100) PRIMARY KEY,
@@ -617,6 +619,9 @@ export async function registerRoutes(
     `);
     await query(`CREATE INDEX IF NOT EXISTS idx_po_requests_requester ON po_requests(requester_id)`);
     await query(`CREATE INDEX IF NOT EXISTS idx_po_requests_project ON po_requests(project_id)`);
+    await query(`ALTER TABLE po_requests ADD COLUMN IF NOT EXISTS deliver_to TEXT`);
+    await query(`ALTER TABLE po_requests ADD COLUMN IF NOT EXISTS payment_terms TEXT`);
+    await query(`ALTER TABLE po_requests ADD COLUMN IF NOT EXISTS terms_conditions TEXT`);
     console.log("[db] po_requests table verified/created");
   } catch (err: unknown) {
     console.warn("[db] Could not create po_requests table:", (err as any)?.message || err);
@@ -639,6 +644,10 @@ export async function registerRoutes(
     `);
     await query(`CREATE INDEX IF NOT EXISTS idx_po_request_items_req_id ON po_request_items(po_request_id)`);
     await query(`ALTER TABLE po_request_items ADD COLUMN IF NOT EXISTS material_id VARCHAR(255)`);
+    await query(`ALTER TABLE po_request_items ADD COLUMN IF NOT EXISTS original_qty DECIMAL(10,2)`);
+    await query(`ALTER TABLE po_request_items ADD COLUMN IF NOT EXISTS rate DECIMAL(10,2)`);
+    // Populate original_qty from qty for existing rows
+    await query(`UPDATE po_request_items SET original_qty = qty WHERE original_qty IS NULL`);
     console.log("[db] po_request_items table verified/created");
   } catch (err: unknown) {
     console.warn("[db] Could not create po_request_items table:", (err as any)?.message || err);
@@ -4480,7 +4489,7 @@ export async function registerRoutes(
             `UPDATE boq_versions SET is_locked = $1, updated_at = NOW() WHERE id = $2`,
             [req.body.is_locked, versionId]
           );
-          
+
           if (req.body.is_locked) {
             try {
               const user = (req as any).user;
@@ -7053,20 +7062,62 @@ export async function registerRoutes(
     try {
       const { id } = req.params;
 
-      const reqResult = await query(`SELECT * FROM po_requests WHERE id = $1`, [id]);
+      const reqResult = await query(`SELECT * FROM po_requests WHERE id::text = $1`, [id]);
       if (reqResult.rows.length === 0) {
         return res.status(404).json({ message: "PO Request not found" });
       }
 
-      const itemsResult = await query(`SELECT * FROM po_request_items WHERE po_request_id = $1 ORDER BY created_at ASC`, [id]);
+      const itemsResult = await query(
+        `SELECT i.*, i.original_qty, m.hsn_code, m.sac_code, m.shop_id, s.name as shop_name, s.location as shop_location, s.gstNo as shop_gstin
+         FROM po_request_items i
+         LEFT JOIN materials m ON i.material_id::text = m.id::text
+         LEFT JOIN shops s ON m.shop_id::text = s.id::text
+         WHERE i.po_request_id::text = $1 
+         ORDER BY i.created_at ASC`,
+        [id]
+      );
 
       res.json({
         poRequest: reqResult.rows[0],
         items: itemsResult.rows
       });
     } catch (err) {
-      console.error("GET /api/po-requests/:id error:", err);
+      console.error(`[GET /api/po-requests/:id] Error for ID ${req.params.id}:`, err);
       res.status(500).json({ message: "Failed to load PO Request details" });
+    }
+  });
+
+  // PUT /api/po-requests/:id/items - Update PO Request items (Revise)
+  app.put("/api/po-requests/:id/items", authMiddleware, requireRole('admin', 'purchase_team'), async (req: Request, res: Response) => {
+    try {
+      const { id } = req.params;
+      const { items, deliver_to, payment_terms, terms_conditions } = req.body;
+
+      if (items && Array.isArray(items)) {
+        // Update each item
+        for (const item of items) {
+          await query(
+            `UPDATE po_request_items SET qty = $1, remarks = $2, rate = $3, updated_at = NOW() WHERE id = $4 AND po_request_id = $5`,
+            [item.qty, item.remarks || null, item.rate || null, item.id, id]
+          );
+        }
+      }
+
+      // Update the request with main fields
+      await query(
+        `UPDATE po_requests 
+         SET deliver_to = COALESCE($1, deliver_to), 
+             payment_terms = COALESCE($2, payment_terms), 
+             terms_conditions = COALESCE($3, terms_conditions),
+             updated_at = NOW() 
+         WHERE id = $4`,
+        [deliver_to, payment_terms, terms_conditions, id]
+      );
+
+      res.json({ message: "PO Request updated successfully" });
+    } catch (err) {
+      console.error("PUT /api/po-requests/:id/items error:", err);
+      res.status(500).json({ message: "Failed to update PO Request items" });
     }
   });
 
@@ -7920,7 +7971,10 @@ ${list.rows.map((row: any) => `- ${row.name}`).join('\n')}`;
       }
 
       const itemsRes = await query("SELECT * FROM sketch_plan_items WHERE plan_id = $1 ORDER BY created_at ASC", [id]);
-      const imagesRes = await query("SELECT * FROM sketch_plan_images WHERE plan_id = $1", [id]);
+      const imagesRes = await query(
+        "SELECT id, item_id, image_url, image_name FROM sketch_plan_images WHERE plan_id = $1",
+        [id]
+      );
 
       res.json({
         plan: planRes.rows[0],
@@ -7957,26 +8011,33 @@ ${list.rows.map((row: any) => `- ${row.name}`).join('\n')}`;
 
           // Row-level images
           if (item.images && Array.isArray(item.images)) {
-            for (const imgUrl of item.images) {
+            for (const img of item.images) {
+              const imgUrl = typeof img === "string" ? img : img.url || img.image_url;
+              const imgName = typeof img === "string" ? null : img.name || img.image_name;
+
               const imgId = `img-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
               await query(
-                `INSERT INTO sketch_plan_images (id, plan_id, item_id, image_url) VALUES ($1, $2, $3, $4)`,
-                [imgId, id, itemId, imgUrl]
+                `INSERT INTO sketch_plan_images (id, plan_id, item_id, image_url, image_name) VALUES ($1, $2, $3, $4, $5)`,
+                [imgId, id, itemId, imgUrl, imgName]
               );
             }
           }
         }
       }
 
-      // Plan-level images (legacy support)
+      // Plan-level images
       if (images && Array.isArray(images)) {
         for (const img of images) {
-          if (img.item_id) continue; // Already handled
+          if (img.item_id) continue; // Skip if already linked via items
+
+          const imgUrl = typeof img === "string" ? img : img.url || img.image_url;
+          const imgName = typeof img === "string" ? null : img.name || img.image_name;
+
           const imgId = `img-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
           await query(
-            `INSERT INTO sketch_plan_images (id, plan_id, item_id, image_url) 
-             VALUES ($1, $2, $3, $4)`,
-            [imgId, id, img.item_id || null, img.image_url]
+            `INSERT INTO sketch_plan_images (id, plan_id, item_id, image_url, image_name) 
+             VALUES ($1, $2, $3, $4, $5)`,
+            [imgId, id, null, imgUrl, imgName]
           );
         }
       }
@@ -7999,7 +8060,7 @@ ${list.rows.map((row: any) => `- ${row.name}`).join('\n')}`;
         [name, project_id || null, location || null, plan_date || null, id]
       );
 
-      // Delete old items and images (simple update strategy)
+      // Delete old items and images
       await query("DELETE FROM sketch_plan_items WHERE plan_id = $1", [id]);
       await query("DELETE FROM sketch_plan_images WHERE plan_id = $1", [id]);
 
@@ -8014,26 +8075,33 @@ ${list.rows.map((row: any) => `- ${row.name}`).join('\n')}`;
 
           // Row-level images
           if (item.images && Array.isArray(item.images)) {
-            for (const imgUrl of item.images) {
+            for (const img of item.images) {
+              const imgUrl = typeof img === "string" ? img : img.url || img.image_url;
+              const imgName = typeof img === "string" ? null : img.name || img.image_name;
+
               const imgId = `img-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
               await query(
-                `INSERT INTO sketch_plan_images (id, plan_id, item_id, image_url) VALUES ($1, $2, $3, $4)`,
-                [imgId, id, itemId, imgUrl]
+                `INSERT INTO sketch_plan_images (id, plan_id, item_id, image_url, image_name) VALUES ($1, $2, $3, $4, $5)`,
+                [imgId, id, itemId, imgUrl, imgName]
               );
             }
           }
         }
       }
 
-      // Plan-level images (legacy)
+      // Plan-level images
       if (images && Array.isArray(images)) {
         for (const img of images) {
           if (img.item_id) continue;
+
+          const imgUrl = typeof img === "string" ? img : img.url || img.image_url;
+          const imgName = typeof img === "string" ? null : img.name || img.image_name;
+
           const imgId = `img-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
           await query(
-            `INSERT INTO sketch_plan_images (id, plan_id, item_id, image_url) 
-             VALUES ($1, $2, $3, $4)`,
-            [imgId, id, img.item_id || null, img.image_url]
+            `INSERT INTO sketch_plan_images (id, plan_id, item_id, image_url, image_name) 
+             VALUES ($1, $2, $3, $4, $5)`,
+            [imgId, id, null, imgUrl, imgName]
           );
         }
       }

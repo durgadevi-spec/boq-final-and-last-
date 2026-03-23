@@ -58,6 +58,7 @@ import RaisePORequest from "@/pages/RaisePORequest";
 import MyPORequests from "@/pages/MyPORequests";
 import PORequestApprovals from "@/pages/admin/PORequestApprovals";
 import ApprovedPORequests from "@/pages/admin/ApprovedPORequests";
+import PORequestDetail from "@/pages/PORequestDetail";
 import UserManual from "@/pages/UserManual";
 
 function Router() {
@@ -100,6 +101,7 @@ function Router() {
       <Route path="/purchase-orders" component={PurchaseOrders} />
       <Route path="/purchase-orders/:id" component={PurchaseOrderDetail} />
       <Route path="/po-approvals" component={POApprovals} />
+      <Route path="/po-requests/:id" component={PORequestDetail} />
       <Route path="/delivery-tracker" component={DeliveryTracker} />
 
       {/* ================= PO REQUESTS ================= */}

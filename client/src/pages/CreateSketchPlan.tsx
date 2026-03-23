@@ -14,8 +14,17 @@ import { useToast } from "@/hooks/use-toast";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter } from "@/components/ui/dialog";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from "@/components/ui/command";
+import jsPDF from "jspdf";
+import autoTable from "jspdf-autotable";
+import { Checkbox } from "@/components/ui/checkbox";
 import { cn } from "@/lib/utils";
 import { Badge } from "@/components/ui/badge";
+
+interface PlanImage {
+  id?: string;
+  url: string;
+  name: string;
+}
 
 interface PlanItem {
   id: string;
@@ -29,7 +38,7 @@ interface PlanItem {
   unit: string;
   dimension_unit: "feet" | "mm";
   remarks: string;
-  images: string[]; // item-level images (base64)
+  images: PlanImage[]; // item-level images (base64 + name)
 }
 
 export default function CreateSketchPlan() {
@@ -48,10 +57,17 @@ export default function CreateSketchPlan() {
   
   const [projects, setProjects] = useState<any[]>([]);
   const [saving, setSaving] = useState(false);
-  const [planImages, setPlanImages] = useState<string[]>([]);
+  const [planImages, setPlanImages] = useState<PlanImage[]>([]);
   const [sketchTarget, setSketchTarget] = useState<string>("main"); // "main" or row id/index
   const [openPopoverIdx, setOpenPopoverIdx] = useState<number | null>(null);
   
+  // PDF / Export State
+  const [isPdfDialogOpen, setIsPdfDialogOpen] = useState(false);
+  const [selectedPdfCols, setSelectedPdfCols] = useState<string[]>(["#", "Item", "Notes", "L", "W", "H", "Qty", "Unit", "Photos"]);
+  const [isEmailDialogOpen, setIsEmailDialogOpen] = useState(false);
+  const [recipientEmail, setRecipientEmail] = useState("");
+  const [sendingEmail, setSendingEmail] = useState(false);
+
   // Material search state
   const [materialSearch, setMaterialSearch] = useState("");
   const [searchResults, setSearchResults] = useState<any[]>([]);
@@ -79,13 +95,25 @@ export default function CreateSketchPlan() {
             
             // Map items and their images
             const mappedItems = data.items.map((it: any) => {
-               const itemImages = data.images.filter((img: any) => img.item_id === it.id).map((img: any) => img.image_url);
+               const itemImages = data.images
+                .filter((img: any) => img.item_id === it.id)
+                .map((img: any) => ({ 
+                  id: img.id, 
+                  url: img.image_url, 
+                  name: img.name || `Photo ${img.id.split('-').pop()}` 
+                }));
                return { ...it, images: itemImages || [] };
             });
             setItems(mappedItems.length > 0 ? mappedItems : items);
 
             // Plan-level images
-            const plImages = data.images.filter((img: any) => !img.item_id).map((img: any) => img.image_url);
+            const plImages = data.images
+              .filter((img: any) => !img.item_id)
+              .map((img: any) => ({ 
+                id: img.id, 
+                url: img.image_url, 
+                name: img.name || `Site Photo ${img.id.split('-').pop()}` 
+              }));
             setPlanImages(plImages);
           }
         } else {
@@ -189,9 +217,13 @@ export default function CreateSketchPlan() {
 
     Array.from(files).forEach((file) => {
       const reader = new FileReader();
+      const fileName = file.name.split('.').slice(0, -1).join('.') || "Untitled Photo";
       reader.onloadend = () => {
         const newItems = [...items];
-        newItems[idx].images = [...newItems[idx].images, reader.result as string];
+        newItems[idx].images = [
+          ...newItems[idx].images, 
+          { url: reader.result as string, name: fileName }
+        ];
         setItems(newItems);
       };
       reader.readAsDataURL(file);
@@ -202,6 +234,26 @@ export default function CreateSketchPlan() {
     const newItems = [...items];
     newItems[itemIdx].images.splice(imgIdx, 1);
     setItems(newItems);
+  };
+
+  const renameRowImage = (itemIdx: number, imgIdx: number) => {
+    const currentName = items[itemIdx].images[imgIdx].name;
+    const newName = prompt("Rename Photo:", currentName);
+    if (newName && newName !== currentName) {
+      const newItems = [...items];
+      newItems[itemIdx].images[imgIdx] = { ...newItems[itemIdx].images[imgIdx], name: newName };
+      setItems(newItems);
+    }
+  };
+
+  const renamePlanImage = (idx: number) => {
+    const currentName = planImages[idx].name;
+    const newName = prompt("Rename Site Photo:", currentName);
+    if (newName && newName !== currentName) {
+      const next = [...planImages];
+      next[idx] = { ...next[idx], name: newName };
+      setPlanImages(next);
+    }
   };
 
   const selectMaterial = (idx: number, material: any) => {
@@ -229,7 +281,7 @@ export default function CreateSketchPlan() {
         location: locationStr,
         plan_date: planDate,
         items,
-        images: planImages.map(url => ({ item_id: null, image_url: url })) 
+        images: planImages.map(img => ({ item_id: null, image_url: img.url, name: img.name })) 
       };
 
       const res = await apiFetch(isEditing ? `/api/sketch-plans/${id}` : "/api/sketch-plans", {
@@ -249,6 +301,153 @@ export default function CreateSketchPlan() {
     }
   };
 
+  const handleDownloadPdf = async (forEmail: boolean = false): Promise<string | undefined> => {
+    try {
+      const doc = new jsPDF({ orientation: "landscape" });
+      const pageWidth = doc.internal.pageSize.getWidth();
+      const marginX = 10;
+      const headerBoxY = 10;
+      const headerBoxH = 25;
+
+      // Header Box
+      doc.setDrawColor(0, 0, 0);
+      doc.setLineWidth(0.5);
+      doc.rect(marginX, headerBoxY, pageWidth - 2 * marginX, headerBoxH);
+
+      // logo placeholder or fetch? for now text
+      doc.setFontSize(16);
+      doc.setFont("helvetica", "bold");
+      doc.text("CONCEPT TRUNK INTERIORS", marginX + 5, headerBoxY + 12);
+      doc.setFontSize(10);
+      doc.setFont("helvetica", "normal");
+      doc.text("SITE SKETCH PLAN REPORT", marginX + 5, headerBoxY + 18);
+
+      // Meta info on right
+      doc.setFontSize(8);
+      const metaX = pageWidth - marginX - 5;
+      doc.text(`Project: ${projects.find(p => p.id === projectId)?.name || "N/A"}`, metaX, headerBoxY + 7, { align: "right" });
+      doc.text(`Plan: ${name}`, metaX, headerBoxY + 13, { align: "right" });
+      doc.text(`Date: ${planDate}`, metaX, headerBoxY + 19, { align: "right" });
+
+      const headers = selectedPdfCols;
+      const body = items.map((item, idx) => {
+        const row: any[] = [];
+        if (headers.includes("#")) row.push(idx + 1);
+        if (headers.includes("Item")) row.push(item.item_name);
+        if (headers.includes("Notes")) row.push(item.description);
+        if (headers.includes("L")) row.push(item.length);
+        if (headers.includes("W")) row.push(item.width);
+        if (headers.includes("H")) row.push(item.height);
+        if (headers.includes("Qty")) row.push(item.qty);
+        if (headers.includes("Unit")) row.push(item.unit);
+        if (headers.includes("Photos")) row.push(""); // Image placeholder
+        return row;
+      });
+
+      const photoColIdx = headers.indexOf("Photos");
+      
+      autoTable(doc, {
+        head: [headers],
+        body: body,
+        startY: headerBoxY + headerBoxH + 5,
+        styles: { fontSize: 8, cellPadding: 2 },
+        headStyles: { fillColor: [40, 40, 40], textColor: [255, 255, 255] },
+        didParseCell: (data) => {
+          if (data.section === 'body' && data.column.index === photoColIdx && items[data.row.index].images.length > 0) {
+            data.cell.styles.minCellHeight = 25;
+          }
+        },
+        didDrawCell: (data) => {
+          if (data.section === 'body' && data.column.index === photoColIdx && items[data.row.index].images.length > 0) {
+            const item = items[data.row.index];
+            let xPos = data.cell.x + 2;
+            item.images.slice(0, 3).forEach((img) => {
+              try {
+                doc.addImage(img.url, "JPEG", xPos, data.cell.y + 2, 20, 20);
+                xPos += 22;
+              } catch (e) {
+                console.warn("Failed to add image to PDF", e);
+              }
+            });
+          }
+        }
+      });
+
+      // Add plan-level images if space remains
+      if (planImages.length > 0) {
+        let finalY = (doc as any).lastAutoTable.finalY + 10;
+        if (finalY + 40 > doc.internal.pageSize.getHeight()) {
+          doc.addPage();
+          finalY = 20;
+        }
+        doc.setFontSize(10);
+        doc.setFont("helvetica", "bold");
+        doc.text("Plan-Level Photos:", 10, finalY);
+        let px = 10;
+        let py = finalY + 5;
+        planImages.forEach((img, i) => {
+          if (px + 45 > pageWidth) {
+             px = 10;
+             py += 45;
+          }
+          if (py + 45 > doc.internal.pageSize.getHeight()) {
+             doc.addPage();
+             py = 20;
+          }
+          try {
+            doc.addImage(img.url, "JPEG", px, py, 40, 40);
+            doc.setFontSize(6);
+            doc.text(img.name, px, py + 42);
+            px += 45;
+          } catch (e) {}
+        });
+      }
+
+      if (forEmail) {
+        return doc.output("datauristring").split(',')[1];
+      } else {
+        doc.save(`${name.replace(/\s+/g, '_')}_Report.pdf`);
+        toast({ title: "Success", description: "PDF downloaded successfully" });
+      }
+    } catch (err) {
+      console.error("PDF Error", err);
+      toast({ title: "Error", description: "Failed to generate PDF", variant: "destructive" });
+    }
+  };
+
+  const handleSendEmail = async () => {
+    if (!recipientEmail.trim()) {
+      toast({ title: "Error", description: "Recipient email is required", variant: "destructive" });
+      return;
+    }
+    setSendingEmail(true);
+    try {
+      const pdfBase64 = await handleDownloadPdf(true);
+      if (!pdfBase64) return;
+
+      const res = await apiFetch("/api/send-sketch-plan-email", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          to: recipientEmail,
+          planName: name,
+          pdfBase64
+        })
+      });
+
+      if (res.ok) {
+        toast({ title: "Success", description: "Email sent successfully" });
+        setIsEmailDialogOpen(false);
+      } else {
+        throw new Error("Failed to send");
+      }
+    } catch (err) {
+      toast({ title: "Error", description: "Failed to send email", variant: "destructive" });
+    } finally {
+      setSendingEmail(false);
+    }
+  };
+
   return (
     <Layout>
       <div className="max-w-7xl mx-auto space-y-4 pb-20">
@@ -260,6 +459,12 @@ export default function CreateSketchPlan() {
             <h1 className="text-xl font-bold tracking-tight text-slate-800">{isEditing ? "Edit Sketch Plan" : "Create New Sketch Plan"}</h1>
           </div>
           <div className="flex gap-2">
+            <Button variant="outline" size="sm" onClick={() => setIsPdfDialogOpen(true)} className="gap-2 h-9 text-xs border-indigo-200 text-indigo-600 hover:bg-indigo-50">
+              <FileText className="w-3.5 h-3.5" /> Export PDF
+            </Button>
+            <Button variant="outline" size="sm" onClick={() => setIsEmailDialogOpen(true)} className="gap-2 h-9 text-xs border-indigo-200 text-indigo-600 hover:bg-indigo-50">
+              <MessageSquare className="w-3.5 h-3.5" /> Email Plan
+            </Button>
             <Button variant="outline" size="sm" onClick={() => {
                 const templateName = prompt("Enter a name for this template:", name);
                 if (templateName) {
@@ -475,14 +680,14 @@ export default function CreateSketchPlan() {
                          <Dialog>
                             <DialogTrigger asChild>
                                <div className="relative inline-block cursor-pointer p-1 border rounded hover:border-amber-300 transition-colors bg-white shadow-sm">
-                                  {item.images.length > 0 ? (
+                                   {item.images.length > 0 ? (
                                      <div className="relative w-8 h-8 rounded overflow-hidden">
-                                        <img src={item.images[0]} className="w-full h-full object-cover" />
+                                        <img src={item.images[0].url} className="w-full h-full object-cover" />
                                         <span className="absolute bottom-0 right-0 bg-amber-500 text-white text-[8px] px-1 rounded-tl font-bold">
                                            {item.images.length}
                                         </span>
                                      </div>
-                                  ) : (
+                                   ) : (
                                      <div className="w-8 h-8 flex items-center justify-center bg-slate-50 text-slate-300">
                                         <Camera className="w-4 h-4" />
                                      </div>
@@ -494,14 +699,17 @@ export default function CreateSketchPlan() {
                                   <DialogTitle>Item Photos - {item.item_name || `Item ${idx+1}`}</DialogTitle>
                                </DialogHeader>
                                <div className="grid grid-cols-3 gap-4 py-4">
-                                  {item.images.map((img, imgIdx) => (
-                                     <div key={imgIdx} className="relative group aspect-square rounded border overflow-hidden bg-slate-100">
-                                        <img src={img} className="w-full h-full object-cover" />
+                                   {item.images.map((img, imgIdx) => (
+                                     <div key={imgIdx} className="relative group aspect-square rounded border overflow-hidden bg-slate-100 cursor-help" title="Click to rename">
+                                        <img src={img.url} className="w-full h-full object-cover" onClick={() => renameRowImage(idx, imgIdx)} />
+                                        <div className="absolute bottom-0 left-0 right-0 bg-black/60 text-white text-[8px] p-1 truncate opacity-0 group-hover:opacity-100 transition-opacity">
+                                           {img.name}
+                                        </div>
                                         <button onClick={() => removeRowImage(idx, imgIdx)} className="absolute top-1 right-1 bg-red-500 text-white p-1 rounded-full opacity-0 group-hover:opacity-100 transition-opacity">
                                            <X className="w-3 h-3" />
                                         </button>
                                      </div>
-                                  ))}
+                                   ))}
                                   <label className="aspect-square rounded border-2 border-dashed border-slate-200 flex flex-col items-center justify-center text-slate-400 hover:border-indigo-300 hover:text-indigo-400 cursor-pointer bg-slate-50 transition-colors">
                                      <Plus className="w-5 h-5 mb-1" />
                                      <span className="text-[10px] uppercase font-bold text-center">Add<br/>Photo</span>
@@ -541,8 +749,11 @@ export default function CreateSketchPlan() {
                 <CardContent className="p-3 flex-1 overflow-y-auto max-h-[220px]">
                     <div className="grid grid-cols-4 gap-2">
                         {planImages.map((img, idx) => (
-                            <div key={idx} className="relative group aspect-square rounded border overflow-hidden bg-slate-100">
-                                <img src={img} className="w-full h-full object-cover" />
+                            <div key={idx} className="relative group aspect-square rounded border overflow-hidden bg-slate-100 cursor-help" title="Click to rename">
+                                <img src={img.url} className="w-full h-full object-cover" onClick={() => renamePlanImage(idx)} />
+                                <div className="absolute bottom-0 left-0 right-0 bg-black/60 text-white text-[8px] p-1 truncate opacity-0 group-hover:opacity-100 transition-opacity">
+                                    {img.name}
+                                </div>
                                 <button onClick={() => setPlanImages(planImages.filter((_, i) => i !== idx))} className="absolute top-0 right-0 bg-red-500 text-white p-0.5 rounded-full opacity-0 group-hover:opacity-100 transition-opacity">
                                     <X className="w-3 h-3" />
                                 </button>
@@ -556,7 +767,11 @@ export default function CreateSketchPlan() {
                                 if (files) {
                                     Array.from(files).forEach(file => {
                                         const reader = new FileReader();
-                                        reader.onloadend = () => setPlanImages(prev => [...prev, reader.result as string]);
+                                        const fileName = file.name.split('.').slice(0, -1).join('.') || "Untitled Photo";
+                                        reader.onloadend = () => setPlanImages(prev => [
+                                          ...prev, 
+                                          { url: reader.result as string, name: fileName }
+                                        ]);
                                         reader.readAsDataURL(file);
                                     });
                                 }
@@ -570,7 +785,11 @@ export default function CreateSketchPlan() {
                                 if (files) {
                                     Array.from(files).forEach(file => {
                                         const reader = new FileReader();
-                                        reader.onloadend = () => setPlanImages(prev => [...prev, reader.result as string]);
+                                        const fileName = `CAM_${new Date().getTime()}`;
+                                        reader.onloadend = () => setPlanImages(prev => [
+                                          ...prev, 
+                                          { url: reader.result as string, name: fileName }
+                                        ]);
                                         reader.readAsDataURL(file);
                                     });
                                 }
@@ -625,14 +844,15 @@ export default function CreateSketchPlan() {
                                 <SketchPad
                                     unitPrefix={sketchTarget === "main" ? (items[0]?.dimension_unit || "ft") : (items[parseInt(sketchTarget)]?.dimension_unit || "ft")}
                                     onSave={(dataUrl) => {
+                                        const fileName = `Sketch_${new Date().getTime()}`;
                                         if (sketchTarget === "main") {
-                                            setPlanImages(prev => [...prev, dataUrl]);
+                                            setPlanImages(prev => [...prev, { url: dataUrl, name: fileName }]);
                                             toast({ title: "Sketch Saved", description: "Added to Plan-level Photos" });
                                         } else {
                                             const idx = parseInt(sketchTarget);
                                             if (idx >= 0 && idx < items.length) {
                                               const newItems = [...items];
-                                              newItems[idx].images = [...newItems[idx].images, dataUrl];
+                                              newItems[idx].images = [...newItems[idx].images, { url: dataUrl, name: fileName }];
                                               setItems(newItems);
                                               toast({ title: "Sketch Saved", description: `Attached to Row ${idx + 1}` });
                                             } else {
@@ -661,6 +881,58 @@ export default function CreateSketchPlan() {
                 </CardContent>
             </Card>
         </div>
+
+        {/* PDF Export Dialog */}
+        <Dialog open={isPdfDialogOpen} onOpenChange={setIsPdfDialogOpen}>
+           <DialogContent className="sm:max-w-[425px]">
+              <DialogHeader>
+                 <DialogTitle>Select Columns for PDF Report</DialogTitle>
+              </DialogHeader>
+              <div className="grid grid-cols-2 gap-4 py-4">
+                 {["#", "Item", "Notes", "L", "W", "H", "Qty", "Unit", "Photos"].map((col) => (
+                    <div key={col} className="flex items-center space-x-2">
+                       <Checkbox 
+                          id={`col-${col}`} 
+                          checked={selectedPdfCols.includes(col)}
+                          onCheckedChange={(checked) => {
+                             if (checked) setSelectedPdfCols([...selectedPdfCols, col]);
+                             else setSelectedPdfCols(selectedPdfCols.filter(c => c !== col));
+                          }}
+                       />
+                       <label htmlFor={`col-${col}`} className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70">
+                          {col}
+                       </label>
+                    </div>
+                 ))}
+              </div>
+              <DialogFooter>
+                 <Button variant="outline" onClick={() => setIsPdfDialogOpen(false)}>Cancel</Button>
+                 <Button className="bg-indigo-600 hover:bg-indigo-700" onClick={() => { setIsPdfDialogOpen(false); handleDownloadPdf(); }}>Download PDF</Button>
+              </DialogFooter>
+           </DialogContent>
+        </Dialog>
+
+        {/* Email Dialog */}
+        <Dialog open={isEmailDialogOpen} onOpenChange={setIsEmailDialogOpen}>
+           <DialogContent className="sm:max-w-[425px]">
+              <DialogHeader>
+                 <DialogTitle>Send Plan as Email Report</DialogTitle>
+              </DialogHeader>
+              <div className="py-4 space-y-4">
+                 <div className="space-y-2">
+                    <Label htmlFor="email">Recipient Email Address</Label>
+                    <Input id="email" type="email" placeholder="client@example.com" value={recipientEmail} onChange={(e) => setRecipientEmail(e.target.value)} />
+                 </div>
+                 <p className="text-[10px] text-slate-500 italic">The plan will be sent as a PDF attachment with the columns currently selected in the "Export PDF" settings.</p>
+              </div>
+              <DialogFooter>
+                 <Button variant="outline" onClick={() => setIsEmailDialogOpen(false)}>Cancel</Button>
+                 <Button className="bg-indigo-600 hover:bg-indigo-700 font-bold" disabled={sendingEmail} onClick={handleSendEmail}>
+                    {sendingEmail ? "Sending..." : "Send Email"}
+                 </Button>
+              </DialogFooter>
+           </DialogContent>
+        </Dialog>
       </div>
     </Layout>
   );
