@@ -102,11 +102,11 @@ type Project = {
 };
 
 const PROJECT_STATUSES: { value: string; label: string; color: string }[] = [
-  { value: 'started',     label: 'Started',     color: 'bg-blue-100 text-blue-700' },
+  { value: 'started', label: 'Started', color: 'bg-blue-100 text-blue-700' },
   { value: 'in_progress', label: 'In Progress', color: 'bg-amber-100 text-amber-700' },
-  { value: 'hold',        label: 'Hold',        color: 'bg-orange-100 text-orange-700' },
-  { value: 'cancelled',   label: 'Cancelled',   color: 'bg-red-100 text-red-700' },
-  { value: 'closed',      label: 'Closed',      color: 'bg-gray-200 text-gray-600' },
+  { value: 'hold', label: 'Hold', color: 'bg-orange-100 text-orange-700' },
+  { value: 'cancelled', label: 'Cancelled', color: 'bg-red-100 text-red-700' },
+  { value: 'closed', label: 'Closed', color: 'bg-gray-200 text-gray-600' },
 ];
 const getProjectStatusMeta = (s?: string) => PROJECT_STATUSES.find(x => x.value === s) ?? { label: s || 'Started', color: 'bg-blue-100 text-blue-700' };
 
@@ -421,13 +421,9 @@ export default function FinalizeBoq() {
 
   const [globalColSettings, setGlobalColSettings] = useState<{ [colName: string]: any }>({});
 
-  // BOM versions: include draft, submitted, and approved versions for selection
+  // BOM versions: only show approved versions for selection
   const filteredBomVersions = React.useMemo(() => {
-    return bomVersions.filter(v => 
-      v.status === "approved" || 
-      v.status === "draft" || 
-      v.status === "submitted"
-    );
+    return bomVersions.filter(v => v.status === "approved");
   }, [bomVersions]);
 
   // BOQ versions: show draft and approved so users can work on them
@@ -2053,9 +2049,9 @@ export default function FinalizeBoq() {
       allCols.forEach((col: any, idx) => {
         if (selectedPdfExportCols.includes(col.name)) {
           // Hide totals only for supply/install/labour RATE columns in PDF footer
-            const lower = String(col.name || "").toLowerCase();
-            const isRateCol = lower.includes("rate") && (lower.includes("supply") || lower.includes("labour") || lower.includes("install"));
-            footerRow.push(col.hideTotal || isRateCol ? "" : fmtNum(calculatedColumnTotals.totals[idx] || 0));
+          const lower = String(col.name || "").toLowerCase();
+          const isRateCol = lower.includes("rate") && (lower.includes("supply") || lower.includes("labour") || lower.includes("install"));
+          footerRow.push(col.hideTotal || isRateCol ? "" : fmtNum(calculatedColumnTotals.totals[idx] || 0));
         }
       });
 
@@ -2732,13 +2728,13 @@ export default function FinalizeBoq() {
                             ...allCols.map(c => c.name)
                           ];
                           const result = order.filter(o => next.includes(o));
-                          try { localStorage.setItem('finalize_excel_export_cols', JSON.stringify(result)); } catch {}
+                          try { localStorage.setItem('finalize_excel_export_cols', JSON.stringify(result)); } catch { }
                           return result;
                         });
                       } else {
                         setSelectedExportCols(prev => {
                           const result = prev.filter(c => c !== col.name);
-                          try { localStorage.setItem('finalize_excel_export_cols', JSON.stringify(result)); } catch {}
+                          try { localStorage.setItem('finalize_excel_export_cols', JSON.stringify(result)); } catch { }
                           return result;
                         });
                       }
@@ -2799,13 +2795,13 @@ export default function FinalizeBoq() {
                             ...allCols.map(c => c.name)
                           ];
                           const result = order.filter(o => next.includes(o));
-                          try { localStorage.setItem('finalize_pdf_export_cols', JSON.stringify(result)); } catch {}
+                          try { localStorage.setItem('finalize_pdf_export_cols', JSON.stringify(result)); } catch { }
                           return result;
                         });
                       } else {
                         setSelectedPdfExportCols(prev => {
                           const result = prev.filter(c => c !== col.name);
-                          try { localStorage.setItem('finalize_pdf_export_cols', JSON.stringify(result)); } catch {}
+                          try { localStorage.setItem('finalize_pdf_export_cols', JSON.stringify(result)); } catch { }
                           return result;
                         });
                       }
@@ -3419,7 +3415,7 @@ export default function FinalizeBoq() {
                                   const baseSource = (itemCol as any).baseSource;
                                   const currentBaseSource = baseSource || "Total Value (₹)";
                                   const isCalculated = currentBaseSource && currentBaseSource !== "manual";
-                                  
+
                                   if (isCalculated) {
                                     const _oRate = parseFloat(overrideRates[boqItem.id] || "0") || 0;
                                     const _ctx: SrcCtx = {
