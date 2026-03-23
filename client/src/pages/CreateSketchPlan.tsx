@@ -7,7 +7,8 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
-import { Plus, Trash2, Save, ArrowLeft, Camera, Pencil, Layers, X, GripVertical, FileText, Search, MessageSquare, Image as ImageIcon } from "lucide-react";
+import { Plus, Trash2, Save, ArrowLeft, Camera, Pencil, Layers, X, GripVertical, FileText, Search, MessageSquare, Image as ImageIcon, Move } from "lucide-react";
+import { Reorder, useDragControls } from "framer-motion";
 import { SketchPad } from "@/components/SketchPad";
 import apiFetch from "@/lib/api";
 import { useToast } from "@/hooks/use-toast";
@@ -40,6 +41,218 @@ interface PlanItem {
   remarks: string;
   images: PlanImage[]; // item-level images (base64 + name)
 }
+
+// Row Component for Drag and Drop
+const SketchPlanRow = ({ 
+  item, idx, updateItem, removeItem, selectMaterial, 
+  searchResults, searching, loadMaterials, setMaterialSearch,
+  openPopoverIdx, setOpenPopoverIdx, renameRowImage, removeRowImage,
+  handleRowImageUpload
+}: any) => {
+  const dragControls = useDragControls();
+
+  return (
+    <Reorder.Item
+      as="tr"
+      key={item.id}
+      value={item}
+      dragListener={false}
+      dragControls={dragControls}
+      className="border-b hover:bg-slate-50/30 transition-colors bg-white"
+    >
+      <td className="px-2 py-2 text-center">
+        <GripVertical 
+          className="w-4 h-4 text-slate-300 cursor-grab active:cursor-grabbing hover:text-indigo-400 m-auto" 
+          onPointerDown={(e) => dragControls.start(e)}
+        />
+      </td>
+      <td className="px-2 py-2 text-slate-400 font-medium">{idx + 1}</td>
+      <td className="px-2 py-2">
+         <Dialog>
+            <DialogTrigger asChild>
+               <div className="cursor-pointer hover:bg-slate-100 p-1 rounded flex items-center justify-between group min-h-[32px] border border-transparent hover:border-slate-200">
+                  <div className="flex-1 overflow-hidden">
+                     {item.description ? (
+                        <p className="truncate text-[10px] text-slate-600 italic">"{item.description}"</p>
+                     ) : (
+                        <p className="text-[10px] text-slate-400 italic">No notes...</p>
+                     )}
+                  </div>
+                  <MessageSquare className="w-3 h-3 text-slate-400 opacity-0 group-hover:opacity-100 transition-opacity ml-1 shrink-0" />
+               </div>
+            </DialogTrigger>
+            <DialogContent>
+               <DialogHeader>
+                  <DialogTitle>Notes for {item.item_name || `Item ${idx+1}`}</DialogTitle>
+               </DialogHeader>
+               <div className="py-4">
+                  <Textarea 
+                     value={item.description} 
+                     onChange={(e) => updateItem(idx, "description", e.target.value)} 
+                     placeholder="Enter detailed site notes or specifications..." 
+                     className="min-h-[200px]"
+                  />
+               </div>
+               <DialogFooter>
+                  <DialogTrigger asChild>
+                     <Button className="bg-indigo-600 text-white">Save Notes</Button>
+                  </DialogTrigger>
+               </DialogFooter>
+            </DialogContent>
+         </Dialog>
+      </td>
+      <td className="px-2 py-2">
+        <Dialog open={openPopoverIdx === idx} onOpenChange={(open) => {
+               if (open) {
+                  setOpenPopoverIdx(idx);
+                  setMaterialSearch("");
+                  loadMaterials();
+               } else {
+                  setOpenPopoverIdx(null);
+               }
+            }}>
+            <DialogTrigger asChild>
+               <Button variant="outline" size="sm" className="w-full justify-start text-left font-normal h-8 text-[11px] border-dashed border-slate-300 hover:border-indigo-400 p-2">
+                  {item.item_name ? (
+                     <span className="truncate max-w-[120px]">{item.item_name}</span>
+                  ) : (
+                     <span className="text-slate-400 italic">+ Add Item</span>
+                  )}
+                  <Search className="ml-auto h-3 w-3 opacity-50" />
+               </Button>
+            </DialogTrigger>
+            <DialogContent className="p-0 sm:max-w-[500px]">
+               <DialogHeader className="p-4 border-b">
+                  <DialogTitle>Select Item for Row #{idx + 1}</DialogTitle>
+               </DialogHeader>
+               <Command shouldFilter={false}>
+                  <CommandInput 
+                     placeholder="Search materials, templates, products..." 
+                     onValueChange={setMaterialSearch} 
+                     className="h-10"
+                  />
+                  <CommandList className="max-h-[280px]">
+                     {searching && <CommandEmpty>Loading...</CommandEmpty>}
+                     {!searching && searchResults.length === 0 && <CommandEmpty>No items found.</CommandEmpty>}
+                     {!searching && searchResults.length > 0 && (
+                        <CommandGroup heading={`All Items (${searchResults.length})`}>
+                           {searchResults.map((m: any) => (
+                              <CommandItem
+                                 key={`${m.type}-${m.id}`}
+                                 onSelect={() => { selectMaterial(idx, m); setOpenPopoverIdx(null); }}
+                                 className="cursor-pointer"
+                              >
+                                 <div className="flex flex-col">
+                                    <div className="flex items-center gap-2">
+                                       <span className="font-semibold text-sm">{m.name}</span>
+                                       <Badge variant="outline" className="text-[10px] scale-90">{m.type}</Badge>
+                                    </div>
+                                    <div className="flex gap-2 text-[10px] text-slate-500">
+                                       {m.code && <span>Code: {m.code}</span>}
+                                       {m.category && <span>Category: {m.category}</span>}
+                                    </div>
+                                 </div>
+                              </CommandItem>
+                           ))}
+                        </CommandGroup>
+                      )}
+                  </CommandList>
+               </Command>
+               <div className="p-3 border-t bg-slate-50 flex flex-col gap-2">
+                  <p className="text-[10px] uppercase font-bold text-slate-400">Custom Item</p>
+                  <Input 
+                     placeholder="Or type a custom name and press Enter..." 
+                     className="h-10 text-sm" 
+                     onKeyDown={(e) => {
+                        if (e.key === "Enter" && e.currentTarget.value.trim()) {
+                          updateItem(idx, "item_name", e.currentTarget.value.trim());
+                          setOpenPopoverIdx(null);
+                        }
+                      }}
+                  />
+               </div>
+            </DialogContent>
+         </Dialog>
+      </td>
+      <td className="px-2 py-2">
+         <Select value={item.dimension_unit} onValueChange={(val: "feet" | "mm") => updateItem(idx, "dimension_unit", val)}>
+            <SelectTrigger className="h-8 text-[10px] py-0 px-1 min-w-[50px]">
+               <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+               <SelectItem value="feet">ft</SelectItem>
+               <SelectItem value="mm">mm</SelectItem>
+            </SelectContent>
+         </Select>
+      </td>
+      <td className="px-2 py-2">
+        <Input value={item.length} onChange={(e) => updateItem(idx, "length", e.target.value)} className="h-8 text-xs px-1" placeholder="0" />
+      </td>
+      <td className="px-2 py-2">
+        <Input value={item.width} onChange={(e) => updateItem(idx, "width", e.target.value)} className="h-8 text-xs px-1" placeholder="0" />
+      </td>
+      <td className="px-2 py-2">
+        <Input value={item.height} onChange={(e) => updateItem(idx, "height", e.target.value)} className="h-8 text-xs px-1" placeholder="0" />
+      </td>
+      <td className="px-2 py-2">
+        <Input value={item.qty} onChange={(e) => updateItem(idx, "qty", e.target.value)} className="h-8 text-xs bg-slate-50 font-bold text-indigo-700 px-1" />
+      </td>
+      <td className="px-2 py-2 text-center">
+         <Dialog>
+            <DialogTrigger asChild>
+               <div className="relative inline-block cursor-pointer p-1 border rounded hover:border-amber-300 transition-colors bg-white shadow-sm">
+                   {item.images.length > 0 ? (
+                     <div className="relative w-8 h-8 rounded overflow-hidden">
+                        <img src={item.images[0].url} className="w-full h-full object-cover" />
+                        <span className="absolute bottom-0 right-0 bg-amber-500 text-white text-[8px] px-1 rounded-tl font-bold">
+                           {item.images.length}
+                        </span>
+                     </div>
+                   ) : (
+                     <div className="w-8 h-8 flex items-center justify-center bg-slate-50 text-slate-300">
+                        <Camera className="w-4 h-4" />
+                     </div>
+                  )}
+               </div>
+            </DialogTrigger>
+            <DialogContent className="max-w-2xl">
+               <DialogHeader>
+                  <DialogTitle>Item Photos - {item.item_name || `Item ${idx+1}`}</DialogTitle>
+               </DialogHeader>
+               <div className="grid grid-cols-3 gap-4 py-4">
+                   {item.images.map((img: any, imgIdx: number) => (
+                     <div key={imgIdx} className="relative group aspect-square rounded border overflow-hidden bg-slate-100 cursor-help" title="Click to rename">
+                        <img src={img.url} className="w-full h-full object-cover" onClick={() => renameRowImage(idx, imgIdx)} />
+                        <div className="absolute bottom-0 left-0 right-0 bg-black/60 text-white text-[8px] p-1 truncate opacity-0 group-hover:opacity-100 transition-opacity">
+                           {img.name}
+                        </div>
+                        <button onClick={() => removeRowImage(idx, imgIdx)} className="absolute top-1 right-1 bg-red-500 text-white p-1 rounded-full opacity-0 group-hover:opacity-100 transition-opacity">
+                           <X className="w-3 h-3" />
+                        </button>
+                     </div>
+                   ))}
+                  <label className="aspect-square rounded border-2 border-dashed border-slate-200 flex flex-col items-center justify-center text-slate-400 hover:border-indigo-300 hover:text-indigo-400 cursor-pointer bg-slate-50 transition-colors">
+                     <Plus className="w-5 h-5 mb-1" />
+                     <span className="text-[10px] uppercase font-bold text-center">Add<br/>Photo</span>
+                     <input type="file" multiple accept="image/*" onChange={(e) => handleRowImageUpload(idx, e)} className="hidden" />
+                  </label>
+                  <label className="aspect-square rounded border-2 border-dashed border-indigo-200 flex flex-col items-center justify-center text-indigo-400 hover:border-indigo-400 hover:bg-indigo-50 cursor-pointer transition-colors">
+                     <Camera className="w-5 h-5 mb-1" />
+                     <span className="text-[10px] uppercase font-bold text-center">Open<br/>Camera</span>
+                     <input type="file" accept="image/*" capture="environment" onChange={(e) => handleRowImageUpload(idx, e)} className="hidden" />
+                  </label>
+               </div>
+            </DialogContent>
+         </Dialog>
+      </td>
+      <td className="px-2 py-2 text-center">
+        <Button variant="ghost" size="icon" onClick={() => removeItem(idx)} className="h-7 w-7 text-slate-300 hover:text-red-500 hover:bg-red-50 transition-colors">
+          <Trash2 className="w-3.5 h-3.5" />
+        </Button>
+      </td>
+    </Reorder.Item>
+  );
+};
 
 export default function CreateSketchPlan() {
   const { id } = useParams<{ id?: string }>();
@@ -100,7 +313,7 @@ export default function CreateSketchPlan() {
                 .map((img: any) => ({ 
                   id: img.id, 
                   url: img.image_url, 
-                  name: img.name || `Photo ${img.id.split('-').pop()}` 
+                  name: img.image_name || img.name || `Photo ${img.id.split('-').pop()}` 
                 }));
                return { ...it, images: itemImages || [] };
             });
@@ -112,7 +325,7 @@ export default function CreateSketchPlan() {
               .map((img: any) => ({ 
                 id: img.id, 
                 url: img.image_url, 
-                name: img.name || `Site Photo ${img.id.split('-').pop()}` 
+                name: img.image_name || img.name || `Site Photo ${img.id.split('-').pop()}` 
               }));
             setPlanImages(plImages);
           }
@@ -332,15 +545,17 @@ export default function CreateSketchPlan() {
       const headers = selectedPdfCols;
       const body = items.map((item, idx) => {
         const row: any[] = [];
-        if (headers.includes("#")) row.push(idx + 1);
-        if (headers.includes("Item")) row.push(item.item_name);
-        if (headers.includes("Notes")) row.push(item.description);
-        if (headers.includes("L")) row.push(item.length);
-        if (headers.includes("W")) row.push(item.width);
-        if (headers.includes("H")) row.push(item.height);
-        if (headers.includes("Qty")) row.push(item.qty);
-        if (headers.includes("Unit")) row.push(item.unit);
-        if (headers.includes("Photos")) row.push(""); // Image placeholder
+        headers.forEach(h => {
+          if (h === "#") row.push(idx + 1);
+          else if (h === "Item") row.push(item.item_name);
+          else if (h === "Notes") row.push(item.description);
+          else if (h === "L") row.push(item.length);
+          else if (h === "W") row.push(item.width);
+          else if (h === "H") row.push(item.height);
+          else if (h === "Qty") row.push(item.qty);
+          else if (h === "Unit") row.push(item.unit);
+          else if (h === "Photos") row.push(""); 
+        });
         return row;
       });
 
@@ -350,56 +565,84 @@ export default function CreateSketchPlan() {
         head: [headers],
         body: body,
         startY: headerBoxY + headerBoxH + 5,
-        styles: { fontSize: 8, cellPadding: 2 },
+        styles: { fontSize: 8, cellPadding: 2, overflow: 'linebreak' },
         headStyles: { fillColor: [40, 40, 40], textColor: [255, 255, 255] },
+        columnStyles: {
+           // Ensure Notes column doesn't squeeze others too much if it's long
+           [headers.indexOf("Notes")]: { cellWidth: 'auto' },
+           [photoColIdx]: { cellWidth: 50 },
+        },
         didParseCell: (data) => {
-          if (data.section === 'body' && data.column.index === photoColIdx && items[data.row.index].images.length > 0) {
-            data.cell.styles.minCellHeight = 25;
+          if (data.section === 'body' && data.column.index === photoColIdx) {
+            const itemImages = items[data.row.index]?.images || [];
+            if (itemImages.length > 0) {
+              data.cell.styles.minCellHeight = 25;
+            }
           }
         },
         didDrawCell: (data) => {
-          if (data.section === 'body' && data.column.index === photoColIdx && items[data.row.index].images.length > 0) {
+          if (data.section === 'body' && data.column.index === photoColIdx) {
             const item = items[data.row.index];
-            let xPos = data.cell.x + 2;
-            item.images.slice(0, 3).forEach((img) => {
-              try {
-                doc.addImage(img.url, "JPEG", xPos, data.cell.y + 2, 20, 20);
-                xPos += 22;
-              } catch (e) {
-                console.warn("Failed to add image to PDF", e);
-              }
-            });
+            if (item && item.images && item.images.length > 0) {
+              let xPos = data.cell.x + 2;
+              item.images.slice(0, 2).forEach((img) => {
+                try {
+                  // Detect format from data URI if possible
+                  const format = img.url.split(';')[0].split('/')[1]?.toUpperCase() || "JPEG";
+                  doc.addImage(img.url, format === "PNG" ? "PNG" : "JPEG", xPos, data.cell.y + 2, 20, 20);
+                  xPos += 22;
+                } catch (e) {
+                  console.warn("Failed to add table image to PDF", e);
+                }
+              });
+            }
           }
         }
       });
 
       // Add plan-level images if space remains
       if (planImages.length > 0) {
-        let finalY = (doc as any).lastAutoTable.finalY + 10;
-        if (finalY + 40 > doc.internal.pageSize.getHeight()) {
+        let finalY = (doc as any).lastAutoTable.finalY + 15;
+        if (finalY + 60 > doc.internal.pageSize.getHeight()) {
           doc.addPage();
           finalY = 20;
         }
         doc.setFontSize(10);
         doc.setFont("helvetica", "bold");
         doc.text("Plan-Level Photos:", 10, finalY);
+        
         let px = 10;
-        let py = finalY + 5;
+        let py = finalY + 8;
+        const imgSize = 45;
+        const spacing = 10;
+        const rowHeight = 65; // Image + text + spacing
+
         planImages.forEach((img, i) => {
-          if (px + 45 > pageWidth) {
+          if (px + imgSize > pageWidth - 10) {
              px = 10;
-             py += 45;
+             py += rowHeight;
           }
-          if (py + 45 > doc.internal.pageSize.getHeight()) {
+          if (py + rowHeight > doc.internal.pageSize.getHeight()) {
              doc.addPage();
              py = 20;
+             px = 10;
           }
           try {
-            doc.addImage(img.url, "JPEG", px, py, 40, 40);
-            doc.setFontSize(6);
-            doc.text(img.name, px, py + 42);
-            px += 45;
-          } catch (e) {}
+            const format = img.url.split(';')[0].split('/')[1]?.toUpperCase() || "JPEG";
+            doc.addImage(img.url, format === "PNG" ? "PNG" : "JPEG", px, py, imgSize, imgSize);
+            
+            // Photo Name - Smaller font and better placement
+            doc.setFontSize(7);
+            doc.setFont("helvetica", "normal");
+            doc.setTextColor(100);
+            const truncatedName = img.name.length > 30 ? img.name.substring(0, 27) + "..." : img.name;
+            doc.text(truncatedName, px, py + imgSize + 5);
+            doc.setTextColor(0);
+            
+            px += imgSize + spacing;
+          } catch (e) {
+            console.warn("Failed to add plan image to PDF", e);
+          }
         });
       }
 
@@ -530,6 +773,7 @@ export default function CreateSketchPlan() {
               <table className="w-full text-xs">
                 <thead>
                   <tr className="bg-slate-50 border-b text-slate-500 uppercase text-[9px] font-bold">
+                    <th className="px-2 py-2 text-center w-8"></th>
                     <th className="px-2 py-2 text-left w-8">#</th>
                     <th className="px-2 py-2 text-left min-w-[100px]">Notes Preview</th>
                     <th className="px-2 py-2 text-left min-w-[150px]">Item / Product</th>
@@ -542,196 +786,28 @@ export default function CreateSketchPlan() {
                     <th className="px-2 py-2 text-center w-10">Del</th>
                   </tr>
                 </thead>
-                <tbody>
+                <Reorder.Group as="tbody" axis="y" values={items} onReorder={setItems}>
                   {items.map((item, idx) => (
-                    <tr key={item.id} className="border-b hover:bg-slate-50/30 transition-colors">
-                      <td className="px-2 py-2 text-slate-400 font-medium">{idx + 1}</td>
-                      <td className="px-2 py-2">
-                         <Dialog>
-                            <DialogTrigger asChild>
-                               <div className="cursor-pointer hover:bg-slate-100 p-1 rounded flex items-center justify-between group min-h-[32px] border border-transparent hover:border-slate-200">
-                                  <div className="flex-1 overflow-hidden">
-                                     {item.description ? (
-                                        <p className="truncate text-[10px] text-slate-600 italic">"{item.description}"</p>
-                                     ) : (
-                                        <p className="text-[10px] text-slate-400 italic">No notes...</p>
-                                     )}
-                                  </div>
-                                  <MessageSquare className="w-3 h-3 text-slate-400 opacity-0 group-hover:opacity-100 transition-opacity ml-1 shrink-0" />
-                               </div>
-                            </DialogTrigger>
-                            <DialogContent>
-                               <DialogHeader>
-                                  <DialogTitle>Notes for {item.item_name || `Item ${idx+1}`}</DialogTitle>
-                               </DialogHeader>
-                               <div className="py-4">
-                                  <Textarea 
-                                     value={item.description} 
-                                     onChange={(e) => updateItem(idx, "description", e.target.value)} 
-                                     placeholder="Enter detailed site notes or specifications..." 
-                                     className="min-h-[200px]"
-                                  />
-                               </div>
-                               <DialogFooter>
-                                  <DialogTrigger asChild>
-                                     <Button className="bg-indigo-600 text-white">Save Notes</Button>
-                                  </DialogTrigger>
-                               </DialogFooter>
-                            </DialogContent>
-                         </Dialog>
-                      </td>
-                      <td className="px-2 py-2">
-                        <Dialog open={openPopoverIdx === idx} onOpenChange={(open) => {
-                              if (open) {
-                                 setOpenPopoverIdx(idx);
-                                 setMaterialSearch("");
-                                 loadMaterials(); // Load full list immediately
-                              } else {
-                                 setOpenPopoverIdx(null);
-                              }
-                           }}>
-                            <DialogTrigger asChild>
-                               <Button variant="outline" size="sm" className="w-full justify-start text-left font-normal h-8 text-[11px] border-dashed border-slate-300 hover:border-indigo-400 p-2">
-                                  {item.item_name ? (
-                                     <span className="truncate max-w-[120px]">{item.item_name}</span>
-                                  ) : (
-                                     <span className="text-slate-400 italic">+ Add Item</span>
-                                  )}
-                                  <Search className="ml-auto h-3 w-3 opacity-50" />
-                               </Button>
-                            </DialogTrigger>
-                            <DialogContent className="p-0 sm:max-w-[500px]">
-                               <DialogHeader className="p-4 border-b">
-                                  <DialogTitle>Select Item for Row #{idx + 1}</DialogTitle>
-                               </DialogHeader>
-                               <Command shouldFilter={false}>
-                                  <CommandInput 
-                                     placeholder="Search materials, templates, products..." 
-                                     onValueChange={setMaterialSearch} 
-                                     className="h-10"
-                                  />
-                                  <CommandList className="max-h-[280px]">
-                                     {searching && <CommandEmpty>Loading...</CommandEmpty>}
-                                     {!searching && searchResults.length === 0 && <CommandEmpty>No items found.</CommandEmpty>}
-                                     {!searching && searchResults.length > 0 && (
-                                        <CommandGroup heading={`All Items (${searchResults.length})`}>
-                                           {searchResults.map((m) => (
-                                              <CommandItem
-                                                 key={`${m.type}-${m.id}`}
-                                                 onSelect={() => { selectMaterial(idx, m); setOpenPopoverIdx(null); }}
-                                                 className="cursor-pointer"
-                                              >
-                                                 <div className="flex flex-col">
-                                                    <div className="flex items-center gap-2">
-                                                       <span className="font-semibold text-sm">{m.name}</span>
-                                                       <Badge variant="outline" className="text-[10px] scale-90">{m.type}</Badge>
-                                                    </div>
-                                                    <div className="flex gap-2 text-[10px] text-slate-500">
-                                                       {m.code && <span>Code: {m.code}</span>}
-                                                       {m.category && <span>Category: {m.category}</span>}
-                                                    </div>
-                                                 </div>
-                                              </CommandItem>
-                                           ))}
-                                        </CommandGroup>
-                                      )}
-                                  </CommandList>
-                               </Command>
-                               <div className="p-3 border-t bg-slate-50 flex flex-col gap-2">
-                                  <p className="text-[10px] uppercase font-bold text-slate-400">Custom Item</p>
-                                  <Input 
-                                     placeholder="Or type a custom name and press Enter..." 
-                                     className="h-10 text-sm" 
-                                     onKeyDown={(e) => {
-                                        if (e.key === "Enter" && e.currentTarget.value.trim()) {
-                                          updateItem(idx, "item_name", e.currentTarget.value.trim());
-                                          setOpenPopoverIdx(null);
-                                        }
-                                      }}
-                                  />
-                               </div>
-                            </DialogContent>
-                         </Dialog>
-                      </td>
-                      <td className="px-2 py-2">
-                         <Select value={item.dimension_unit} onValueChange={(val: "feet" | "mm") => updateItem(idx, "dimension_unit", val)}>
-                            <SelectTrigger className="h-8 text-[10px] py-0 px-1 min-w-[50px]">
-                               <SelectValue />
-                            </SelectTrigger>
-                            <SelectContent>
-                               <SelectItem value="feet">ft</SelectItem>
-                               <SelectItem value="mm">mm</SelectItem>
-                            </SelectContent>
-                         </Select>
-                      </td>
-                      <td className="px-2 py-2">
-                        <Input value={item.length} onChange={(e) => updateItem(idx, "length", e.target.value)} className="h-8 text-xs px-1" placeholder="0" />
-                      </td>
-                      <td className="px-2 py-2">
-                        <Input value={item.width} onChange={(e) => updateItem(idx, "width", e.target.value)} className="h-8 text-xs px-1" placeholder="0" />
-                      </td>
-                      <td className="px-2 py-2">
-                        <Input value={item.height} onChange={(e) => updateItem(idx, "height", e.target.value)} className="h-8 text-xs px-1" placeholder="0" />
-                      </td>
-                      <td className="px-2 py-2">
-                        <Input value={item.qty} onChange={(e) => updateItem(idx, "qty", e.target.value)} className="h-8 text-xs bg-slate-50 font-bold text-indigo-700 px-1" />
-                      </td>
-                      <td className="px-2 py-2 text-center">
-                         <Dialog>
-                            <DialogTrigger asChild>
-                               <div className="relative inline-block cursor-pointer p-1 border rounded hover:border-amber-300 transition-colors bg-white shadow-sm">
-                                   {item.images.length > 0 ? (
-                                     <div className="relative w-8 h-8 rounded overflow-hidden">
-                                        <img src={item.images[0].url} className="w-full h-full object-cover" />
-                                        <span className="absolute bottom-0 right-0 bg-amber-500 text-white text-[8px] px-1 rounded-tl font-bold">
-                                           {item.images.length}
-                                        </span>
-                                     </div>
-                                   ) : (
-                                     <div className="w-8 h-8 flex items-center justify-center bg-slate-50 text-slate-300">
-                                        <Camera className="w-4 h-4" />
-                                     </div>
-                                  )}
-                               </div>
-                            </DialogTrigger>
-                            <DialogContent className="max-w-2xl">
-                               <DialogHeader>
-                                  <DialogTitle>Item Photos - {item.item_name || `Item ${idx+1}`}</DialogTitle>
-                               </DialogHeader>
-                               <div className="grid grid-cols-3 gap-4 py-4">
-                                   {item.images.map((img, imgIdx) => (
-                                     <div key={imgIdx} className="relative group aspect-square rounded border overflow-hidden bg-slate-100 cursor-help" title="Click to rename">
-                                        <img src={img.url} className="w-full h-full object-cover" onClick={() => renameRowImage(idx, imgIdx)} />
-                                        <div className="absolute bottom-0 left-0 right-0 bg-black/60 text-white text-[8px] p-1 truncate opacity-0 group-hover:opacity-100 transition-opacity">
-                                           {img.name}
-                                        </div>
-                                        <button onClick={() => removeRowImage(idx, imgIdx)} className="absolute top-1 right-1 bg-red-500 text-white p-1 rounded-full opacity-0 group-hover:opacity-100 transition-opacity">
-                                           <X className="w-3 h-3" />
-                                        </button>
-                                     </div>
-                                   ))}
-                                  <label className="aspect-square rounded border-2 border-dashed border-slate-200 flex flex-col items-center justify-center text-slate-400 hover:border-indigo-300 hover:text-indigo-400 cursor-pointer bg-slate-50 transition-colors">
-                                     <Plus className="w-5 h-5 mb-1" />
-                                     <span className="text-[10px] uppercase font-bold text-center">Add<br/>Photo</span>
-                                     <input type="file" multiple accept="image/*" onChange={(e) => handleRowImageUpload(idx, e)} className="hidden" />
-                                  </label>
-                                  <label className="aspect-square rounded border-2 border-dashed border-indigo-200 flex flex-col items-center justify-center text-indigo-400 hover:border-indigo-400 hover:bg-indigo-50 cursor-pointer transition-colors">
-                                     <Camera className="w-5 h-5 mb-1" />
-                                     <span className="text-[10px] uppercase font-bold text-center">Open<br/>Camera</span>
-                                     <input type="file" accept="image/*" capture="environment" onChange={(e) => handleRowImageUpload(idx, e)} className="hidden" />
-                                  </label>
-                               </div>
-                            </DialogContent>
-                         </Dialog>
-                      </td>
-                      <td className="px-2 py-2 text-center">
-                        <Button variant="ghost" size="icon" onClick={() => removeItem(idx)} className="h-7 w-7 text-slate-400 hover:text-red-500">
-                          <Trash2 className="w-3.5 h-3.5" />
-                        </Button>
-                      </td>
-                    </tr>
+                    <SketchPlanRow 
+                      key={item.id}
+                      item={item}
+                      idx={idx}
+                      updateItem={updateItem}
+                      addItem={addItem}
+                      removeItem={removeItem}
+                      selectMaterial={selectMaterial}
+                      searchResults={searchResults}
+                      searching={searching}
+                      loadMaterials={loadMaterials}
+                      setMaterialSearch={setMaterialSearch}
+                      openPopoverIdx={openPopoverIdx}
+                      setOpenPopoverIdx={setOpenPopoverIdx}
+                      renameRowImage={renameRowImage}
+                      removeRowImage={removeRowImage}
+                      handleRowImageUpload={handleRowImageUpload}
+                    />
                   ))}
-                </tbody>
+                </Reorder.Group>
               </table>
             </div>
           </CardContent>

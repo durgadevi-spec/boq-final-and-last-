@@ -6,6 +6,7 @@ import { comparePasswords, generateToken } from "./auth";
 import { authMiddleware, requireRole } from "./middleware";
 import { randomUUID } from "crypto";
 import { query } from "./db/client";
+import { sendSketchPlanEmail } from "./email";
 
 export async function registerRoutes(
   httpServer: Server,
@@ -7994,55 +7995,69 @@ ${list.rows.map((row: any) => `- ${row.name}`).join('\n')}`;
       const id = `skp-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
       const created_by = (req as any).user?.id || null;
 
-      await query(
-        `INSERT INTO sketch_plans (id, name, project_id, location, plan_date, created_by) 
-         VALUES ($1, $2, $3, $4, $5, $6)`,
-        [id, name, project_id || null, location || null, plan_date || null, created_by]
-      );
+      await query("BEGIN");
 
-      if (items && Array.isArray(items)) {
-        for (const item of items) {
-          const itemId = `ski-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
-          await query(
-            `INSERT INTO sketch_plan_items (id, plan_id, item_name, description, length, width, height, qty, unit, remarks, material_id, dimension_unit) 
-             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)`,
-            [itemId, id, item.item_name, item.description, item.length, item.width, item.height, item.qty, item.unit, item.remarks, item.material_id || null, item.dimension_unit || 'feet']
-          );
+      try {
+        await query(
+          `INSERT INTO sketch_plans (id, name, project_id, location, plan_date, created_by) 
+           VALUES ($1, $2, $3, $4, $5, $6)`,
+          [id, name, project_id || null, location || null, plan_date || null, created_by]
+        );
 
-          // Row-level images
-          if (item.images && Array.isArray(item.images)) {
-            for (const img of item.images) {
-              const imgUrl = typeof img === "string" ? img : img.url || img.image_url;
-              const imgName = typeof img === "string" ? null : img.name || img.image_name;
+        if (items && Array.isArray(items)) {
+          for (const item of items) {
+            const itemId = `ski-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+            await query(
+              `INSERT INTO sketch_plan_items (id, plan_id, item_name, description, length, width, height, qty, unit, remarks, material_id, dimension_unit) 
+               VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)`,
+              [
+                itemId, id, item.item_name, item.description, 
+                parseSafeNumeric(item.length), 
+                parseSafeNumeric(item.width), 
+                parseSafeNumeric(item.height), 
+                parseSafeNumeric(item.qty), 
+                item.unit, item.remarks, 
+                item.material_id || null, 
+                item.dimension_unit || 'feet'
+              ]
+            );
 
-              const imgId = `img-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
-              await query(
-                `INSERT INTO sketch_plan_images (id, plan_id, item_id, image_url, image_name) VALUES ($1, $2, $3, $4, $5)`,
-                [imgId, id, itemId, imgUrl, imgName]
-              );
+            // Row-level images
+            if (item.images && Array.isArray(item.images)) {
+              for (const img of item.images) {
+                const imgUrl = typeof img === "string" ? img : (img.url || img.image_url);
+                const imgName = typeof img === "string" ? null : (img.name || img.image_name);
+                const imgId = `img-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+                await query(
+                  `INSERT INTO sketch_plan_images (id, plan_id, item_id, image_url, image_name) VALUES ($1, $2, $3, $4, $5)`,
+                  [imgId, id, itemId, imgUrl, imgName]
+                );
+              }
             }
           }
         }
-      }
 
-      // Plan-level images
-      if (images && Array.isArray(images)) {
-        for (const img of images) {
-          if (img.item_id) continue; // Skip if already linked via items
-
-          const imgUrl = typeof img === "string" ? img : img.url || img.image_url;
-          const imgName = typeof img === "string" ? null : img.name || img.image_name;
-
-          const imgId = `img-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
-          await query(
-            `INSERT INTO sketch_plan_images (id, plan_id, item_id, image_url, image_name) 
-             VALUES ($1, $2, $3, $4, $5)`,
-            [imgId, id, null, imgUrl, imgName]
-          );
+        // Plan-level images
+        if (images && Array.isArray(images)) {
+          for (const img of images) {
+            if (img.item_id) continue; 
+            const imgUrl = typeof img === "string" ? img : (img.image_url || img.url);
+            const imgName = typeof img === "string" ? null : (img.name || img.image_name);
+            const imgId = `img-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+            await query(
+              `INSERT INTO sketch_plan_images (id, plan_id, item_id, image_url, image_name) 
+               VALUES ($1, $2, $3, $4, $5)`,
+              [imgId, id, null, imgUrl, imgName]
+            );
+          }
         }
-      }
 
-      res.json({ id, message: "Sketch plan created successfully" });
+        await query("COMMIT");
+        res.json({ id, message: "Sketch plan created successfully" });
+      } catch (err) {
+        await query("ROLLBACK");
+        throw err;
+      }
     } catch (err) {
       console.error("POST /api/sketch-plans error", err);
       res.status(500).json({ message: "Failed to create sketch plan" });
@@ -8055,58 +8070,72 @@ ${list.rows.map((row: any) => `- ${row.name}`).join('\n')}`;
       const { id } = req.params;
       const { name, project_id, location, plan_date, items, images } = req.body;
 
-      await query(
-        `UPDATE sketch_plans SET name = $1, project_id = $2, location = $3, plan_date = $4, updated_at = NOW() WHERE id = $5`,
-        [name, project_id || null, location || null, plan_date || null, id]
-      );
+      await query("BEGIN");
 
-      // Delete old items and images
-      await query("DELETE FROM sketch_plan_items WHERE plan_id = $1", [id]);
-      await query("DELETE FROM sketch_plan_images WHERE plan_id = $1", [id]);
+      try {
+        await query(
+          `UPDATE sketch_plans SET name = $1, project_id = $2, location = $3, plan_date = $4, updated_at = NOW() WHERE id = $5`,
+          [name, project_id || null, location || null, plan_date || null, id]
+        );
 
-      if (items && Array.isArray(items)) {
-        for (const item of items) {
-          const itemId = `ski-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
-          await query(
-            `INSERT INTO sketch_plan_items (id, plan_id, item_name, description, length, width, height, qty, unit, remarks, material_id, dimension_unit) 
-             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)`,
-            [itemId, id, item.item_name, item.description, item.length, item.width, item.height, item.qty, item.unit, item.remarks, item.material_id || null, item.dimension_unit || 'feet']
-          );
+        // Delete old items and images
+        await query("DELETE FROM sketch_plan_items WHERE plan_id = $1", [id]);
+        await query("DELETE FROM sketch_plan_images WHERE plan_id = $1", [id]);
 
-          // Row-level images
-          if (item.images && Array.isArray(item.images)) {
-            for (const img of item.images) {
-              const imgUrl = typeof img === "string" ? img : img.url || img.image_url;
-              const imgName = typeof img === "string" ? null : img.name || img.image_name;
+        if (items && Array.isArray(items)) {
+          for (const item of items) {
+            const itemId = `ski-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+            await query(
+              `INSERT INTO sketch_plan_items (id, plan_id, item_name, description, length, width, height, qty, unit, remarks, material_id, dimension_unit) 
+               VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)`,
+              [
+                itemId, id, item.item_name, item.description, 
+                parseSafeNumeric(item.length), 
+                parseSafeNumeric(item.width), 
+                parseSafeNumeric(item.height), 
+                parseSafeNumeric(item.qty), 
+                item.unit, item.remarks, 
+                item.material_id || null, 
+                item.dimension_unit || 'feet'
+              ]
+            );
 
-              const imgId = `img-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
-              await query(
-                `INSERT INTO sketch_plan_images (id, plan_id, item_id, image_url, image_name) VALUES ($1, $2, $3, $4, $5)`,
-                [imgId, id, itemId, imgUrl, imgName]
-              );
+            // Row-level images
+            if (item.images && Array.isArray(item.images)) {
+              for (const img of item.images) {
+                const imgUrl = typeof img === "string" ? img : (img.url || img.image_url);
+                const imgName = typeof img === "string" ? null : (img.name || img.image_name);
+                const imgId = `img-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+                await query(
+                  `INSERT INTO sketch_plan_images (id, plan_id, item_id, image_url, image_name) VALUES ($1, $2, $3, $4, $5)`,
+                  [imgId, id, itemId, imgUrl, imgName]
+                );
+              }
             }
           }
         }
-      }
 
-      // Plan-level images
-      if (images && Array.isArray(images)) {
-        for (const img of images) {
-          if (img.item_id) continue;
-
-          const imgUrl = typeof img === "string" ? img : img.url || img.image_url;
-          const imgName = typeof img === "string" ? null : img.name || img.image_name;
-
-          const imgId = `img-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
-          await query(
-            `INSERT INTO sketch_plan_images (id, plan_id, item_id, image_url, image_name) 
-             VALUES ($1, $2, $3, $4, $5)`,
-            [imgId, id, null, imgUrl, imgName]
-          );
+        // Plan-level images
+        if (images && Array.isArray(images)) {
+          for (const img of images) {
+            if (img.item_id) continue;
+            const imgUrl = typeof img === "string" ? img : (img.image_url || img.url);
+            const imgName = typeof img === "string" ? null : (img.name || img.image_name);
+            const imgId = `img-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+            await query(
+              `INSERT INTO sketch_plan_images (id, plan_id, item_id, image_url, image_name) 
+               VALUES ($1, $2, $3, $4, $5)`,
+              [imgId, id, null, imgUrl, imgName]
+            );
+          }
         }
-      }
 
-      res.json({ message: "Sketch plan updated successfully" });
+        await query("COMMIT");
+        res.json({ message: "Sketch plan updated successfully" });
+      } catch (err) {
+        await query("ROLLBACK");
+        throw err;
+      }
     } catch (err) {
       console.error("PUT /api/sketch-plans/:id error", err);
       res.status(500).json({ message: "Failed to update sketch plan" });
@@ -8118,10 +8147,25 @@ ${list.rows.map((row: any) => `- ${row.name}`).join('\n')}`;
     try {
       const { id } = req.params;
       await query("DELETE FROM sketch_plans WHERE id = $1", [id]);
-      res.json({ message: "Sketch plan deleted" });
+      res.json({ message: "Sketch plan deleted successfully" });
     } catch (err) {
       console.error("DELETE /api/sketch-plans/:id error", err);
       res.status(500).json({ message: "Failed to delete sketch plan" });
+    }
+  });
+
+  app.post("/api/send-sketch-plan-email", authMiddleware, async (req: Request, res: Response) => {
+    try {
+      const { to, planName, pdfBase64 } = req.body;
+      if (!to || !pdfBase64) {
+        return res.status(400).json({ message: "Recipient and PDF content are required" });
+      }
+
+      await sendSketchPlanEmail(to, planName || "SketchPlan", pdfBase64);
+      res.json({ message: "Email sent successfully" });
+    } catch (err) {
+      console.error("POST /api/send-sketch-plan-email error", err);
+      res.status(500).json({ message: "Failed to send email" });
     }
   });
 
