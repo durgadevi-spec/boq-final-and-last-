@@ -67,9 +67,10 @@ interface SketchPadProps {
   width?: number;
   height?: number;
   unitPrefix?: string; // "ft" or "mm"
+  readOnly?: boolean;
 }
 
-export function SketchPad({ onSave, initialData, width = 600, height = 400, unitPrefix = "ft" }: SketchPadProps) {
+export function SketchPad({ onSave, initialData, width = 600, height = 400, unitPrefix = "ft", readOnly = false }: SketchPadProps) {
   const [internalSize, setInternalSize] = useState({ width, height });
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [activeTab, setActiveTab] = useState<"drawing" | "block">("drawing");
@@ -704,6 +705,7 @@ export function SketchPad({ onSave, initialData, width = 600, height = 400, unit
   };
 
   const startDrawing = (e: React.MouseEvent | React.TouchEvent) => {
+    if (readOnly) return;
     if ("touches" in e && e.touches.length === 2) {
       // Handle pinch zoom start
       const d = Math.sqrt(

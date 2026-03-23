@@ -27,6 +27,7 @@ import {
   DialogFooter,
 } from "@/components/ui/dialog";
 import { Checkbox } from "@/components/ui/checkbox";
+import { cn } from "@/lib/utils";
 import XLSX from 'xlsx-js-style';
 import { useLocation } from "wouter";
 import { useToast } from "@/hooks/use-toast";
@@ -409,6 +410,12 @@ export default function FinalizeBoq() {
   const [customColumnValues, setCustomColumnValues] = useState<{ [id: string]: { [rowIdx: number]: { [col: string]: string } } }>({});
   const [selectedProductIds, setSelectedProductIds] = useState<Set<string>>(new Set());
   const [productDescriptions, setProductDescriptions] = useState<{ [id: string]: string }>({});
+  const [projectStatusFilter, setProjectStatusFilter] = useState<string>("all");
+
+  const filteredProjects = React.useMemo(() => {
+    if (projectStatusFilter === "all") return projects;
+    return projects.filter((p) => p.project_status === projectStatusFilter);
+  }, [projects, projectStatusFilter]);
   const [savingLayoutId, setSavingLayoutId] = useState<string | null>(null);
   const [showColumnTotals, setShowColumnTotals] = useState(true);
   const [hideSystemTotalFooter, setHideSystemTotalFooter] = useState(false);
@@ -728,6 +735,14 @@ export default function FinalizeBoq() {
 
     loadProjects();
   }, []);
+
+  useEffect(() => {
+    if (selectedProjectId && !filteredProjects.some((p) => p.id === selectedProjectId)) {
+      setSelectedProjectId(null);
+      setSelectedBomVersionId(null);
+      setSelectedBoqVersionId(null);
+    }
+  }, [filteredProjects, selectedProjectId]);
 
   useEffect(() => {
     if (!isFullscreen) return;
@@ -2358,12 +2373,39 @@ export default function FinalizeBoq() {
               {/* Project Select */}
               <div className="md:col-span-5 space-y-1.5">
                 <Label className="text-[11px] uppercase tracking-wider text-slate-500 font-bold ml-1">Project</Label>
+                <div className="space-y-2">
+                  <Label className="text-[10px] uppercase tracking-wider text-slate-500 font-bold px-1">Filter by Status</Label>
+                  <div className="flex flex-wrap gap-1.5 p-1 bg-slate-50 rounded-lg border border-slate-200">
+                    {PROJECT_STATUSES.map((s) => (
+                      <button
+                        key={s.value}
+                        onClick={() => setProjectStatusFilter(s.value)}
+                        className={cn(
+                          "px-2.5 py-1 text-[9px] font-bold uppercase rounded-md transition-all border border-transparent hover:bg-slate-100",
+                          projectStatusFilter === s.value ? "bg-white text-blue-600 shadow-sm border-blue-100 ring-1 ring-blue-100" : "text-slate-500"
+                        )}
+                      >
+                        {s.label}
+                      </button>
+                    ))}
+                    <button
+                      onClick={() => setProjectStatusFilter("all")}
+                      className={cn(
+                        "px-2.5 py-1 text-[9px] font-bold uppercase rounded-md transition-all border border-transparent hover:bg-slate-100",
+                        projectStatusFilter === "all" ? "bg-white text-blue-600 shadow-sm border-blue-100 ring-1 ring-blue-100" : "text-slate-500"
+                      )}
+                    >
+                      All
+                    </button>
+                  </div>
+                </div>
+
                 <Select onValueChange={(v) => setSelectedProjectId(v || null)} value={selectedProjectId || ""}>
                   <SelectTrigger className="bg-white border-slate-200">
                     <SelectValue placeholder="Select project" />
                   </SelectTrigger>
                   <SelectContent className="max-h-[300px] overflow-y-auto">
-                    {projects.map((p) => {
+                    {filteredProjects.map((p) => {
                       const sm = getProjectStatusMeta(p.project_status);
                       return (
                         <SelectItem value={p.id} key={p.id}>

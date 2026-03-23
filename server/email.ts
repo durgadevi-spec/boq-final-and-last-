@@ -75,25 +75,92 @@ export async function sendResetPasswordEmail(
 export async function sendSketchPlanEmail(
   to: string,
   planName: string,
-  pdfBase64: string
+  pdfBase64: string,
+  planData?: {
+    projectName?: string;
+    location?: string;
+    planDate?: string;
+    items?: any[];
+  }
 ) {
   if (!resend) {
     throw new Error("RESEND_API_KEY not configured");
   }
 
   try {
+    let emailHtml = `
+      <div style="font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; max-width: 800px; margin: 0 auto; padding: 20px; color: #334155; line-height: 1.6;">
+        <div style="border-bottom: 2px solid #2563eb; padding-bottom: 20px; margin-bottom: 20px; text-align: center;">
+          <h1 style="color: #1e40af; margin: 0; font-size: 24px; text-transform: uppercase; letter-spacing: 1px;">Concept Trunk Interiors</h1>
+          <p style="color: #64748b; margin: 5px 0 0 0; font-size: 14px; font-weight: bold;">SITE SKETCH PLAN REPORT</p>
+        </div>
+
+        <div style="background-color: #f8fafc; border-radius: 8px; padding: 15px; margin-bottom: 25px; border: 1px solid #e2e8f0;">
+          <table style="width: 100%; font-size: 13px;">
+            <tr>
+              <td style="padding: 4px 0;"><strong>Plan Name:</strong> ${planName}</td>
+              <td style="padding: 4px 0; text-align: right;"><strong>Date:</strong> ${planData?.planDate || new Date().toLocaleDateString()}</td>
+            </tr>
+            <tr>
+              <td style="padding: 4px 0;"><strong>Project:</strong> ${planData?.projectName || 'N/A'}</td>
+              <td style="padding: 4px 0; text-align: right;"><strong>Location:</strong> ${planData?.location || 'N/A'}</td>
+            </tr>
+          </table>
+        </div>
+    `;
+
+    if (planData?.items && planData.items.length > 0) {
+      emailHtml += `
+        <h2 style="font-size: 16px; color: #1e40af; border-left: 4px solid #2563eb; padding-left: 10px; margin-bottom: 15px;">Site Requirements & Dimensions</h2>
+        <table style="width: 100%; border-collapse: collapse; font-size: 12px; margin-bottom: 25px;">
+          <thead>
+            <tr style="background-color: #f1f5f9; text-align: left;">
+              <th style="border: 1px solid #e2e8f0; padding: 10px;">#</th>
+              <th style="border: 1px solid #e2e8f0; padding: 10px;">Item / Product</th>
+              <th style="border: 1px solid #e2e8f0; padding: 10px;">Dimensions (L x W x H)</th>
+              <th style="border: 1px solid #e2e8f0; padding: 10px; text-align: center;">Qty</th>
+              <th style="border: 1px solid #e2e8f0; padding: 10px;">Unit</th>
+            </tr>
+          </thead>
+          <tbody>
+      `;
+
+      planData.items.forEach((item, idx) => {
+        emailHtml += `
+          <tr>
+            <td style="border: 1px solid #e2e8f0; padding: 8px; text-align: center;">${idx + 1}</td>
+            <td style="border: 1px solid #e2e8f0; padding: 8px;">
+              <div style="font-weight: bold; color: #0f172a;">${item.item_name || 'N/A'}</div>
+              ${item.description ? `<div style="font-size: 11px; color: #64748b; margin-top: 2px;"><i>${item.description}</i></div>` : ''}
+            </td>
+            <td style="border: 1px solid #e2e8f0; padding: 8px; text-align: center;">
+              ${item.length || '0'} x ${item.width || '0'} x ${item.height || '0'} ${item.dimension_unit === 'feet' ? 'ft' : 'mm'}
+            </td>
+            <td style="border: 1px solid #e2e8f0; padding: 8px; text-align: center; font-weight: bold; color: #2563eb;">${item.qty || '0'}</td>
+            <td style="border: 1px solid #e2e8f0; padding: 8px;">${item.unit || 'Nos'}</td>
+          </tr>
+        `;
+      });
+
+      emailHtml += `
+          </tbody>
+        </table>
+      `;
+    }
+
+    emailHtml += `
+        <div style="margin-top: 30px; padding-top: 20px; border-top: 1px solid #e2e8f0; font-size: 11px; color: #94a3b8; text-align: center;">
+          <p>This is an automated report generated from the BOQ Management System.</p>
+          <p>&copy; ${new Date().getFullYear()} Concept Trunk Interiors. All rights reserved.</p>
+        </div>
+      </div>
+    `;
+
     const response = await resend.emails.send({
       from: fromEmail,
       to,
       subject: `Sketch Plan Report: ${planName}`,
-      html: `
-        <div style="font-family: sans-serif; max-width: 600px; margin: 0 auto; padding: 20px;">
-          <h1 style="color: #2563eb;">Sketch Plan Report</h1>
-          <p>Please find the requested sketch plan report for <strong>${planName}</strong> attached to this email.</p>
-          <hr style="border: 1px solid #eee; margin: 20px 0;" />
-          <p style="font-size: 12px; color: #666;">Sent from BOQ Management System</p>
-        </div>
-      `,
+      html: emailHtml,
       attachments: [
         {
           filename: `${planName.replace(/\s+/g, '_')}_Report.pdf`,

@@ -1,7 +1,7 @@
 import React, { useEffect, useState, useRef, useCallback, useMemo } from "react";
 import { Reorder, useDragControls } from "framer-motion";
 import { ChevronUp, ChevronDown, Loader2, CheckCircle2, XCircle, Lock, History, Clock, Briefcase, MapPin, IndianRupee, GripVertical, Search, ArrowUp, Plus, Trash2, Save } from "lucide-react";
-import { fuzzySearch } from "@/lib/utils";
+import { fuzzySearch, cn } from "@/lib/utils";
 import { Layout } from "@/components/layout/Layout";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -82,20 +82,20 @@ function CodeBadge({ label, value }: { label: string; value: string }) {
   );
 }
 
-function PriceUpdateBanner({ 
-  mismatches, 
-  onApplyAll, 
+function PriceUpdateBanner({
+  mismatches,
+  onApplyAll,
   onApplySingle,
   onIgnoreSingle,
   onViewSingle,
-  isUpdating 
-}: { 
-  mismatches: any[]; 
-  onApplyAll: () => void | Promise<void>; 
+  isUpdating
+}: {
+  mismatches: any[];
+  onApplyAll: () => void | Promise<void>;
   onApplySingle: (m: any) => void;
   onIgnoreSingle: (m: any) => void;
   onViewSingle: (m: any) => void;
-  isUpdating?: boolean; 
+  isUpdating?: boolean;
 }) {
   const [isExpanded, setIsExpanded] = useState(false);
   if (mismatches.length === 0) return null;
@@ -133,7 +133,7 @@ function PriceUpdateBanner({
           </Button>
         </div>
       </div>
-      
+
       {isExpanded && (
         <div className="border-t border-amber-200 bg-white/50 p-3 max-h-[250px] overflow-y-auto w-full">
           <table className="w-full text-xs">
@@ -876,6 +876,8 @@ export default function CreateBom() {
   const [qtyIncreases, setQtyIncreases] = useState<any[]>([]);
   const [pendingAddProductData, setPendingAddProductData] = useState<any>(null);
   const [ignoredMismatches, setIgnoredMismatches] = useState<Set<string>>(new Set());
+  const [projectStatusFilter, setProjectStatusFilter] = useState<string>("active");
+  const [projectSearchTerm, setProjectSearchTerm] = useState("");
 
   // BOM Template state
   const [bomTemplates, setBomTemplates] = useState<any[]>([]);
@@ -1993,8 +1995,6 @@ export default function CreateBom() {
 
   const isVersionSubmitted = !!selectedVersion && ["submitted", "pending_approval", "approved", "edit_requested"].includes(selectedVersion.status);
 
-
-
   // Budget reason logging removed for Generate BOM page
 
   // ── Render ─────────────────────────────────────────────────────────────────
@@ -2015,51 +2015,113 @@ export default function CreateBom() {
                 {/* Top Row: Selectors & Actions */}
                 <div className="flex flex-wrap items-end gap-x-6 gap-y-4">
                   {/* Container 1: Project Selector */}
-                  <div className="flex-[2] min-w-[300px] space-y-1.5">
-                    <Label className="text-[10px] uppercase tracking-wider text-slate-500 font-bold ml-1">Project</Label>
-                    <Select onValueChange={v => setSelectedProjectId(v || null)} value={selectedProjectId || ""}>
-                      <SelectTrigger className="w-full bg-slate-50 border-slate-200 h-9 px-3">
-                        <SelectValue placeholder={projects.length === 0 ? "No projects" : "Select project"} />
-                      </SelectTrigger>
-                      <SelectContent className="max-h-60 overflow-auto">
-                        {projects.map((p: Project) => {
-                          const sm = getProjectStatusMeta(p.project_status);
-                          return (
-                            <SelectItem value={p.id} key={p.id}>
-                              <span className="flex items-center gap-2">
-                                {p.name}
-                                <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded-full ${sm.color}`}>{sm.label}</span>
-                              </span>
-                            </SelectItem>
-                          );
-                        })}
-                      </SelectContent>
-                    </Select>
-                    {selectedProjectId && (() => {
-                      const selProj = projects.find(p => p.id === selectedProjectId);
-                      return (
-                        <div className="flex items-center gap-2 mt-1">
-                          <span className="text-[10px] text-slate-500 font-bold uppercase">Project Status:</span>
-                          <select
-                            className="text-xs border border-slate-200 rounded px-2 py-1 bg-white font-semibold focus:ring-1 ring-blue-400 outline-none"
-                            value={selProj?.project_status || 'started'}
-                            onChange={async (e) => {
-                              const newStatus = e.target.value;
-                              try {
-                                await apiFetch(`/api/boq-projects/${selectedProjectId}`, {
-                                  method: 'PUT',
-                                  headers: { 'Content-Type': 'application/json' },
-                                  body: JSON.stringify({ project_status: newStatus }),
-                                });
-                                setProjects(prev => prev.map(p => p.id === selectedProjectId ? { ...p, project_status: newStatus } : p));
-                              } catch (err) { console.error('Failed to update project status', err); }
-                            }}
-                          >
-                            {PROJECT_STATUSES.map(s => <option key={s.value} value={s.value}>{s.label}</option>)}
-                          </select>
+                  <div className="flex-[2] min-w-[350px] space-y-3">
+                    <div className="space-y-2">
+                      <div className="flex items-center justify-between px-1">
+                        <Label className="text-[10px] uppercase tracking-wider text-slate-500 font-bold">Project Filters</Label>
+                        <div className="relative w-48">
+                          <Search className="absolute left-2 top-1/2 -translate-y-1/2 h-3 w-3 text-slate-400" />
+                          <Input
+                            placeholder="Search projects..."
+                            value={projectSearchTerm}
+                            onChange={(e) => setProjectSearchTerm(e.target.value)}
+                            className="pl-7 h-7 text-[11px] border-slate-200 bg-slate-50 focus:bg-white transition-colors"
+                          />
                         </div>
-                      );
-                    })()}
+                      </div>
+
+                      <div className="flex flex-wrap gap-1.5 p-1 bg-slate-50 rounded-lg border border-slate-200">
+                        <button
+                          onClick={() => setProjectStatusFilter("active")}
+                          className={cn(
+                            "px-2 py-1 text-[9px] font-bold uppercase rounded-md transition-all border border-transparent shadow-sm",
+                            projectStatusFilter === "active" ? "bg-white text-blue-600 border-blue-100 ring-1 ring-blue-50/50" : "text-slate-500 hover:bg-slate-100"
+                          )}
+                        >
+                          Active
+                        </button>
+                        {PROJECT_STATUSES.map(s => (
+                          <button
+                            key={s.value}
+                            onClick={() => setProjectStatusFilter(s.value)}
+                            className={cn(
+                              "px-2 py-1 text-[9px] font-bold uppercase rounded-md transition-all border border-transparent",
+                              projectStatusFilter === s.value ? "bg-white text-blue-600 shadow-sm border-blue-100 ring-1 ring-blue-50/50" : "text-slate-500 hover:bg-slate-100"
+                            )}
+                          >
+                            {s.label}
+                          </button>
+                        ))}
+                        <button
+                          onClick={() => setProjectStatusFilter("all")}
+                          className={cn(
+                            "px-2 py-1 text-[9px] font-bold uppercase rounded-md transition-all border border-transparent",
+                            projectStatusFilter === "all" ? "bg-white text-blue-600 shadow-sm border-blue-100 ring-1 ring-blue-50/50" : "text-slate-500 hover:bg-slate-100"
+                          )}
+                        >
+                          All
+                        </button>
+                      </div>
+                    </div>
+
+                    <div className="space-y-1">
+                      <Label className="text-[10px] uppercase tracking-wider text-slate-500 font-bold ml-1">Select Project</Label>
+                      <Select onValueChange={v => setSelectedProjectId(v || null)} value={selectedProjectId || ""}>
+                        <SelectTrigger className="w-full bg-slate-50 border-slate-200 h-9 px-3 hover:bg-slate-100/50 transition-colors">
+                          <SelectValue placeholder={projects.length === 0 ? "No projects" : "Choose from filtered list..."} />
+                        </SelectTrigger>
+                        <SelectContent className="max-h-[300px] overflow-auto">
+                          {projects
+                            .filter(p => {
+                              // Filter by search term
+                              if (projectSearchTerm && !fuzzySearch(projectSearchTerm, [p.name, p.client])) return false;
+
+                              // Filter by status
+                              if (projectStatusFilter === "all") return true;
+                              if (projectStatusFilter === "active") {
+                                return p.project_status === "started" || p.project_status === "in_progress" || !p.project_status;
+                              }
+                              return p.project_status === projectStatusFilter;
+                            })
+                            .map((p: Project) => {
+                              const sm = getProjectStatusMeta(p.project_status);
+                              return (
+                                <SelectItem value={p.id} key={p.id}>
+                                  <span className="flex items-center gap-2">
+                                    {p.name}
+                                    <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded-full ${sm.color}`}>{sm.label}</span>
+                                  </span>
+                                </SelectItem>
+                              );
+                            })}
+                        </SelectContent>
+                      </Select>
+                      {selectedProjectId && (() => {
+                        const selProj = projects.find(p => p.id === selectedProjectId);
+                        return (
+                          <div className="flex items-center gap-2 mt-1">
+                            <span className="text-[10px] text-slate-500 font-bold uppercase">Project Status:</span>
+                            <select
+                              className="text-xs border border-slate-200 rounded px-2 py-1 bg-white font-semibold focus:ring-1 ring-blue-400 outline-none"
+                              value={selProj?.project_status || 'started'}
+                              onChange={async (e) => {
+                                const newStatus = e.target.value;
+                                try {
+                                  await apiFetch(`/api/boq-projects/${selectedProjectId}`, {
+                                    method: 'PUT',
+                                    headers: { 'Content-Type': 'application/json' },
+                                    body: JSON.stringify({ project_status: newStatus }),
+                                  });
+                                  setProjects(prev => prev.map(p => p.id === selectedProjectId ? { ...p, project_status: newStatus } : p));
+                                } catch (err) { console.error('Failed to update project status', err); }
+                              }}
+                            >
+                              {PROJECT_STATUSES.map(s => <option key={s.value} value={s.value}>{s.label}</option>)}
+                            </select>
+                          </div>
+                        );
+                      })()}
+                    </div>
                   </div>
 
                   {/* Container 2: Version Selector & Actions */}
@@ -2255,31 +2317,31 @@ export default function CreateBom() {
                             handleDeleteRow={handleDeleteRow} handleFinalizeProduct={handleFinalizeProduct}
                             handleAddItem={handleAddItem} loadBoqItemsAndEdits={loadBoqItemsAndEdits} setBoqItems={setBoqItems}
                             checkBudgetEarly={checkBudgetEarly} handleSaveProject={handleSaveProject}
-                          isCardDragOver={cardDragOverIdx === boqIdx}
-                          onCardDragStart={(e) => { cardDragIdxRef.current = boqIdx; e.dataTransfer.effectAllowed = 'move'; }}
-                          onCardDragOver={(e) => { e.preventDefault(); e.dataTransfer.dropEffect = 'move'; setCardDragOverIdx(boqIdx); }}
-                          onCardDrop={(e) => {
-                            e.preventDefault();
-                            setCardDragOverIdx(null);
-                            const fromIdx = cardDragIdxRef.current;
-                            if (fromIdx === null || fromIdx === boqIdx) return;
-                            const reordered = [...boqItems];
-                            const [moved] = reordered.splice(fromIdx, 1);
-                            reordered.splice(boqIdx, 0, moved);
-                            setBoqItems(reordered);
-                            // Persist the new order
-                            apiFetch('/api/boq-items/reorder', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ itemIds: reordered.map(i => i.id) }) }).catch(console.error);
-                            cardDragIdxRef.current = null;
-                          }}
-                          mismatches={activeMismatches.filter(m => m.boqItemId === boqItem.id)}
-                          isCompactView={isCompactView}
-                          onSaveAsTemplate={(item) => {
-                            setTemplateToSave(item);
-                            setNewTemplateName(parseTableData(item.table_data).product_name || item.estimator);
-                            setShowSaveTemplateDialog(true);
-                          }}
-                          editedFields={editedFields}
-                        />
+                            isCardDragOver={cardDragOverIdx === boqIdx}
+                            onCardDragStart={(e) => { cardDragIdxRef.current = boqIdx; e.dataTransfer.effectAllowed = 'move'; }}
+                            onCardDragOver={(e) => { e.preventDefault(); e.dataTransfer.dropEffect = 'move'; setCardDragOverIdx(boqIdx); }}
+                            onCardDrop={(e) => {
+                              e.preventDefault();
+                              setCardDragOverIdx(null);
+                              const fromIdx = cardDragIdxRef.current;
+                              if (fromIdx === null || fromIdx === boqIdx) return;
+                              const reordered = [...boqItems];
+                              const [moved] = reordered.splice(fromIdx, 1);
+                              reordered.splice(boqIdx, 0, moved);
+                              setBoqItems(reordered);
+                              // Persist the new order
+                              apiFetch('/api/boq-items/reorder', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ itemIds: reordered.map(i => i.id) }) }).catch(console.error);
+                              cardDragIdxRef.current = null;
+                            }}
+                            mismatches={activeMismatches.filter(m => m.boqItemId === boqItem.id)}
+                            isCompactView={isCompactView}
+                            onSaveAsTemplate={(item) => {
+                              setTemplateToSave(item);
+                              setNewTemplateName(parseTableData(item.table_data).product_name || item.estimator);
+                              setShowSaveTemplateDialog(true);
+                            }}
+                            editedFields={editedFields}
+                          />
                         </div>
                       ))}
                   </div>
@@ -2293,13 +2355,13 @@ export default function CreateBom() {
             <Card>
               <CardContent className="space-y-3 pt-6">
                 {selectedVersion && <VersionStatusBanner version={selectedVersion} />}
-                <PriceUpdateBanner 
-                  mismatches={activeMismatches} 
-                  onApplyAll={handleUpdateAllRates} 
+                <PriceUpdateBanner
+                  mismatches={activeMismatches}
+                  onApplyAll={handleUpdateAllRates}
                   onApplySingle={handleUpdateSingleMismatch}
                   onIgnoreSingle={handleIgnoreMismatch}
                   onViewSingle={handleViewMismatch}
-                  isUpdating={isUpdatingRates} 
+                  isUpdating={isUpdatingRates}
                 />
 
                 {/* Version History Modal */}

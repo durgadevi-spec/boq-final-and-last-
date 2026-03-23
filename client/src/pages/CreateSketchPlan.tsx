@@ -7,7 +7,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
-import { Plus, Trash2, Save, ArrowLeft, Camera, Pencil, Layers, X, GripVertical, FileText, Search, MessageSquare, Image as ImageIcon, Move } from "lucide-react";
+import { Plus, Trash2, Save, ArrowLeft, Camera, Pencil, Layers, X, GripVertical, FileText, Search, MessageSquare, Image as ImageIcon, Move, Lock, Unlock, ShieldAlert } from "lucide-react";
 import { Reorder, useDragControls } from "framer-motion";
 import { SketchPad } from "@/components/SketchPad";
 import apiFetch from "@/lib/api";
@@ -20,6 +20,7 @@ import autoTable from "jspdf-autotable";
 import { Checkbox } from "@/components/ui/checkbox";
 import { cn } from "@/lib/utils";
 import { Badge } from "@/components/ui/badge";
+import { Tooltip, TooltipContent, TooltipTrigger, TooltipProvider } from "@/components/ui/tooltip";
 
 interface PlanImage {
   id?: string;
@@ -47,7 +48,7 @@ const SketchPlanRow = ({
   item, idx, updateItem, removeItem, selectMaterial, 
   searchResults, searching, loadMaterials, setMaterialSearch,
   openPopoverIdx, setOpenPopoverIdx, renameRowImage, removeRowImage,
-  handleRowImageUpload
+  handleRowImageUpload, isLocked, setPreviewImage
 }: any) => {
   const dragControls = useDragControls();
 
@@ -56,7 +57,7 @@ const SketchPlanRow = ({
       as="tr"
       key={item.id}
       value={item}
-      dragListener={false}
+      dragListener={!isLocked}
       dragControls={dragControls}
       className="border-b hover:bg-slate-50/30 transition-colors bg-white"
     >
@@ -67,21 +68,33 @@ const SketchPlanRow = ({
         />
       </td>
       <td className="px-2 py-2 text-slate-400 font-medium">{idx + 1}</td>
-      <td className="px-2 py-2">
+      <td className="px-2 py-2 w-[150px] min-w-[150px] max-w-[150px]">
          <Dialog>
-            <DialogTrigger asChild>
-               <div className="cursor-pointer hover:bg-slate-100 p-1 rounded flex items-center justify-between group min-h-[32px] border border-transparent hover:border-slate-200">
-                  <div className="flex-1 overflow-hidden">
-                     {item.description ? (
-                        <p className="truncate text-[10px] text-slate-600 italic">"{item.description}"</p>
-                     ) : (
-                        <p className="text-[10px] text-slate-400 italic">No notes...</p>
-                     )}
-                  </div>
-                  <MessageSquare className="w-3 h-3 text-slate-400 opacity-0 group-hover:opacity-100 transition-opacity ml-1 shrink-0" />
-               </div>
-            </DialogTrigger>
-            <DialogContent>
+            <TooltipProvider>
+               <Tooltip>
+                  <TooltipTrigger asChild>
+                     <DialogTrigger asChild>
+                        <div className={cn("cursor-pointer hover:bg-slate-100 p-1 rounded flex items-center justify-between group min-h-[32px] border border-transparent hover:border-slate-200 w-full", isLocked && "pointer-events-auto hover:bg-transparent")}>
+                           <div className="flex-1 overflow-hidden">
+                              {item.description ? (
+                                 <p className="line-clamp-2 text-[11px] text-slate-700 font-medium italic leading-tight">"{item.description}"</p>
+                              ) : (
+                                 <p className="text-[11px] text-slate-400 italic">No notes...</p>
+                              )}
+                           </div>
+                           <MessageSquare className="w-3 h-3 text-slate-500 opacity-0 group-hover:opacity-100 transition-opacity ml-1 shrink-0" />
+                        </div>
+                     </DialogTrigger>
+                  </TooltipTrigger>
+                  {item.description && (
+                     <TooltipContent side="top" className="max-w-[350px] bg-slate-900 text-white py-2 px-3 rounded-md shadow-lg border border-slate-700 z-[100]">
+                        <p className="text-[12px] font-medium leading-relaxed whitespace-normal">"{item.description}"</p>
+                     </TooltipContent>
+                  )}
+               </Tooltip>
+            </TooltipProvider>
+
+            <DialogContent className="z-[110]">
                <DialogHeader>
                   <DialogTitle>Notes for {item.item_name || `Item ${idx+1}`}</DialogTitle>
                </DialogHeader>
@@ -91,6 +104,7 @@ const SketchPlanRow = ({
                      onChange={(e) => updateItem(idx, "description", e.target.value)} 
                      placeholder="Enter detailed site notes or specifications..." 
                      className="min-h-[200px]"
+                     disabled={isLocked}
                   />
                </div>
                <DialogFooter>
@@ -112,7 +126,7 @@ const SketchPlanRow = ({
                }
             }}>
             <DialogTrigger asChild>
-               <Button variant="outline" size="sm" className="w-full justify-start text-left font-normal h-8 text-[11px] border-dashed border-slate-300 hover:border-indigo-400 p-2">
+               <Button variant="outline" size="sm" className="w-full justify-start text-left font-normal h-8 text-[11px] border-dashed border-slate-300 hover:border-indigo-400 p-2" disabled={isLocked}>
                   {item.item_name ? (
                      <span className="truncate max-w-[120px]">{item.item_name}</span>
                   ) : (
@@ -175,7 +189,7 @@ const SketchPlanRow = ({
          </Dialog>
       </td>
       <td className="px-2 py-2">
-         <Select value={item.dimension_unit} onValueChange={(val: "feet" | "mm") => updateItem(idx, "dimension_unit", val)}>
+         <Select value={item.dimension_unit} onValueChange={(val: "feet" | "mm") => updateItem(idx, "dimension_unit", val)} disabled={isLocked}>
             <SelectTrigger className="h-8 text-[10px] py-0 px-1 min-w-[50px]">
                <SelectValue />
             </SelectTrigger>
@@ -186,21 +200,21 @@ const SketchPlanRow = ({
          </Select>
       </td>
       <td className="px-2 py-2">
-        <Input value={item.length} onChange={(e) => updateItem(idx, "length", e.target.value)} className="h-8 text-xs px-1" placeholder="0" />
+        <Input value={item.length} onChange={(e) => updateItem(idx, "length", e.target.value)} className="h-8 text-xs px-1" placeholder="0" disabled={isLocked} />
       </td>
       <td className="px-2 py-2">
-        <Input value={item.width} onChange={(e) => updateItem(idx, "width", e.target.value)} className="h-8 text-xs px-1" placeholder="0" />
+        <Input value={item.width} onChange={(e) => updateItem(idx, "width", e.target.value)} className="h-8 text-xs px-1" placeholder="0" disabled={isLocked} />
       </td>
       <td className="px-2 py-2">
-        <Input value={item.height} onChange={(e) => updateItem(idx, "height", e.target.value)} className="h-8 text-xs px-1" placeholder="0" />
+        <Input value={item.height} onChange={(e) => updateItem(idx, "height", e.target.value)} className="h-8 text-xs px-1" placeholder="0" disabled={isLocked} />
       </td>
       <td className="px-2 py-2">
-        <Input value={item.qty} onChange={(e) => updateItem(idx, "qty", e.target.value)} className="h-8 text-xs bg-slate-50 font-bold text-indigo-700 px-1" />
+        <Input value={item.qty} onChange={(e) => updateItem(idx, "qty", e.target.value)} className="h-8 text-xs bg-slate-50 font-bold text-indigo-700 px-1" disabled={isLocked} />
       </td>
       <td className="px-2 py-2 text-center">
          <Dialog>
             <DialogTrigger asChild>
-               <div className="relative inline-block cursor-pointer p-1 border rounded hover:border-amber-300 transition-colors bg-white shadow-sm">
+               <div className={cn("relative inline-block cursor-pointer p-1 border rounded hover:border-amber-300 transition-colors bg-white shadow-sm", isLocked && "pointer-events-auto hover:border-slate-200")}>
                    {item.images.length > 0 ? (
                      <div className="relative w-8 h-8 rounded overflow-hidden">
                         <img src={item.images[0].url} className="w-full h-full object-cover" />
@@ -221,32 +235,43 @@ const SketchPlanRow = ({
                </DialogHeader>
                <div className="grid grid-cols-3 gap-4 py-4">
                    {item.images.map((img: any, imgIdx: number) => (
-                     <div key={imgIdx} className="relative group aspect-square rounded border overflow-hidden bg-slate-100 cursor-help" title="Click to rename">
-                        <img src={img.url} className="w-full h-full object-cover" onClick={() => renameRowImage(idx, imgIdx)} />
-                        <div className="absolute bottom-0 left-0 right-0 bg-black/60 text-white text-[8px] p-1 truncate opacity-0 group-hover:opacity-100 transition-opacity">
+                     <div key={imgIdx} className="relative group aspect-square rounded border overflow-hidden bg-slate-100">
+                        <img src={img.url} className="w-full h-full object-cover cursor-pointer hover:opacity-80 transition-opacity" onClick={() => setPreviewImage(img)} title="Click to view full image" />
+                        <div className="absolute bottom-0 left-0 right-0 bg-black/60 text-white text-[8px] p-1 truncate opacity-0 group-hover:opacity-100 transition-opacity pr-6 pointer-events-none">
                            {img.name}
                         </div>
-                        <button onClick={() => removeRowImage(idx, imgIdx)} className="absolute top-1 right-1 bg-red-500 text-white p-1 rounded-full opacity-0 group-hover:opacity-100 transition-opacity">
-                           <X className="w-3 h-3" />
-                        </button>
+                        {!isLocked && (
+                           <>
+                             <button onClick={() => renameRowImage(idx, imgIdx)} className="absolute bottom-1 right-1 bg-indigo-500 text-white p-1 rounded opacity-0 group-hover:opacity-100 transition-opacity z-10" title="Rename photo">
+                                <Pencil className="w-3 h-3" />
+                             </button>
+                             <button onClick={() => removeRowImage(idx, imgIdx)} className="absolute top-1 right-1 bg-red-500 text-white p-1 rounded opacity-0 group-hover:opacity-100 transition-opacity z-10" title="Delete photo">
+                                <X className="w-3 h-3" />
+                             </button>
+                           </>
+                        )}
                      </div>
                    ))}
-                  <label className="aspect-square rounded border-2 border-dashed border-slate-200 flex flex-col items-center justify-center text-slate-400 hover:border-indigo-300 hover:text-indigo-400 cursor-pointer bg-slate-50 transition-colors">
-                     <Plus className="w-5 h-5 mb-1" />
-                     <span className="text-[10px] uppercase font-bold text-center">Add<br/>Photo</span>
-                     <input type="file" multiple accept="image/*" onChange={(e) => handleRowImageUpload(idx, e)} className="hidden" />
-                  </label>
-                  <label className="aspect-square rounded border-2 border-dashed border-indigo-200 flex flex-col items-center justify-center text-indigo-400 hover:border-indigo-400 hover:bg-indigo-50 cursor-pointer transition-colors">
-                     <Camera className="w-5 h-5 mb-1" />
-                     <span className="text-[10px] uppercase font-bold text-center">Open<br/>Camera</span>
-                     <input type="file" accept="image/*" capture="environment" onChange={(e) => handleRowImageUpload(idx, e)} className="hidden" />
-                  </label>
+                  {!isLocked && (
+                     <>
+                        <label className="aspect-square rounded border-2 border-dashed border-slate-200 flex flex-col items-center justify-center text-slate-400 hover:border-indigo-300 hover:text-indigo-400 cursor-pointer bg-slate-50 transition-colors">
+                           <Plus className="w-5 h-5 mb-1" />
+                           <span className="text-[10px] uppercase font-bold text-center">Add<br/>Photo</span>
+                           <input type="file" multiple accept="image/*" onChange={(e) => handleRowImageUpload(idx, e)} className="hidden" />
+                        </label>
+                        <label className="aspect-square rounded border-2 border-dashed border-indigo-200 flex flex-col items-center justify-center text-indigo-400 hover:border-indigo-400 hover:bg-indigo-50 cursor-pointer transition-colors">
+                           <Camera className="w-5 h-5 mb-1" />
+                           <span className="text-[10px] uppercase font-bold text-center">Open<br/>Camera</span>
+                           <input type="file" accept="image/*" capture="environment" onChange={(e) => handleRowImageUpload(idx, e)} className="hidden" />
+                        </label>
+                     </>
+                  )}
                </div>
             </DialogContent>
          </Dialog>
       </td>
       <td className="px-2 py-2 text-center">
-        <Button variant="ghost" size="icon" onClick={() => removeItem(idx)} className="h-7 w-7 text-slate-300 hover:text-red-500 hover:bg-red-50 transition-colors">
+        <Button variant="ghost" size="icon" onClick={() => removeItem(idx)} className="h-7 w-7 text-slate-300 hover:text-red-500 hover:bg-red-50 transition-colors" disabled={isLocked}>
           <Trash2 className="w-3.5 h-3.5" />
         </Button>
       </td>
@@ -281,13 +306,38 @@ export default function CreateSketchPlan() {
   const [recipientEmail, setRecipientEmail] = useState("");
   const [sendingEmail, setSendingEmail] = useState(false);
 
-  // Material search state
   const [materialSearch, setMaterialSearch] = useState("");
   const [searchResults, setSearchResults] = useState<any[]>([]);
   const [searching, setSearching] = useState(false);
 
-  // Load initial data
+  // New state
+  const [projectOpen, setProjectOpen] = useState(false);
+  const [previewImage, setPreviewImage] = useState<{url: string, name: string} | null>(null);
+
+  // Lock & Approval State
+  const [isLocked, setIsLocked] = useState(false);
+  const [requestStatus, setRequestStatus] = useState<string>("none");
+  const [requestReason, setRequestReason] = useState("");
+  const [showUnlockDialog, setShowUnlockDialog] = useState(false);
+  const [unlockReason, setUnlockReason] = useState("");
+  const [submittingRequest, setSubmittingRequest] = useState(false);
+  const [userRole, setUserRole] = useState<string>("user");
+
+  const isAdmin = userRole === "admin";
+
+  // Load user role and initial data
   useEffect(() => {
+    const fetchUserRole = async () => {
+       try {
+          const res = await apiFetch("/api/me");
+          if (res.ok) {
+             const data = await res.json();
+             setUserRole(data.role || "user");
+          }
+       } catch (e) { console.error("Failed to fetch role", e); }
+    };
+    fetchUserRole();
+
     const loadInitialData = async () => {
       try {
         const projectsRes = await apiFetch("/api/boq-projects");
@@ -305,6 +355,11 @@ export default function CreateSketchPlan() {
             setProjectId(p.project_id || "none");
             setLocationStr(p.location || "");
             if (p.plan_date) setPlanDate(new Date(p.plan_date).toISOString().split("T")[0]);
+            
+            // Lock Info
+            setIsLocked(!!p.is_locked);
+            setRequestStatus(p.request_status || "none");
+            setRequestReason(p.request_reason || "");
             
             // Map items and their images
             const mappedItems = data.items.map((it: any) => {
@@ -481,6 +536,10 @@ export default function CreateSketchPlan() {
   };
 
   const savePlan = async () => {
+    if (isLocked) {
+      toast({ title: "Plan Locked", description: "You cannot save changes to a locked plan.", variant: "destructive" });
+      return;
+    }
     if (!name.trim()) {
       toast({ title: "Error", description: "Plan name is required", variant: "destructive" });
       return;
@@ -674,7 +733,22 @@ export default function CreateSketchPlan() {
         body: JSON.stringify({
           to: recipientEmail,
           planName: name,
-          pdfBase64
+          pdfBase64,
+          planData: {
+            projectName: projects.find(p => p.id === projectId)?.name,
+            location: locationStr,
+            planDate: planDate,
+            items: items.map(it => ({
+              item_name: it.item_name,
+              description: it.description,
+              length: it.length,
+              width: it.width,
+              height: it.height,
+              qty: it.qty,
+              unit: it.unit,
+              dimension_unit: it.dimension_unit
+            }))
+          }
         })
       });
 
@@ -689,6 +763,58 @@ export default function CreateSketchPlan() {
     } finally {
       setSendingEmail(false);
     }
+  };
+
+  const handleLockPlan = async () => {
+     if (!confirm("Are you sure you want to lock this plan? Once locked, further editing will be disabled until approved by an admin.")) return;
+     try {
+        const res = await apiFetch(`/api/sketch-plans/${id}/lock`, { method: "POST" });
+        if (res.ok) {
+           toast({ title: "Plan Locked", description: "This plan is now read-only." });
+           setIsLocked(true);
+        }
+     } catch (e) { toast({ title: "Error", description: "Failed to lock plan", variant: "destructive" }); }
+  };
+
+  const handleRequestUnlock = async () => {
+     if (!unlockReason.trim()) {
+        toast({ title: "Error", description: "Please provide a reason for the edit request.", variant: "destructive" });
+        return;
+     }
+     setSubmittingRequest(true);
+     try {
+        const res = await apiFetch(`/api/sketch-plans/${id}/request-unlock`, {
+           method: "POST",
+           headers: { "Content-Type": "application/json" },
+           body: JSON.stringify({ reason: unlockReason })
+        });
+        if (res.ok) {
+           toast({ title: "Request Sent", description: "An admin will review your edit request." });
+           setRequestStatus("pending");
+           setRequestReason(unlockReason);
+           setShowUnlockDialog(false);
+        }
+     } catch (e) { toast({ title: "Error", description: "Failed to send request", variant: "destructive" }); }
+     finally { setSubmittingRequest(false); }
+  };
+
+  const handleAdminUnlock = async (action: 'approve' | 'reject') => {
+     try {
+        const res = await apiFetch(`/api/sketch-plans/${id}/handle-unlock`, {
+           method: "POST",
+           headers: { "Content-Type": "application/json" },
+           body: JSON.stringify({ action })
+        });
+        if (res.ok) {
+           toast({ title: `Request ${action}d`, description: action === 'approve' ? "Plan is now editable." : "Request has been rejected." });
+           if (action === 'approve') {
+              setIsLocked(false);
+              setRequestStatus("approved");
+           } else {
+              setRequestStatus("rejected");
+           }
+        }
+     } catch (e) { toast({ title: "Error", description: "Failed to process request", variant: "destructive" }); }
   };
 
   return (
@@ -720,40 +846,156 @@ export default function CreateSketchPlan() {
             }} className="gap-2 h-9 text-xs">
               <Layers className="w-3.5 h-3.5" /> Save as Template
             </Button>
-            <Button onClick={savePlan} disabled={saving} className="gap-2 bg-indigo-600 hover:bg-indigo-700 text-white h-9 px-6 text-xs font-bold">
+            <Button onClick={savePlan} disabled={saving || isLocked} className="gap-2 bg-indigo-600 hover:bg-indigo-700 text-white h-9 px-6 text-xs font-bold">
               <Save className="w-3.5 h-3.5" /> {saving ? "Saving..." : "Save Plan"}
             </Button>
+            
+            {isEditing && (
+               <div className="flex items-center gap-2 border-l pl-2 ml-1">
+                  {isLocked ? (
+                     <div className="flex items-center gap-2">
+                        <Badge variant="outline" className="bg-amber-50 text-amber-700 border-amber-200 gap-1 py-1 h-9">
+                           <Lock className="w-3 h-3" /> LOCKED
+                        </Badge>
+                        {isAdmin ? (
+                           <div className="flex gap-1">
+                              {requestStatus === 'pending' && (
+                                 <Popover>
+                                    <PopoverTrigger asChild>
+                                       <Button size="sm" variant="outline" className="h-9 gap-1.5 border-amber-300 text-amber-700 hover:bg-amber-100">
+                                          <ShieldAlert className="w-3.5 h-3.5" /> Review Request
+                                       </Button>
+                                    </PopoverTrigger>
+                                    <PopoverContent className="w-80">
+                                       <div className="space-y-4">
+                                          <div className="space-y-2">
+                                             <h4 className="font-bold leading-none">Edit Request</h4>
+                                             <p className="text-sm text-slate-500 italic">"{requestReason}"</p>
+                                          </div>
+                                          <div className="flex gap-2">
+                                             <Button size="sm" className="bg-green-600 hover:bg-green-700 flex-1" onClick={() => handleAdminUnlock('approve')}>Approve</Button>
+                                             <Button size="sm" variant="outline" className="text-red-600 border-red-200 hover:bg-red-50 flex-1" onClick={() => handleAdminUnlock('reject')}>Reject</Button>
+                                          </div>
+                                       </div>
+                                    </PopoverContent>
+                                 </Popover>
+                              )}
+                              <Button size="sm" variant="outline" onClick={() => handleAdminUnlock('approve')} className="h-9 gap-1.5 border-indigo-200 text-indigo-700">
+                                 <Unlock className="w-3.5 h-3.5" /> Force Unlock
+                              </Button>
+                           </div>
+                        ) : (
+                           requestStatus === 'pending' ? (
+                              <Badge variant="outline" className="bg-blue-50 text-blue-700 border-blue-200 h-9">
+                                 Request Pending...
+                              </Badge>
+                           ) : (
+                              <Dialog open={showUnlockDialog} onOpenChange={setShowUnlockDialog}>
+                                 <DialogTrigger asChild>
+                                    <Button size="sm" variant="outline" className="h-9 gap-1.5 border-amber-300 text-amber-700 hover:bg-amber-50">
+                                       <Pencil className="w-3.5 h-3.5" /> Request Edit
+                                    </Button>
+                                 </DialogTrigger>
+                                 <DialogContent>
+                                    <DialogHeader>
+                                       <DialogTitle>Request Edit Permission</DialogTitle>
+                                    </DialogHeader>
+                                    <div className="py-4 space-y-4">
+                                       <div className="space-y-2">
+                                          <Label>Reason for Editing</Label>
+                                          <Textarea 
+                                             placeholder="Explain why you need to modify this locked plan..." 
+                                             value={unlockReason} 
+                                             onChange={(e) => setUnlockReason(e.target.value)}
+                                          />
+                                       </div>
+                                    </div>
+                                    <DialogFooter>
+                                       <Button variant="outline" onClick={() => setShowUnlockDialog(false)}>Cancel</Button>
+                                       <Button className="bg-indigo-600" disabled={submittingRequest} onClick={handleRequestUnlock}>
+                                          {submittingRequest ? "Sending..." : "Submit Request"}
+                                       </Button>
+                                    </DialogFooter>
+                                 </DialogContent>
+                              </Dialog>
+                           )
+                        )}
+                     </div>
+                  ) : (
+                     <Button size="sm" variant="outline" onClick={handleLockPlan} className="h-9 gap-1.5 border-slate-200 text-slate-600 hover:text-amber-700 hover:border-amber-300">
+                        <Lock className="w-3.5 h-3.5" /> Lock Plan
+                     </Button>
+                  )}
+               </div>
+            )}
           </div>
         </div>
 
+        <div className={cn("space-y-4 transition-all duration-300 relative", isLocked && "opacity-[0.8] grayscale-[20%] pointer-events-none select-none")}>
+            {isLocked && (
+               <div className="absolute inset-0 z-40 rounded-xl" title="Plan is locked" aria-hidden="true" />
+            )}
+
         {/* Basic Details - Compact */}
-        <Card className="border-slate-200 shadow-sm">
+        <Card className="border-slate-200 shadow-sm relative z-10">
           <CardContent className="p-4 grid grid-cols-1 md:grid-cols-4 gap-4">
             <div className="space-y-1 col-span-1 md:col-span-2">
               <Label className="text-[10px] uppercase font-bold text-slate-500">Plan Name</Label>
-              <Input value={name} onChange={(e) => setName(e.target.value)} className="h-9 text-sm" placeholder="e.g. Master Bedroom Site Visit" />
+              <Input value={name} onChange={(e) => setName(e.target.value)} className="h-9 text-sm" placeholder="e.g. Master Bedroom Site Visit" disabled={isLocked} />
             </div>
             <div className="space-y-1">
               <Label className="text-[10px] uppercase font-bold text-slate-500">Associated Project</Label>
-              <Select value={projectId} onValueChange={setProjectId}>
-                <SelectTrigger className="h-9 text-sm">
-                  <SelectValue placeholder="Select Project" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="none">No Project</SelectItem>
-                  {projects.map((p) => (
-                    <SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+              <Popover open={projectOpen} onOpenChange={setProjectOpen}>
+                <PopoverTrigger asChild>
+                  <Button
+                    variant="outline"
+                    role="combobox"
+                    aria-expanded={projectOpen}
+                    className="w-full justify-between h-9 text-sm font-normal px-3"
+                    disabled={isLocked}
+                  >
+                    {projectId !== "none" ? projects.find((project) => project.id === projectId)?.name || "Select project..." : "No Project"}
+                    <Search className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+                  </Button>
+                </PopoverTrigger>
+                <PopoverContent className="w-[300px] p-0" align="start">
+                  <Command>
+                    <CommandInput placeholder="Search project..." />
+                    <CommandList>
+                      <CommandEmpty>No project found.</CommandEmpty>
+                      <CommandGroup>
+                        <CommandItem
+                          onSelect={() => {
+                            setProjectId("none");
+                            setProjectOpen(false);
+                          }}
+                        >
+                          No Project
+                        </CommandItem>
+                        {projects.map((project) => (
+                          <CommandItem
+                            key={project.id}
+                            onSelect={() => {
+                              setProjectId(project.id);
+                              setProjectOpen(false);
+                            }}
+                          >
+                            {project.name}
+                          </CommandItem>
+                        ))}
+                      </CommandGroup>
+                    </CommandList>
+                  </Command>
+                </PopoverContent>
+              </Popover>
             </div>
             <div className="space-y-1">
               <Label className="text-[10px] uppercase font-bold text-slate-500">Plan Date</Label>
-              <Input type="date" value={planDate} onChange={(e) => setPlanDate(e.target.value)} className="h-9 text-sm" />
+              <Input type="date" value={planDate} onChange={(e) => setPlanDate(e.target.value)} className="h-9 text-sm" disabled={isLocked} />
             </div>
             <div className="space-y-1 col-span-1 md:col-span-4">
               <Label className="text-[10px] uppercase font-bold text-slate-500">Site Location / Address</Label>
-              <Input value={locationStr} onChange={(e) => setLocationStr(e.target.value)} className="h-9 text-sm" placeholder="City, Area or Full Address" />
+              <Input value={locationStr} onChange={(e) => setLocationStr(e.target.value)} className="h-9 text-sm" placeholder="City, Area or Full Address" disabled={isLocked} />
             </div>
           </CardContent>
         </Card>
@@ -764,24 +1006,24 @@ export default function CreateSketchPlan() {
             <CardTitle className="text-sm font-bold flex items-center gap-2 text-slate-700">
                <GripVertical className="w-4 h-4 text-indigo-500" /> Site Requirements
             </CardTitle>
-            <Button variant="outline" size="sm" onClick={addItem} className="h-7 text-[10px] gap-1.5 border-indigo-200 text-indigo-600 hover:bg-indigo-50 font-bold uppercase">
+            <Button variant="outline" size="sm" onClick={addItem} className="h-7 text-[10px] gap-1.5 border-indigo-200 text-indigo-600 hover:bg-indigo-50 font-bold uppercase" disabled={isLocked}>
               <Plus className="w-3 h-3" /> Add Item
             </Button>
           </CardHeader>
           <CardContent className="p-0">
             <div className="overflow-x-auto">
-              <table className="w-full text-xs">
+              <table className="w-full text-xs table-fixed min-w-[800px]">
                 <thead>
                   <tr className="bg-slate-50 border-b text-slate-500 uppercase text-[9px] font-bold">
                     <th className="px-2 py-2 text-center w-8"></th>
                     <th className="px-2 py-2 text-left w-8">#</th>
-                    <th className="px-2 py-2 text-left min-w-[100px]">Notes Preview</th>
-                    <th className="px-2 py-2 text-left min-w-[150px]">Item / Product</th>
+                    <th className="px-2 py-2 text-left w-[150px]">Notes Preview</th>
+                    <th className="px-2 py-2 text-left w-[180px]">Item / Product</th>
                     <th className="px-2 py-2 text-left w-16">Unit</th>
-                    <th className="px-2 py-2 text-left w-16">L</th>
-                    <th className="px-2 py-2 text-left w-16">W</th>
-                    <th className="px-2 py-2 text-left w-16">H</th>
-                    <th className="px-2 py-2 text-left w-20">Auto Qty</th>
+                    <th className="px-2 py-2 text-left w-14">L</th>
+                    <th className="px-2 py-2 text-left w-14">W</th>
+                    <th className="px-2 py-2 text-left w-14">H</th>
+                    <th className="px-2 py-2 text-left w-16">Qty</th>
                     <th className="px-2 py-2 text-center w-16">Photos</th>
                     <th className="px-2 py-2 text-center w-10">Del</th>
                   </tr>
@@ -792,6 +1034,7 @@ export default function CreateSketchPlan() {
                       key={item.id}
                       item={item}
                       idx={idx}
+                      isLocked={isLocked}
                       updateItem={updateItem}
                       addItem={addItem}
                       removeItem={removeItem}
@@ -805,6 +1048,7 @@ export default function CreateSketchPlan() {
                       renameRowImage={renameRowImage}
                       removeRowImage={removeRowImage}
                       handleRowImageUpload={handleRowImageUpload}
+                      setPreviewImage={setPreviewImage}
                     />
                   ))}
                 </Reorder.Group>
@@ -822,55 +1066,66 @@ export default function CreateSketchPlan() {
                         <Camera className="w-3.5 h-3.5 text-indigo-500" /> Plan-Level Site Photos
                     </CardTitle>
                 </CardHeader>
-                <CardContent className="p-3 flex-1 overflow-y-auto max-h-[220px]">
+                <CardContent className="p-3 flex-1 overflow-y-auto max-h-[220px] relative z-20">
                     <div className="grid grid-cols-4 gap-2">
                         {planImages.map((img, idx) => (
-                            <div key={idx} className="relative group aspect-square rounded border overflow-hidden bg-slate-100 cursor-help" title="Click to rename">
-                                <img src={img.url} className="w-full h-full object-cover" onClick={() => renamePlanImage(idx)} />
-                                <div className="absolute bottom-0 left-0 right-0 bg-black/60 text-white text-[8px] p-1 truncate opacity-0 group-hover:opacity-100 transition-opacity">
+                            <div key={idx} className={cn("relative group aspect-square rounded border overflow-hidden bg-slate-100", isLocked && "pointer-events-auto")}>
+                                <img src={img.url} className="w-full h-full object-cover cursor-pointer hover:opacity-80 transition-opacity" onClick={() => setPreviewImage(img)} title="Click to view full image" />
+                                <div className="absolute bottom-0 left-0 right-0 bg-black/60 text-white text-[8px] p-1 truncate opacity-0 group-hover:opacity-100 transition-opacity pr-6 pointer-events-none">
                                     {img.name}
                                 </div>
-                                <button onClick={() => setPlanImages(planImages.filter((_, i) => i !== idx))} className="absolute top-0 right-0 bg-red-500 text-white p-0.5 rounded-full opacity-0 group-hover:opacity-100 transition-opacity">
-                                    <X className="w-3 h-3" />
-                                </button>
+                                {!isLocked && (
+                                   <>
+                                     <button onClick={() => renamePlanImage(idx)} className="absolute bottom-1 right-1 bg-indigo-500 text-white p-1 rounded opacity-0 group-hover:opacity-100 transition-opacity z-10" title="Rename photo">
+                                         <Pencil className="w-3 h-3" />
+                                     </button>
+                                     <button onClick={() => setPlanImages(planImages.filter((_, i) => i !== idx))} className="absolute top-1 right-1 bg-red-500 text-white p-1 rounded opacity-0 group-hover:opacity-100 transition-opacity z-10" title="Delete photo">
+                                         <X className="w-3 h-3" />
+                                     </button>
+                                   </>
+                                )}
                             </div>
                         ))}
-                        <label className="aspect-square rounded border-2 border-dashed border-slate-200 flex flex-col items-center justify-center text-slate-400 hover:border-indigo-300 hover:text-indigo-400 cursor-pointer bg-white transition-all shadow-sm">
-                            <Plus className="w-5 h-5" />
-                            <span className="text-[8px] font-bold mt-1 uppercase text-center">Add<br/>Photo</span>
-                            <input type="file" multiple accept="image/*" onChange={(e) => {
-                                const files = e.target.files;
-                                if (files) {
-                                    Array.from(files).forEach(file => {
-                                        const reader = new FileReader();
-                                        const fileName = file.name.split('.').slice(0, -1).join('.') || "Untitled Photo";
-                                        reader.onloadend = () => setPlanImages(prev => [
-                                          ...prev, 
-                                          { url: reader.result as string, name: fileName }
-                                        ]);
-                                        reader.readAsDataURL(file);
-                                    });
-                                }
-                            }} className="hidden" />
-                        </label>
-                        <label className="aspect-square rounded border-2 border-dashed border-indigo-200 flex flex-col items-center justify-center text-indigo-400 hover:border-indigo-400 hover:bg-indigo-50 cursor-pointer transition-all shadow-sm bg-white">
-                            <Camera className="w-5 h-5" />
-                            <span className="text-[8px] font-bold mt-1 uppercase text-center">Open<br/>Camera</span>
-                            <input type="file" accept="image/*" capture="environment" onChange={(e) => {
-                                const files = e.target.files;
-                                if (files) {
-                                    Array.from(files).forEach(file => {
-                                        const reader = new FileReader();
-                                        const fileName = `CAM_${new Date().getTime()}`;
-                                        reader.onloadend = () => setPlanImages(prev => [
-                                          ...prev, 
-                                          { url: reader.result as string, name: fileName }
-                                        ]);
-                                        reader.readAsDataURL(file);
-                                    });
-                                }
-                            }} className="hidden" />
-                        </label>
+                        {!isLocked && (
+                           <>
+                              <label className="aspect-square rounded border-2 border-dashed border-slate-200 flex flex-col items-center justify-center text-slate-400 hover:border-indigo-300 hover:text-indigo-400 cursor-pointer bg-white transition-all shadow-sm">
+                                  <Plus className="w-5 h-5" />
+                                  <span className="text-[8px] font-bold mt-1 uppercase text-center">Add<br/>Photo</span>
+                                  <input type="file" multiple accept="image/*" onChange={(e) => {
+                                      const files = e.target.files;
+                                      if (files) {
+                                          Array.from(files).forEach(file => {
+                                              const reader = new FileReader();
+                                              const fileName = file.name.split('.').slice(0, -1).join('.') || "Untitled Photo";
+                                              reader.onloadend = () => setPlanImages(prev => [
+                                                ...prev, 
+                                                { url: reader.result as string, name: fileName }
+                                              ]);
+                                              reader.readAsDataURL(file);
+                                          });
+                                      }
+                                  }} className="hidden" />
+                              </label>
+                              <label className="aspect-square rounded border-2 border-dashed border-indigo-200 flex flex-col items-center justify-center text-indigo-400 hover:border-indigo-400 hover:bg-indigo-50 cursor-pointer transition-all shadow-sm bg-white">
+                                  <Camera className="w-5 h-5" />
+                                  <span className="text-[8px] font-bold mt-1 uppercase text-center">Open<br/>Camera</span>
+                                  <input type="file" accept="image/*" capture="environment" onChange={(e) => {
+                                      const files = e.target.files;
+                                      if (files) {
+                                          Array.from(files).forEach(file => {
+                                              const reader = new FileReader();
+                                              const fileName = `CAM_${new Date().getTime()}`;
+                                              reader.onloadend = () => setPlanImages(prev => [
+                                                ...prev, 
+                                                { url: reader.result as string, name: fileName }
+                                              ]);
+                                              reader.readAsDataURL(file);
+                                          });
+                                      }
+                                  }} className="hidden" />
+                              </label>
+                           </>
+                        )}
                     </div>
                 </CardContent>
             </Card>
@@ -894,7 +1149,7 @@ export default function CreateSketchPlan() {
                     </div>
                     <Dialog>
                         <DialogTrigger asChild>
-                            <Button size="sm" className="bg-slate-800 hover:bg-black text-white text-[10px] h-8 px-4 w-full mt-3">Open Sketch Editor</Button>
+                            <Button size="sm" className="bg-slate-800 hover:bg-black text-white text-[10px] h-8 px-4 w-full mt-3" disabled={isLocked}>Open Sketch Editor</Button>
                         </DialogTrigger>
                         <DialogContent className="max-w-[850px] w-[95vw] max-h-[95vh] h-[90vh] overflow-y-auto flex flex-col p-1 sm:p-4">
                             <DialogHeader className="px-2 sm:px-4">
@@ -918,6 +1173,7 @@ export default function CreateSketchPlan() {
                             </DialogHeader>
                             <div className="py-2">
                                 <SketchPad
+                                    readOnly={isLocked}
                                     unitPrefix={sketchTarget === "main" ? (items[0]?.dimension_unit || "ft") : (items[parseInt(sketchTarget)]?.dimension_unit || "ft")}
                                     onSave={(dataUrl) => {
                                         const fileName = `Sketch_${new Date().getTime()}`;
@@ -956,6 +1212,7 @@ export default function CreateSketchPlan() {
                    </ul>
                 </CardContent>
             </Card>
+        </div>
         </div>
 
         {/* PDF Export Dialog */}
@@ -1007,6 +1264,23 @@ export default function CreateSketchPlan() {
                     {sendingEmail ? "Sending..." : "Send Email"}
                  </Button>
               </DialogFooter>
+           </DialogContent>
+        </Dialog>
+
+        {/* Image Preview Dialog */}
+        <Dialog open={!!previewImage} onOpenChange={(open) => !open && setPreviewImage(null)}>
+           <DialogContent className="max-w-4xl p-1 bg-transparent border-none shadow-none [&>button]:text-white [&>button]:bg-black/50 [&>button]:hover:bg-black/80 [&>button]:rounded-full [&>button]:p-2 [&>button]:z-50 [&>button]:top-4 [&>button]:right-4">
+              <DialogHeader className="sr-only">
+                 <DialogTitle>Image Preview</DialogTitle>
+              </DialogHeader>
+              {previewImage && (
+                 <div className="relative flex flex-col items-center justify-center w-full h-full min-h-[50vh]">
+                    <img src={previewImage.url} alt={previewImage.name} className="max-w-full max-h-[85vh] object-contain rounded-md shadow-2xl bg-white/5" />
+                    <div className="absolute bottom-4 bg-black/70 text-white px-4 py-2 rounded-full text-sm font-medium backdrop-blur-sm border border-white/10 shadow-lg">
+                       {previewImage.name}
+                    </div>
+                 </div>
+              )}
            </DialogContent>
         </Dialog>
       </div>

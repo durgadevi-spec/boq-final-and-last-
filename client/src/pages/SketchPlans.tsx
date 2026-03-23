@@ -3,16 +3,21 @@ import { Link, useLocation } from "wouter";
 import { Layout } from "@/components/layout/Layout";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Plus, Trash2, Edit2, FileText, Calendar, MapPin, Layers } from "lucide-react";
+import { Plus, Trash2, Edit2, FileText, Calendar, MapPin, Layers, Lock, AlertCircle, Check, X } from "lucide-react";
 import apiFetch from "@/lib/api";
 import { useToast } from "@/hooks/use-toast";
 import { format } from "date-fns";
+import { useAuth } from "@/lib/auth-context";
+import { Badge } from "@/components/ui/badge";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 
 export default function SketchPlans() {
   const [plans, setPlans] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
+  const [showRequestsDialog, setShowRequestsDialog] = useState(false);
   const { toast } = useToast();
   const [, setLocation] = useLocation();
+  const { user } = useAuth();
 
   const loadPlans = async () => {
     try {
@@ -47,6 +52,32 @@ export default function SketchPlans() {
     }
   };
 
+  const handleEditRequest = async (planId: string, action: 'approve' | 'reject') => {
+    try {
+      const res = await apiFetch(`/api/sketch-plans/${planId}/handle-unlock`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({ action })
+      });
+      if (res.ok) {
+        toast({ title: "Success", description: `Edit request ${action}d successfully` });
+        loadPlans();
+        if (pendingRequests.length <= 1) {
+          setShowRequestsDialog(false);
+        }
+      } else {
+        toast({ title: "Error", description: `Failed to ${action} request`, variant: "destructive" });
+      }
+    } catch (err) {
+      toast({ title: "Error", description: "Error handling request", variant: "destructive" });
+    }
+  };
+
+  const pendingRequests = plans.filter(p => p.is_locked && p.request_status === 'pending');
+  const isAdmin = user?.role === 'admin';
+
   return (
     <Layout>
       <div className="space-y-6">
@@ -59,6 +90,12 @@ export default function SketchPlans() {
             </div>
           </div>
           <div className="flex gap-2">
+            {isAdmin && pendingRequests.length > 0 && (
+              <Button variant="outline" className="relative flex items-center gap-2 border-amber-500 text-amber-600 hover:bg-amber-50" onClick={() => setShowRequestsDialog(true)}>
+                <AlertCircle className="w-4 h-4" /> Edit Requests
+                <Badge variant="secondary" className="bg-amber-100 text-amber-700 ml-1">{pendingRequests.length}</Badge>
+              </Button>
+            )}
             <Button variant="outline" onClick={() => setLocation("/sketch-templates")} className="flex items-center gap-2">
               <Layers className="w-4 h-4" /> Manage Templates
             </Button>
@@ -91,7 +128,10 @@ export default function SketchPlans() {
               <Card key={p.id} className="hover:shadow-md transition-shadow group overflow-hidden border-slate-200">
                 <CardHeader className="bg-slate-50/50 pb-3 border-b border-slate-100">
                   <div className="flex justify-between items-start">
-                    <CardTitle className="text-lg font-bold group-hover:text-indigo-600 transition-colors">{p.name}</CardTitle>
+                    <CardTitle className="text-lg font-bold group-hover:text-indigo-600 transition-colors flex items-center gap-2">
+                      {p.is_locked && <Lock className="w-3.5 h-3.5 text-amber-500" />}
+                      {p.name}
+                    </CardTitle>
                     <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
                       <Button variant="ghost" size="icon" className="h-8 w-8 text-slate-500 hover:text-indigo-600" onClick={() => setLocation(`/edit-sketch-plan/${p.id}`)}>
                         <Edit2 className="w-4 h-4" />
@@ -131,6 +171,42 @@ export default function SketchPlans() {
           )}
         </div>
       </div>
+
+      <Dialog open={showRequestsDialog} onOpenChange={setShowRequestsDialog}>
+        <DialogContent className="max-w-xl">
+          <DialogHeader>
+            <DialogTitle>Pending Edit Requests</DialogTitle>
+            <DialogDescription>Review and approve edit requests for locked sketch plans.</DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 max-h-[60vh] overflow-y-auto pr-2">
+            {pendingRequests.length === 0 ? (
+              <p className="text-sm text-muted-foreground italic">No pending requests at this time.</p>
+            ) : (
+              pendingRequests.map(req => (
+                <Card key={req.id} className="border-amber-200 bg-amber-50/50">
+                  <CardHeader className="py-3 px-4 flex flex-row items-center justify-between">
+                    <div>
+                      <CardTitle className="text-base flex items-center gap-2 tracking-tight">
+                        <Lock className="w-4 h-4 text-amber-500" />
+                        {req.name}
+                      </CardTitle>
+                      {req.project_name && <p className="text-xs text-muted-foreground mt-0.5 font-medium">Project: {req.project_name}</p>}
+                    </div>
+                    <div className="flex gap-2">
+                      <Button size="sm" variant="outline" className="border-red-200 text-red-600 hover:bg-red-50 hover:text-red-700 h-8" onClick={() => handleEditRequest(req.id, 'reject')}>
+                        <X className="w-4 h-4 mr-1" /> Reject
+                      </Button>
+                      <Button size="sm" className="bg-green-600 hover:bg-green-700 text-white h-8" onClick={() => handleEditRequest(req.id, 'approve')}>
+                        <Check className="w-4 h-4 mr-1" /> Approve
+                      </Button>
+                    </div>
+                  </CardHeader>
+                </Card>
+              ))
+            )}
+          </div>
+        </DialogContent>
+      </Dialog>
     </Layout>
   );
 }

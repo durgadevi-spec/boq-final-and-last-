@@ -111,6 +111,26 @@ export async function registerRoutes(
       )
     `);
     await query(`CREATE INDEX IF NOT EXISTS idx_alerts_created_at ON alerts (created_at)`);
+    
+    // Ensure sketch_plan_locks table exists
+    await query(`
+      CREATE TABLE IF NOT EXISTS sketch_plan_locks (
+        id TEXT PRIMARY KEY,
+        plan_id TEXT NOT NULL REFERENCES sketch_plans(id) ON DELETE CASCADE,
+        is_locked BOOLEAN DEFAULT FALSE,
+        request_status TEXT DEFAULT 'none', -- 'none', 'pending', 'approved', 'rejected'
+        request_reason TEXT,
+        created_at TIMESTAMP DEFAULT NOW(),
+        updated_at TIMESTAMP DEFAULT NOW(),
+        UNIQUE(plan_id)
+      )
+    `);
+    try {
+      await query(`ALTER TABLE sketch_plan_locks ADD CONSTRAINT sketch_plan_locks_plan_id_key UNIQUE (plan_id)`);
+    } catch (err) {
+      // Ignore if constraint already exists
+    }
+    console.log("[migrations] sketch_plan_locks table ensured");
 
     // Ensure type column exists on boq_versions for BOM vs BOQ distinction
     await query("ALTER TABLE boq_versions ADD COLUMN IF NOT EXISTS type VARCHAR(20) DEFAULT 'bom'");
@@ -7950,9 +7970,10 @@ ${list.rows.map((row: any) => `- ${row.name}`).join('\n')}`;
   app.get("/api/sketch-plans", authMiddleware, async (req: Request, res: Response) => {
     try {
       const result = await query(
-        `SELECT sp.*, p.name as project_name 
+        `SELECT sp.*, p.name as project_name, spl.is_locked, spl.request_status
          FROM sketch_plans sp 
          LEFT JOIN boq_projects p ON sp.project_id = p.id 
+         LEFT JOIN sketch_plan_locks spl ON sp.id = spl.plan_id
          ORDER BY sp.created_at DESC`
       );
       res.json({ plans: result.rows || [] });
@@ -7966,7 +7987,13 @@ ${list.rows.map((row: any) => `- ${row.name}`).join('\n')}`;
   app.get("/api/sketch-plans/:id", authMiddleware, async (req: Request, res: Response) => {
     try {
       const { id } = req.params;
-      const planRes = await query("SELECT * FROM sketch_plans WHERE id = $1", [id]);
+      const planRes = await query(
+        `SELECT sp.*, spl.is_locked, spl.request_status, spl.request_reason
+         FROM sketch_plans sp
+         LEFT JOIN sketch_plan_locks spl ON sp.id = spl.plan_id
+         WHERE sp.id = $1`,
+        [id]
+      );
       if (planRes.rows.length === 0) {
         return res.status(404).json({ message: "Plan not found" });
       }
@@ -8154,14 +8181,85 @@ ${list.rows.map((row: any) => `- ${row.name}`).join('\n')}`;
     }
   });
 
+  // POST /api/sketch-plans/:id/lock - Lock a sketch plan
+  app.post("/api/sketch-plans/:id/lock", authMiddleware, async (req: Request, res: Response) => {
+    try {
+      const { id } = req.params;
+      const lockId = `spl-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+      
+      // Upsert lock status
+      await query(
+        `INSERT INTO sketch_plan_locks (id, plan_id, is_locked, updated_at)
+         VALUES ($1, $2, TRUE, NOW())
+         ON CONFLICT (plan_id) DO UPDATE SET is_locked = TRUE, updated_at = NOW()`,
+        [lockId, id]
+      );
+      
+      res.json({ message: "Plan locked successfully" });
+    } catch (err) {
+      console.error("POST /api/sketch-plans/:id/lock error", err);
+      res.status(500).json({ message: "Failed to lock plan" });
+    }
+  });
+
+  // POST /api/sketch-plans/:id/request-unlock - Request unlock for a sketch plan
+  app.post("/api/sketch-plans/:id/request-unlock", authMiddleware, async (req: Request, res: Response) => {
+    try {
+      const { id } = req.params;
+      const { reason } = req.body;
+      const lockId = `spl-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+      
+      await query(
+        `INSERT INTO sketch_plan_locks (id, plan_id, request_status, request_reason, updated_at)
+         VALUES ($1, $2, 'pending', $3, NOW())
+         ON CONFLICT (plan_id) DO UPDATE SET request_status = 'pending', request_reason = $3, updated_at = NOW()`,
+        [lockId, id, reason || "No reason provided"]
+      );
+      
+      res.json({ message: "Unlock request submitted" });
+    } catch (err) {
+      console.error("POST /api/sketch-plans/:id/request-unlock error", err);
+      res.status(500).json({ message: "Failed to submit unlock request" });
+    }
+  });
+
+  // POST /api/sketch-plans/:id/handle-unlock - Admin: approve or reject unlock request
+  app.post("/api/sketch-plans/:id/handle-unlock", authMiddleware, requireRole("admin"), async (req: Request, res: Response) => {
+    try {
+      const { id } = req.params;
+      const { action } = req.body; // 'approve' or 'reject'
+      
+      if (action === 'approve') {
+        await query(
+          `UPDATE sketch_plan_locks 
+           SET is_locked = FALSE, request_status = 'approved', updated_at = NOW() 
+           WHERE plan_id = $1`,
+          [id]
+        );
+        res.json({ message: "Unlock request approved" });
+      } else {
+        await query(
+          `UPDATE sketch_plan_locks 
+           SET request_status = 'rejected', updated_at = NOW() 
+           WHERE plan_id = $1`,
+          [id]
+        );
+        res.json({ message: "Unlock request rejected" });
+      }
+    } catch (err) {
+      console.error("POST /api/sketch-plans/:id/handle-unlock error", err);
+      res.status(500).json({ message: "Failed to handle unlock request" });
+    }
+  });
+
   app.post("/api/send-sketch-plan-email", authMiddleware, async (req: Request, res: Response) => {
     try {
-      const { to, planName, pdfBase64 } = req.body;
+      const { to, planName, pdfBase64, planData } = req.body;
       if (!to || !pdfBase64) {
         return res.status(400).json({ message: "Recipient and PDF content are required" });
       }
 
-      await sendSketchPlanEmail(to, planName || "SketchPlan", pdfBase64);
+      await sendSketchPlanEmail(to, planName || "SketchPlan", pdfBase64, planData);
       res.json({ message: "Email sent successfully" });
     } catch (err) {
       console.error("POST /api/send-sketch-plan-email error", err);
