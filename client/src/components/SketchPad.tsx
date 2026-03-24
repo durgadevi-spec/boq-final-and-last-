@@ -63,6 +63,7 @@ const PREDEFINED_BLOCKS = [
 
 interface SketchPadProps {
   onSave: (dataUrl: string) => void;
+  onAutoSave?: (dataUrl: string) => void;
   initialData?: string;
   width?: number;
   height?: number;
@@ -70,7 +71,7 @@ interface SketchPadProps {
   readOnly?: boolean;
 }
 
-export function SketchPad({ onSave, initialData, width = 600, height = 400, unitPrefix = "ft", readOnly = false }: SketchPadProps) {
+export function SketchPad({ onSave, onAutoSave, initialData, width = 600, height = 400, unitPrefix = "ft", readOnly = false }: SketchPadProps) {
   const [internalSize, setInternalSize] = useState({ width, height });
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [activeTab, setActiveTab] = useState<"drawing" | "block">("drawing");
@@ -1132,45 +1133,132 @@ export function SketchPad({ onSave, initialData, width = 600, height = 400, unit
     }
   };
 
-  const handleSave = () => {
+  // Export: capture the FULL internal resolution document without being affected by current Pan/Zoom
+  const captureDataUrl = useCallback((): string | null => {
     const canvas = canvasRef.current;
-    if (canvas) {
-      const prevGrid = showGrid;
-      setShowGrid(false);
-      const ctx = canvas.getContext("2d");
-      if (ctx) {
-        ctx.fillStyle = "#ffffff";
-        ctx.fillRect(0, 0, canvas.width, canvas.height);
-        const drawShapeLocal = (s: Shape) => {
-          if (s.points.length < 1 || s.type === "delete") return;
-          ctx.beginPath();
-          ctx.strokeStyle = s.color;
-          ctx.lineWidth = s.thickness;
-          ctx.lineCap = "round";
-          ctx.lineJoin = "round";
+    if (!canvas) return null;
 
-          if (s.type === "rect" && s.points.length >= 2) {
-            ctx.strokeRect(s.points[0].x, s.points[0].y, s.points[1].x - s.points[0].x, s.points[1].y - s.points[0].y);
-          } else if (s.type === "circle" && s.points.length >= 2) {
-            const radius = Math.sqrt(Math.pow(s.points[1].x - s.points[0].x, 2) + Math.pow(s.points[1].y - s.points[0].y, 2));
-            ctx.arc(s.points[0].x, s.points[0].y, radius, 0, Math.PI * 2);
-            ctx.stroke();
-          } else if (s.type === "line" || s.type === "measure") {
-            ctx.moveTo(s.points[0].x, s.points[0].y);
-            ctx.lineTo(s.points[1].x, s.points[1].y);
-            ctx.stroke();
-          } else {
-            ctx.moveTo(s.points[0].x, s.points[0].y);
-            s.points.forEach(p => ctx.lineTo(p.x, p.y));
-            ctx.stroke();
-          }
-        };
-        shapes.forEach(drawShapeLocal);
-        onSave(canvas.toDataURL("image/png"));
-      }
-      setShowGrid(prevGrid);
+    const offscreen = document.createElement("canvas");
+    offscreen.width = internalSize.width;
+    offscreen.height = internalSize.height;
+    const ctx = offscreen.getContext("2d");
+    if (!ctx) return null;
+
+    // White background
+    ctx.fillStyle = "#ffffff";
+    ctx.fillRect(0, 0, offscreen.width, offscreen.height);
+
+    // DRAW BACKGROUND PHOTO (Scale to fit full internal canvas)
+    if (initialImage) {
+      ctx.drawImage(initialImage, 0, 0, offscreen.width, offscreen.height);
     }
-  };
+
+    // DRAW SHAPES (No global transform needed here since points are in document space)
+    const drawShapeCapture = (s: Shape) => {
+      if (s.points.length < 1 || s.type === "delete") return;
+      ctx.beginPath();
+      ctx.strokeStyle = s.type === "measure" ? "#10b981" : s.color;
+      ctx.lineWidth = s.thickness;
+      ctx.lineCap = "round";
+      ctx.lineJoin = "round";
+
+      if (s.type === "rect" && s.points.length >= 2) {
+        ctx.strokeRect(s.points[0].x, s.points[0].y, s.points[1].x - s.points[0].x, s.points[1].y - s.points[0].y);
+      } else if (s.type === "circle" && s.points.length >= 2) {
+        const radius = Math.sqrt(Math.pow(s.points[1].x - s.points[0].x, 2) + Math.pow(s.points[1].y - s.points[0].y, 2));
+        ctx.arc(s.points[0].x, s.points[0].y, radius, 0, Math.PI * 2);
+        ctx.stroke();
+      } else if ((s.type === "line" || s.type === "measure") && s.points.length >= 2) {
+        ctx.moveTo(s.points[0].x, s.points[0].y);
+        ctx.lineTo(s.points[1].x, s.points[1].y);
+        ctx.stroke();
+        
+        // Draw measurement labels
+        const dist = Math.sqrt(Math.pow(s.points[1].x - s.points[0].x, 2) + Math.pow(s.points[1].y - s.points[0].y, 2));
+        const realLen = (dist / offscreen.width) * referenceScale;
+        if (s.showMeasurement || s.type === "measure" || showAllMeasurements) {
+          const label = `${realLen.toFixed(1)} ${unitPrefix}`;
+          ctx.font = `bold 12px Inter, system-ui, sans-serif`;
+          const metrics = ctx.measureText(label);
+          const bgW = metrics.width + 10;
+          const bgH = 18;
+          const centerX = (s.points[0].x + s.points[1].x) / 2;
+          const centerY = (s.points[0].y + s.points[1].y) / 2;
+          
+          ctx.save();
+          ctx.translate(centerX, centerY);
+          const angle = Math.atan2(s.points[1].y - s.points[0].y, s.points[1].x - s.points[0].x);
+          let drawAngle = angle;
+          if (Math.abs(angle) > Math.PI / 2) drawAngle += Math.PI;
+          ctx.rotate(drawAngle);
+          
+          ctx.fillStyle = "rgba(255, 255, 255, 0.95)";
+          ctx.beginPath();
+          ctx.roundRect(-bgW / 2, -bgH / 2, bgW, bgH, 4);
+          ctx.fill();
+          ctx.strokeStyle = "#cbd5e1";
+          ctx.lineWidth = 1;
+          ctx.stroke();
+          
+          ctx.fillStyle = "#334155";
+          ctx.textAlign = "center";
+          ctx.textBaseline = "middle";
+          ctx.fillText(label, 0, 0);
+          ctx.restore();
+        }
+      } else {
+        ctx.moveTo(s.points[0].x, s.points[0].y);
+        s.points.forEach(p => ctx.lineTo(p.x, p.y));
+        ctx.stroke();
+      }
+    };
+
+    // DRAW BLOCKS (Furniture)
+    const drawBlockCapture = (b: Block) => {
+      ctx.save();
+      ctx.translate(b.x, b.y);
+      ctx.rotate((b.rotation * Math.PI) / 180);
+      const pixelsPerUnit = offscreen.width / referenceScale;
+      const w = b.width * pixelsPerUnit;
+      const h = b.height * pixelsPerUnit;
+
+      ctx.strokeStyle = b.color || "#64748b";
+      ctx.lineWidth = 1.5;
+      ctx.fillStyle = "rgba(255, 255, 255, 0.95)";
+      ctx.beginPath();
+      ctx.roundRect(-w / 2, -h / 2, w, h, 4);
+      ctx.fill();
+      ctx.stroke();
+      
+      // Basic block label
+      const labelText = `${b.width}×${b.height}${unitPrefix}`;
+      ctx.font = `bold 10px Inter, system-ui, sans-serif`;
+      ctx.fillStyle = "#1e293b";
+      ctx.textAlign = "center";
+      ctx.fillText(labelText, 0, 0);
+      ctx.restore();
+    };
+
+    shapes.forEach(drawShapeCapture);
+    blocks.forEach(drawBlockCapture);
+
+    return offscreen.toDataURL("image/png");
+  }, [internalSize, initialImage, shapes, blocks, referenceScale, unitPrefix, showAllMeasurements]);
+
+  const handleSave = useCallback(() => {
+    const dataUrl = captureDataUrl();
+    if (dataUrl) onSave(dataUrl);
+  }, [captureDataUrl, onSave]);
+
+  // Auto-save: fire every 10s if onAutoSave is provided
+  useEffect(() => {
+    if (!onAutoSave) return;
+    const interval = setInterval(() => {
+      const dataUrl = captureDataUrl();
+      if (dataUrl) onAutoSave(dataUrl);
+    }, 10000);
+    return () => clearInterval(interval);
+  }, [onAutoSave, captureDataUrl]);
 
   return (
     <div

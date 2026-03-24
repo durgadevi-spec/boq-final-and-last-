@@ -440,6 +440,18 @@ export async function registerRoutes(
     `);
     await query(`ALTER TABLE sketch_plan_images ADD COLUMN IF NOT EXISTS image_name VARCHAR(255)`);
     await query(`
+      CREATE TABLE IF NOT EXISTS sketch_plan_attachments (
+        id VARCHAR(100) PRIMARY KEY,
+        plan_id VARCHAR(100) NOT NULL,
+        file_url TEXT NOT NULL,
+        file_name VARCHAR(255),
+        file_type VARCHAR(50),
+        created_at TIMESTAMP DEFAULT NOW(),
+        FOREIGN KEY (plan_id) REFERENCES sketch_plans(id) ON DELETE CASCADE
+      )
+    `);
+
+    await query(`
       CREATE TABLE IF NOT EXISTS sketch_templates (
         id VARCHAR(100) PRIMARY KEY,
         name VARCHAR(255) NOT NULL,
@@ -930,7 +942,8 @@ export async function registerRoutes(
     // Ensure type column exists on boq_versions for BOM vs BOQ distinction
     await query("ALTER TABLE boq_versions ADD COLUMN IF NOT EXISTS type VARCHAR(20) DEFAULT 'bom'");
     await query("ALTER TABLE boq_versions ADD COLUMN IF NOT EXISTS is_locked BOOLEAN DEFAULT FALSE");
-    console.log("[migrations] boq_versions 'type' and 'is_locked' columns ensured");
+    await query("ALTER TABLE boq_versions ADD COLUMN IF NOT EXISTS last_template_snapshot JSONB");
+    console.log("[migrations] boq_versions 'type', 'is_locked', and 'last_template_snapshot' columns ensured");
   } catch (err: unknown) {
     console.warn("[migrations] failed:", (err as any)?.message || err);
   }
@@ -2482,6 +2495,29 @@ export async function registerRoutes(
       }
     },
   );
+
+  // GET /api/material-templates/usage - Get IDs of templates currently in use
+  app.get("/api/material-templates/usage", async (_req, res) => {
+    try {
+      // Check materials table
+      const mats = await query("SELECT DISTINCT template_id FROM materials WHERE template_id IS NOT NULL");
+      // Check submissions table
+      const subs = await query("SELECT DISTINCT template_id FROM material_submissions WHERE template_id IS NOT NULL");
+      // Check boq_items table (parsing material_ from estimator field)
+      const boqs = await query("SELECT DISTINCT SUBSTRING(estimator FROM 10) as template_id FROM boq_items WHERE estimator LIKE 'material_%'");
+
+      const usedIds = new Set([
+        ...mats.rows.map(r => r.template_id),
+        ...subs.rows.map(r => r.template_id),
+        ...boqs.rows.map(r => r.template_id)
+      ]);
+
+      res.json({ usedIds: Array.from(usedIds) });
+    } catch (err) {
+      console.error("/api/material-templates/usage error", err);
+      res.status(500).json({ message: "failed to fetch usage summary" });
+    }
+  });
 
   // GET /api/material-templates/:id/impact - Get impact info before deleting a template
   app.get(
@@ -4770,6 +4806,24 @@ export async function registerRoutes(
       }
     }
   );
+
+  // New POST route added for snapshots
+  app.post("/api/boq-versions/:id/template-snapshot", authMiddleware, async (req: Request, res: Response) => {
+    try {
+      const { id } = req.params;
+      const { snapshot } = req.body;
+      
+      // Updates the specific version with the current template's data
+      await query("UPDATE boq_versions SET last_template_snapshot = $1 WHERE id = $2", 
+        [JSON.stringify(snapshot), id]
+      );
+      
+      res.json({ message: "Snapshot saved" });
+    } catch (err) {
+      console.error("POST /api/boq-versions/:id/template-snapshot error", err);
+      res.status(500).json({ message: "Failed to save template snapshot" });
+    }
+  });
 
   // DELETE /api/boq-versions/:versionId - Delete a version and its items
   app.delete(
@@ -8003,11 +8057,16 @@ ${list.rows.map((row: any) => `- ${row.name}`).join('\n')}`;
         "SELECT id, item_id, image_url, image_name FROM sketch_plan_images WHERE plan_id = $1",
         [id]
       );
-
+      const attachmentsRes = await query(
+        "SELECT id, file_url, file_name, file_type FROM sketch_plan_attachments WHERE plan_id = $1",
+        [id]
+      );
+ 
       res.json({
         plan: planRes.rows[0],
         items: itemsRes.rows || [],
-        images: imagesRes.rows || []
+        images: imagesRes.rows || [],
+        attachments: attachmentsRes.rows || []
       });
     } catch (err) {
       console.error("GET /api/sketch-plans/:id error", err);
@@ -8075,6 +8134,19 @@ ${list.rows.map((row: any) => `- ${row.name}`).join('\n')}`;
               `INSERT INTO sketch_plan_images (id, plan_id, item_id, image_url, image_name) 
                VALUES ($1, $2, $3, $4, $5)`,
               [imgId, id, null, imgUrl, imgName]
+            );
+          }
+        }
+
+        // Plan-level attachments (PDF/Excel)
+        const attachments = req.body.attachments;
+        if (attachments && Array.isArray(attachments)) {
+          for (const att of attachments) {
+            const attId = `att-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+            await query(
+              `INSERT INTO sketch_plan_attachments (id, plan_id, file_url, file_name, file_type) 
+               VALUES ($1, $2, $3, $4, $5)`,
+              [attId, id, att.file_url || att.url, att.file_name || att.name, att.file_type || att.type]
             );
           }
         }
@@ -8153,6 +8225,20 @@ ${list.rows.map((row: any) => `- ${row.name}`).join('\n')}`;
               `INSERT INTO sketch_plan_images (id, plan_id, item_id, image_url, image_name) 
                VALUES ($1, $2, $3, $4, $5)`,
               [imgId, id, null, imgUrl, imgName]
+            );
+          }
+        }
+
+        // Plan-level attachments (PDF/Excel)
+        await query("DELETE FROM sketch_plan_attachments WHERE plan_id = $1", [id]);
+        const attachments = req.body.attachments;
+        if (attachments && Array.isArray(attachments)) {
+          for (const att of attachments) {
+            const attId = `att-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+            await query(
+              `INSERT INTO sketch_plan_attachments (id, plan_id, file_url, file_name, file_type) 
+               VALUES ($1, $2, $3, $4, $5)`,
+              [attId, id, att.file_url || att.url, att.file_name || att.name, att.file_type || att.type]
             );
           }
         }

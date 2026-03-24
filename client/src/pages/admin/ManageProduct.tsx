@@ -8,7 +8,7 @@ import { Input } from "@/components/ui/input";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Search, Loader2, Plus, ArrowRight, ArrowLeft, Trash2, Edit, Check, XCircle, Layers, Copy, GripVertical } from "lucide-react";
+import { Search, Loader2, Plus, ArrowRight, ArrowLeft, Trash2, Edit, Check, XCircle, Layers, Copy, GripVertical, TrendingUp, AlertTriangle } from "lucide-react";
 import { Reorder } from "framer-motion";
 import { Textarea } from "@/components/ui/textarea";
 import apiFetch from "@/lib/api";
@@ -78,6 +78,8 @@ export default function ManageProduct() {
     const [cloneSearch, setCloneSearch] = useState("");
     const [isCloneDialogOpen, setIsCloneDialogOpen] = useState(false);
     const [targetProductForClone, setTargetProductForClone] = useState<Product | null>(null);
+    const [ignoredMismatches, setIgnoredMismatches] = useState<Set<string>>(new Set());
+    const [isUpdatingRates, setIsUpdatingRates] = useState(false);
     const { toast } = useToast();
 
     const resetSelection = () => {
@@ -193,14 +195,16 @@ export default function ManageProduct() {
     });
 
     const { data: materialsData, isLoading: loadingMaterials } = useQuery({
-        queryKey: ["/api/materials"],
+        queryKey: ["/api/materials", step === 3 ? "step3" : "step2"],
         queryFn: async () => {
             const res = await apiFetch("/api/materials");
             if (!res.ok) throw new Error();
             const d = await res.json();
             return ((d.materials || []) as Material[]).sort((a, b) => (a.name || "").localeCompare(b.name || ""));
         },
-        enabled: step === 2,
+        enabled: step === 2 || step === 3,
+        staleTime: 0,
+        refetchOnMount: "always",
     });
 
     const uniqueMaterials = Array.from(new Map((materialsData || []).map(m => [(m.id || Math.random()).toString(), m])).values());
@@ -314,6 +318,7 @@ export default function ManageProduct() {
         setProductDescription(config.description || "");
         const mapped = mapItems(items);
         setSelectedMaterials(mapped); setConfigMaterials(mapped);
+        setIgnoredMismatches(new Set());
         toast({ title: "Configuration Loaded", description: src });
     };
 
@@ -436,6 +441,61 @@ export default function ManageProduct() {
 
     const boqResults = useMemo(() => computeBoq({ requiredUnitType, baseRequiredQty, wastagePctDefault }, configMaterials, baseRequiredQty), [requiredUnitType, baseRequiredQty, wastagePctDefault, configMaterials]);
     const totalCost = boqResults.grandTotal;
+
+    // Build a map from materialId -> latest library rate for fast lookup
+    const materialsById = useMemo(() => {
+        const map: Record<string, Material> = {};
+        (materialsData || []).forEach(m => { map[m.id] = m; });
+        return map;
+    }, [materialsData]);
+
+    // Detect mismatches: library rate is higher than what's saved in config
+    const mismatches = useMemo(() => {
+        const list: Array<{ index: number; materialId: string; name: string; oldRate: number; newRate: number }> = [];
+        configMaterials.forEach((cm, idx) => {
+            const latest = materialsById[cm.id!];
+            if (latest && latest.rate > (cm.supplyRate || 0)) {
+                list.push({ index: idx, materialId: cm.id!, name: cm.name, oldRate: cm.supplyRate || 0, newRate: latest.rate });
+            }
+        });
+        return list;
+    }, [configMaterials, materialsById]);
+
+    const activeMismatches = useMemo(
+        () => mismatches.filter(m => !ignoredMismatches.has(`${m.materialId}-${m.index}`)),
+        [mismatches, ignoredMismatches]
+    );
+
+    const handleUpdateAllRates = () => {
+        if (activeMismatches.length === 0 || isUpdatingRates) return;
+        setIsUpdatingRates(true);
+        setConfigMaterials(prev => prev.map((cm, idx) => {
+            const mismatch = activeMismatches.find(m => m.index === idx);
+            if (mismatch) {
+                const newSupply = mismatch.newRate;
+                return { ...cm, supplyRate: newSupply, rate: newSupply + (cm.installRate || 0) };
+            }
+            return cm;
+        }));
+        setIgnoredMismatches(new Set());
+        toast({ title: "Rates Updated", description: `${activeMismatches.length} material rate(s) updated to latest prices.` });
+        setIsUpdatingRates(false);
+    };
+
+    const handleUpdateSingleRate = (mismatch: typeof mismatches[0]) => {
+        setConfigMaterials(prev => prev.map((cm, idx) => {
+            if (idx === mismatch.index) {
+                const newSupply = mismatch.newRate;
+                return { ...cm, supplyRate: newSupply, rate: newSupply + (cm.installRate || 0) };
+            }
+            return cm;
+        }));
+        toast({ title: "Rate Updated", description: `"${mismatch.name}" rate updated to ₹${mismatch.newRate.toLocaleString()}.` });
+    };
+
+    const handleIgnoreMismatch = (mismatch: typeof mismatches[0]) => {
+        setIgnoredMismatches(prev => new Set(prev).add(`${mismatch.materialId}-${mismatch.index}`));
+    };
 
     useEffect(() => {
         if (selectedProduct && (step === 2 || step === 3)) {
@@ -960,6 +1020,7 @@ export default function ManageProduct() {
                                         </div>
                                     </div>
                                 )}
+
                                 <div className="space-y-6">
                                     <div className="flex flex-col md:flex-row items-center justify-between gap-6 bg-gradient-to-r from-primary/10 via-primary/5 to-transparent p-6 rounded-2xl border-2 border-primary/10 shadow-sm">
                                         <div className="flex items-center gap-4">
@@ -1154,6 +1215,36 @@ export default function ManageProduct() {
                                             </Reorder.Group>
                                         </Table>
                                     </div>
+
+                                    {/* Price Update Notice above footer */}
+                                    {activeMismatches.length > 0 && (
+                                        <div className="bg-amber-50 border border-amber-200 rounded-lg px-3 py-2 space-y-1.5">
+                                            <div className="flex items-center justify-between gap-3">
+                                                <div className="flex items-center gap-1.5">
+                                                    <TrendingUp className="h-3.5 w-3.5 text-amber-600 shrink-0" />
+                                                    <span className="text-[11px] font-bold text-amber-800">Price Update Available — {activeMismatches.length} material{activeMismatches.length > 1 ? 's' : ''} updated in library</span>
+                                                </div>
+                                                <button onClick={handleUpdateAllRates} disabled={isUpdatingRates} className="flex items-center gap-1 px-2.5 py-1 bg-amber-600 hover:bg-amber-700 text-white text-[10px] font-bold rounded transition-colors disabled:opacity-50 shrink-0">
+                                                    {isUpdatingRates ? <Loader2 className="h-3 w-3 animate-spin" /> : <Check className="h-3 w-3" />}
+                                                    Update All ({activeMismatches.length})
+                                                </button>
+                                            </div>
+                                            {activeMismatches.map((m) => (
+                                                <div key={`${m.materialId}-${m.index}`} className="flex items-center justify-between gap-2 bg-white border border-amber-100 rounded px-2.5 py-1.5">
+                                                    <div className="flex items-center gap-2 min-w-0">
+                                                        <AlertTriangle className="h-3 w-3 text-amber-500 shrink-0" />
+                                                        <span className="text-[11px] font-semibold text-slate-800 truncate">{m.name}</span>
+                                                        <span className="text-[10px] text-slate-400 line-through shrink-0">₹{m.oldRate.toLocaleString()}</span>
+                                                        <span className="text-[11px] font-bold text-green-700 shrink-0">₹{m.newRate.toLocaleString()}</span>
+                                                    </div>
+                                                    <div className="flex items-center gap-1.5 shrink-0">
+                                                        <button onClick={() => handleUpdateSingleRate(m)} className="text-[10px] font-bold px-2 py-0.5 bg-amber-100 hover:bg-amber-200 text-amber-800 rounded border border-amber-200 transition-colors">Update</button>
+                                                        <button onClick={() => handleIgnoreMismatch(m)} className="text-[10px] font-bold px-2 py-0.5 bg-slate-100 hover:bg-slate-200 text-slate-600 rounded border border-slate-200 transition-colors">Ignore</button>
+                                                    </div>
+                                                </div>
+                                            ))}
+                                        </div>
+                                    )}
 
                                     <div className="flex flex-col sm:flex-row justify-between items-center gap-4 pt-6 mt-4 border-t">
                                         <div className="flex items-center gap-3 w-full sm:w-auto">

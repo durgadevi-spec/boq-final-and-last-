@@ -36,7 +36,7 @@ import { computeBoq } from "@/lib/boqCalc";
 
 import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
-import { Trash2, Copy, GripVertical, GripHorizontal, Eye, EyeOff, Edit2, ChevronDown, Briefcase, MapPin, IndianRupee, Lock, Edit3, CheckCircle2, Clock, Search } from "lucide-react";
+import { Trash2, Copy, GripVertical, GripHorizontal, Eye, EyeOff, Edit2, ChevronDown, Briefcase, MapPin, IndianRupee, Lock, LayoutTemplate, Edit3, CheckCircle2, Clock, Search } from "lucide-react";
 
 /** Helper to generate Excel-style column names (A, B, C... Z, AA, AB...) */
 const getExcelColumnName = (n: number) => {
@@ -434,6 +434,32 @@ export default function FinalizeBoq() {
   const [termsAndConditions, setTermsAndConditions] = useState<string>("");
 
   const [globalColSettings, setGlobalColSettings] = useState<{ [colName: string]: any }>({});
+  const [isColumnManagerOpen, setIsColumnManagerOpen] = useState(false);
+
+  const handleHideSelectedRows = async (hide: boolean) => {
+    if (selectedProductIds.size === 0) return;
+    try {
+      const ids = Array.from(selectedProductIds);
+      await Promise.all(ids.map(id => {
+        const item = boqItems.find(i => i.id === id);
+        let td = item?.table_data || {};
+        if (typeof td === "string") try { td = JSON.parse(td); } catch { td = {}; }
+        const updatedTd = { ...td, finalize_hide_row: hide };
+        return apiFetch(`/api/boq-items/${id}`, {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ table_data: updatedTd }),
+        });
+      }));
+      loadBoqItemsAndEdits(activeVersionId);
+      setSelectedProductIds(new Set());
+      toast({ title: hide ? "Rows Hidden" : "Rows Restored", description: `${ids.length} row(s) updated.` });
+    } catch (e) {
+      toast({ title: "Error", description: "Failed to update row visibility", variant: "destructive" });
+    }
+  };
+
+
 
   // BOM versions: only show approved versions for selection
   const filteredBomVersions = React.useMemo(() => {
@@ -447,6 +473,34 @@ export default function FinalizeBoq() {
 
   const activeVersionId = selectedBoqVersionId || selectedBomVersionId;
   const activeVersion = [...bomVersions, ...boqVersions].find(v => v.id === activeVersionId);
+
+  const snapshot = (activeVersion as any)?.last_template_snapshot;
+  const getIsModified = (itemId: string, field: string, currentValue: any) => {
+    if (!snapshot || !snapshot.itemData) return false;
+    const originalItem = snapshot.itemData[itemId];
+    if (!originalItem) return false;
+
+    if (field === "columns") {
+      const colName = currentValue;
+      const originalCol = snapshot.columns.find((c: any) => c.name === colName);
+      if (!originalCol) return true; // NEW Column!
+
+      const itemCols = customColumns[itemId] || [];
+      const currentCol = itemCols.find(c => c.name === colName);
+      if (!currentCol) return false;
+      return (
+        currentCol.baseSource !== originalCol.baseSource ||
+        currentCol.operator !== originalCol.operator ||
+        String(currentCol.percentageValue) !== String(originalCol.percentageValue) ||
+        currentCol.multiplierSource !== originalCol.multiplierSource ||
+        currentCol.isTotal !== originalCol.isTotal
+      );
+    }
+
+    const originalVal = String(originalItem[field] ?? "");
+    const curVal = String(currentValue ?? "");
+    return curVal !== originalVal;
+  };
 
   const [isExportDialogOpen, setIsExportDialogOpen] = useState(false);
   const [selectedExportCols, setSelectedExportCols] = useState<string[]>(() => {
@@ -1612,13 +1666,48 @@ export default function FinalizeBoq() {
 
       if (newGlobalSettings) setGlobalColSettings(newGlobalSettings);
 
+      // We snapshoet what we consider "original" from the template's perspective.
+      // Since templates don't store row-level data (Qty/Unit/Rate), the snapshot will reflect
+      // what the items looked like *immediately* after applying the template's structure.
+      const snapshot: any = {
+        columns: columns,
+        globalSettings: newGlobalSettings || {},
+        itemData: boqItems.reduce((acc, it) => {
+          let td = it.table_data || {};
+          if (typeof td === 'string') try { td = JSON.parse(td); } catch { td = {}; }
+          acc[it.id] = {
+            qty: String(productQuantities[it.id] ?? td.finalize_qty ?? ""),
+            rate: String(overrideRates[it.id] ?? td.finalize_override_rate ?? ""),
+            unit: String(productUnits[it.id] ?? td.finalize_unit ?? ""),
+            description: String(productDescriptions[it.id] ?? td.finalize_description ?? ""),
+            columns: columns, // The cols from the template
+          };
+          return acc;
+        }, {} as Record<string, any>),
+        templateId: templateId,
+        templateName: template.name
+      };
+
       const updates = boqItems.map(item => {
         setCustomColumns(prev => ({ ...prev, [item.id]: columns }));
         return saveItemLayout(item.id, columns);
       });
 
       await Promise.all(updates);
-      toast({ title: "Template Applied", description: `Applied "${template.name}" configuration to all products.` });
+
+      // Persist snapshot to the version itself
+      await apiFetch(`/api/boq-versions/${activeVersionId}/template-snapshot`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ snapshot }),
+      });
+      // Update local state to show highlights immediately
+      if (activeVersion) {
+        setBoqVersions(prev => prev.map(v => v.id === activeVersion.id ? { ...v, last_template_snapshot: snapshot } : v));
+        setBomVersions(prev => prev.map(v => v.id === activeVersion.id ? { ...v, last_template_snapshot: snapshot } : v));
+      }
+
+      toast({ title: "Template Applied", description: `Applied "${template.name}" configuration to all products. Changes since this snapshot will be blue.` });
       setSelectedTemplateId("");
     } catch (e) {
       console.error("Apply template error:", e);
@@ -2751,6 +2840,11 @@ export default function FinalizeBoq() {
                       <Edit3 className="h-2.5 w-2.5 mr-1" /> DRAFT
                     </Badge>
                   )}
+                  {snapshot && (
+                    <Badge variant="outline" className="bg-blue-600 text-white border-blue-700 text-[10px] font-bold px-2 py-0 h-6 animate-pulse hover:animate-none cursor-help" title={`Highlights show changes since template "${snapshot.templateName || 'Modified'}" was applied`}>
+                      <LayoutTemplate className="h-2.5 w-2.5 mr-1" /> TEMPLATE MODIFIED (HIGHLIGHTS ON)
+                    </Badge>
+                  )}
                 </div>
               </div>
             )}
@@ -2890,6 +2984,74 @@ export default function FinalizeBoq() {
             </DialogFooter>
           </DialogContent>
         </Dialog>
+        {/* Column Manager Dialog */}
+        <Dialog open={isColumnManagerOpen} onOpenChange={setIsColumnManagerOpen}>
+          <DialogContent className="max-w-[450px]">
+            <DialogHeader>
+              <DialogTitle className="text-lg font-bold">Manage Column Visibility</DialogTitle>
+              <DialogDescription className="text-xs">Select columns you want to display in the main table.</DialogDescription>
+            </DialogHeader>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-x-6 gap-y-3 py-4 max-h-[400px] overflow-y-auto px-1">
+              <div className="space-y-3">
+                <h4 className="text-[10px] font-black uppercase tracking-widest text-slate-400 border-b pb-1">Predefined Columns</h4>
+                {[
+                  { label: "S.No", id: "sno" },
+                  { label: "Product / Material", id: "product" },
+                  { label: "Description / Location", id: "description" },
+                  { label: "HSN", id: "hsn" },
+                  { label: "SAC", id: "sac" },
+                  { label: "Unit", id: "unit" },
+                  { label: "Qty", id: "qty" },
+                  { label: "Rate", id: "rate" },
+                  { label: "System Total (J)", id: "system_total" },
+                  { label: "Override Rate (K)", id: "override_rate" },
+                  { label: "Override Total (L)", id: "override_total" }
+                ].map((col) => {
+                  const mapping: Record<string, string> = {
+                    sno: "S.No", product: "Product / Material", description: "Description / Location",
+                    hsn: "HSN", sac: "SAC", rate: "Rate", unit: "Unit", qty: "Qty",
+                    system_total: "System Total (J)", override_rate: "Rate (K)", override_total: "Total (L)"
+                  };
+                  const colName = mapping[col.id];
+                  const isVisible = !hiddenCols.includes(colName);
+                  return (
+                    <div key={col.id} className="flex items-center space-x-2.5">
+                      <Checkbox
+                        id={`mgr-col-${col.id}`}
+                        checked={isVisible}
+                        onCheckedChange={(checked) => handleHideColumn(colName, !checked)}
+                      />
+                      <label htmlFor={`mgr-col-${col.id}`} className="text-[12px] font-semibold text-slate-700 cursor-pointer">
+                        {col.label}
+                      </label>
+                    </div>
+                  );
+                })}
+              </div>
+
+              {allCols.length > 0 && (
+                <div className="space-y-3">
+                  <h4 className="text-[10px] font-black uppercase tracking-widest text-slate-400 border-b pb-1">Custom Columns</h4>
+                  {allCols.map((col) => (
+                    <div key={col.name} className="flex items-center space-x-2.5">
+                      <Checkbox
+                        id={`mgr-custom-${col.name}`}
+                        checked={!col.hideColumn}
+                        onCheckedChange={(checked) => handleHideColumn(col.name, !checked)}
+                      />
+                      <label htmlFor={`mgr-custom-${col.name}`} className="text-[12px] font-semibold text-slate-700 cursor-pointer truncate max-w-[150px]">
+                        {col.name}
+                      </label>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+            <DialogFooter className="bg-slate-50 border-t p-4 -m-6 mt-4">
+              <Button onClick={() => setIsColumnManagerOpen(false)} className="bg-slate-800 text-white font-bold h-9 px-6 uppercase text-[11px]">Close</Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
         {/* BOM Items Section — one card+table per product */}
         {selectedProjectId && (
           <div className="space-y-4">
@@ -3014,19 +3176,44 @@ export default function FinalizeBoq() {
                       size="sm"
                       className="h-9 px-4 text-[12px] font-bold uppercase border-yellow-300 text-yellow-700 hover:bg-yellow-50 hover:border-yellow-400 transition-all shadow-sm"
                       onClick={async () => {
-                        if (!confirm("Restoring all hidden totals and columns for all lines?")) return;
+                        if (!confirm("Restoring all hidden totals, columns, and rows for all lines?")) return;
                         setHideSystemTotalFooter(false);
                         setHiddenPredefinedCols({});
                         const updates = boqItems.map(item => {
                           const nextCols = (customColumns[item.id] || []).map(c => ({ ...c, hideTotal: false, hideColumn: false }));
                           setCustomColumns(prev => ({ ...prev, [item.id]: nextCols }));
-                          return saveItemLayout(item.id, nextCols, undefined, undefined, undefined, undefined, undefined, {});
+                          let td = item.table_data || {};
+                          if (typeof td === "string") try { td = JSON.parse(td); } catch { td = {}; }
+                          const updatedTd = { ...td, finalize_hide_row: false };
+                          return apiFetch(`/api/boq-items/${item.id}`, {
+                            method: "PUT",
+                            headers: { "Content-Type": "application/json" },
+                            body: JSON.stringify({ table_data: updatedTd }),
+                          });
                         });
                         await Promise.all(updates);
-                        toast({ title: "Visibility Restored", description: "All hidden columns and totals are now visible." });
+                        loadBoqItemsAndEdits(activeVersionId);
+                        toast({ title: "Visibility Restored", description: "All hidden rows, columns and totals are now visible." });
                       }}
                     >
                       🔄 Reset All Visibility
+                    </Button>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="h-9 px-4 text-[12px] font-bold uppercase border-orange-300 text-orange-600 hover:bg-orange-50 hover:border-orange-400 transition-all shadow-sm h-9"
+                      disabled={selectedProductIds.size === 0}
+                      onClick={() => handleHideSelectedRows(true)}
+                    >
+                      <EyeOff className="w-3.5 h-3.5 mr-1.5" /> Hide Selected ({selectedProductIds.size})
+                    </Button>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="h-9 px-4 text-[12px] font-bold uppercase border-slate-300 text-slate-700 hover:bg-slate-50 transition-all shadow-sm h-9"
+                      onClick={() => setIsColumnManagerOpen(true)}
+                    >
+                      <Eye className="w-3.5 h-3.5 mr-1.5" /> Manage Columns
                     </Button>
                     <Button
                       variant="outline"
@@ -3063,22 +3250,63 @@ export default function FinalizeBoq() {
                   </div>
                 )}
 
-                {!isVersionSubmitted && hiddenCols.length > 0 && (
-                  <div className="flex items-center gap-2 p-3 bg-orange-50/50 border-b border-orange-100 overflow-x-auto whitespace-nowrap scrollbar-hide">
-                    <span className="text-[10px] font-semibold uppercase tracking-widest text-orange-600 mr-2 flex-shrink-0">Hidden Columns:</span>
-                    {hiddenCols.map(colName => (
-                      <button
-                        key={colName}
-                        onClick={() => handleHideColumn(colName, false)}
-                        className="flex items-center gap-1.5 px-2.5 py-1 bg-white border border-orange-200 rounded-full text-[11px] font-bold text-orange-700 hover:bg-orange-100 hover:border-orange-300 transition-all shadow-sm group"
-                      >
-                        <Eye size={12} className="text-orange-400 group-hover:text-orange-600" />
-                        {colName}
-                        <span className="text-[9px] opacity-70 ml-1">Restore</span>
-                      </button>
-                    ))}
-                  </div>
-                )}
+                {!isVersionSubmitted && (hiddenCols.length > 0 || boqItems.some(i => {
+                  let td = i.table_data; if (typeof td === 'string') try { td = JSON.parse(td); } catch { td = {}; }
+                  return !!td.finalize_hide_row;
+                })) && (
+                    <div className="flex flex-col gap-2 p-3 bg-orange-50/50 border-b border-orange-100 overflow-x-auto whitespace-nowrap scrollbar-hide">
+                      {hiddenCols.length > 0 && (
+                        <div className="flex items-center gap-2">
+                          <span className="text-[10px] font-semibold uppercase tracking-widest text-orange-600 mr-2 flex-shrink-0">Hidden Columns:</span>
+                          {hiddenCols.map(colName => (
+                            <button
+                              key={colName}
+                              onClick={() => handleHideColumn(colName, false)}
+                              className="flex items-center gap-1.5 px-2.5 py-1 bg-white border border-orange-200 rounded-full text-[11px] font-bold text-orange-700 hover:bg-orange-100 hover:border-orange-300 transition-all shadow-sm group"
+                            >
+                              <Eye size={12} className="text-orange-400 group-hover:text-orange-600" />
+                              {colName}
+                              <span className="text-[9px] opacity-70 ml-1">Restore</span>
+                            </button>
+                          ))}
+                        </div>
+                      )}
+                      {boqItems.some(i => {
+                        let td = i.table_data; if (typeof td === 'string') try { td = JSON.parse(td); } catch { td = {}; }
+                        return !!td.finalize_hide_row;
+                      }) && (
+                          <div className="flex items-center gap-2">
+                            <span className="text-[10px] font-semibold uppercase tracking-widest text-orange-600 mr-2 flex-shrink-0">Hidden Rows:</span>
+                            {boqItems.filter(i => {
+                              let td = i.table_data; if (typeof td === 'string') try { td = JSON.parse(td); } catch { td = {}; }
+                              return !!td.finalize_hide_row;
+                            }).map(item => {
+                              let td = item.table_data; if (typeof td === 'string') try { td = JSON.parse(td); } catch { td = {}; }
+                              const productName = td.product_name || td.name || "Unknown Product";
+                              return (
+                                <button
+                                  key={item.id}
+                                  onClick={async () => {
+                                    let td = item.table_data; if (typeof td === 'string') try { td = JSON.parse(td); } catch { td = {}; }
+                                    await apiFetch(`/api/boq-items/${item.id}`, {
+                                      method: "PUT",
+                                      headers: { "Content-Type": "application/json" },
+                                      body: JSON.stringify({ table_data: { ...td, finalize_hide_row: false } }),
+                                    });
+                                    loadBoqItemsAndEdits(activeVersionId);
+                                  }}
+                                  className="flex items-center gap-1.5 px-2.5 py-1 bg-white border border-orange-200 rounded-full text-[11px] font-bold text-orange-700 hover:bg-orange-100 hover:border-orange-300 transition-all shadow-sm group"
+                                >
+                                  <Eye size={12} className="text-orange-400 group-hover:text-orange-600" />
+                                  <span className="max-w-[150px] truncate">{productName}</span>
+                                  <span className="text-[9px] opacity-70 ml-1">Restore</span>
+                                </button>
+                              );
+                            })}
+                          </div>
+                        )}
+                    </div>
+                  )}
 
                 <div className="overflow-x-auto">
                   <table className="border-collapse text-sm min-w-full">
@@ -3296,6 +3524,8 @@ export default function FinalizeBoq() {
                           try { tableData = JSON.parse(tableData); } catch { tableData = {}; }
                         }
 
+                        if (tableData.finalize_hide_row) return null;
+
                         const currentStep11Items: Step11Item[] = Array.isArray(tableData.step11_items) ? tableData.step11_items : [];
                         const derivedProductName = tableData.product_name || boqItem.estimator || "—";
                         const productName = (derivedProductName === "Manual Product" || derivedProductName === "Manual" || boqItem.estimator === "manual_product" || boqItem.estimator === "Manual")
@@ -3386,7 +3616,7 @@ export default function FinalizeBoq() {
                                   onChange={e => setProductDescriptions(prev => ({ ...prev, [boqItem.id]: e.target.value }))}
                                   onBlur={() => saveItemLayout(boqItem.id, undefined, undefined, productDescriptions[boqItem.id])}
                                   rows={2}
-                                  className="w-full border-none rounded p-1 text-[10px] focus:ring-1 ring-blue-300 outline-none bg-transparent resize-y min-h-[35px] leading-tight"
+                                  className={`w-full border-none rounded p-1 text-[10px] focus:ring-1 ring-blue-300 outline-none bg-transparent resize-y min-h-[35px] leading-tight ${getIsModified(boqItem.id, "description", manualDesc) ? "text-blue-600 font-bold italic" : ""}`}
                                   placeholder="Description..."
                                 />
                               </td>
@@ -3409,7 +3639,7 @@ export default function FinalizeBoq() {
                                   disabled={isVersionSubmitted}
                                   onChange={e => setProductUnits(prev => ({ ...prev, [boqItem.id]: e.target.value }))}
                                   onBlur={() => saveItemLayout(boqItem.id, undefined, undefined, undefined, undefined, undefined, productUnits[boqItem.id])}
-                                  className="w-full border-none rounded p-0.5 text-[10px] focus:ring-1 ring-blue-300 outline-none bg-transparent text-center font-semibold h-7"
+                                  className={`w-full border-none rounded p-0.5 text-[10px] focus:ring-1 ring-blue-300 outline-none bg-transparent text-center font-semibold h-7 ${getIsModified(boqItem.id, "unit", productUnits[boqItem.id] ?? (currentStep11Items[0]?.unit || tableData.unit || "")) ? "text-blue-600 underline" : ""}`}
                                   placeholder="Unit"
                                 />
                               </td>
@@ -3422,7 +3652,7 @@ export default function FinalizeBoq() {
                                   disabled={isVersionSubmitted}
                                   onChange={e => setProductQuantities(prev => ({ ...prev, [boqItem.id]: e.target.value }))}
                                   onBlur={async () => { await saveItemLayout(boqItem.id, undefined, undefined, undefined, productQuantities[boqItem.id]); }}
-                                  className="w-full border-none rounded p-0.5 text-[10px] focus:ring-1 ring-blue-300 outline-none bg-blue-100/50 text-center font-semibold h-7"
+                                  className={`w-full border-none rounded p-0.5 text-[10px] focus:ring-1 ring-blue-300 outline-none bg-blue-100/50 text-center font-semibold h-7 ${getIsModified(boqItem.id, "qty", productQuantities[boqItem.id] ?? (tableData.materialLines && tableData.targetRequiredQty !== undefined ? tableData.targetRequiredQty : (currentStep11Items[0]?.qty || 0))) ? "text-blue-600 border-b border-blue-400" : ""}`}
                                   placeholder="Qty"
                                 />
                               </td>
@@ -3445,7 +3675,7 @@ export default function FinalizeBoq() {
                                   disabled={isVersionSubmitted}
                                   onChange={e => setOverrideRates(prev => ({ ...prev, [boqItem.id]: e.target.value }))}
                                   onBlur={async () => { await saveItemLayout(boqItem.id, undefined, undefined, undefined, undefined, overrideRates[boqItem.id]); }}
-                                  className="w-full border-none rounded p-0.5 text-[10px] focus:ring-1 ring-gray-300 outline-none bg-gray-50 text-right font-semibold h-7 px-2"
+                                  className={`w-full border-none rounded p-0.5 text-[10px] focus:ring-1 ring-gray-300 outline-none bg-gray-50 text-right font-semibold h-7 px-2 ${getIsModified(boqItem.id, "rate", overrideRates[boqItem.id] ?? "") ? "text-blue-600 font-bold" : ""}`}
                                   placeholder="0.00"
                                 />
                               </td>
@@ -3510,7 +3740,7 @@ export default function FinalizeBoq() {
                                 // Render the cell only if not hidden
                                 if (isTotalColumn) {
                                   return (
-                                    <td key={`${col.name}-${idx}`} className="border-r px-2 py-1.5 text-right font-semibold text-green-900 bg-green-100/40 text-[10px]">
+                                    <td key={`${col.name}-${idx}`} className={`border-r px-2 py-1.5 text-right font-semibold text-green-900 bg-green-100/40 text-[10px] ${getIsModified(boqItem.id, "columns", col.name) ? "text-blue-600 border-2 border-blue-100" : ""}`}>
                                       ₹{valNum.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                                     </td>
                                   );
@@ -3528,7 +3758,11 @@ export default function FinalizeBoq() {
                                   const itemOp = (itemCol as any).operator || "%";
 
                                   return (
-                                    <td key={`${col.name}-${idx}`} className="border-r px-2 py-1 bg-transparent relative group/cell align-middle text-[11px] min-w-[180px]">
+                                    <td
+                                      key={`${col.name}-${idx}`}
+                                      className={`border-r px-2 py-1 relative group/cell align-middle text-[11px] min-w-[180px] ${getIsModified(boqItem.id, "columns", col.name) ? "bg-blue-50/40 text-blue-600 border-2 border-blue-100" : "bg-transparent"}`}
+                                      title={getIsModified(boqItem.id, "columns", col.name) ? "Modified from Template" : ""}
+                                    >
                                       <div className="flex flex-col h-full min-h-[45px] justify-between">
                                         <div className="absolute left-1 top-1 z-20 pointer-events-none group-hover/cell:pointer-events-auto focus-within:pointer-events-auto">
                                           <div className="flex items-center gap-1 opacity-0 group-hover/cell:opacity-100 focus-within:opacity-100 transition-opacity bg-white/95 p-1 rounded-md shadow-md border border-purple-200">

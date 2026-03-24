@@ -22,6 +22,7 @@ import {
 } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
+import { Checkbox } from "@/components/ui/checkbox";
 import {
   Dialog,
   DialogContent,
@@ -644,6 +645,8 @@ export default function AdminDashboard() {
 
   // ==== MASTER MATERIALS STATE (created by Admin/Software Team with just name + code) ====
   const [masterMaterials, setMasterMaterials] = useState<any[]>([]);
+  const [usedTemplateIds, setUsedTemplateIds] = useState<Set<string>>(new Set());
+  const [showOnlyUnlinked, setShowOnlyUnlinked] = useState(false);
 
   // Load master materials from API
   useEffect(() => {
@@ -657,6 +660,21 @@ export default function AdminDashboard() {
       } catch (e) {
         console.warn('load master materials failed', e);
         setMasterMaterials([]);
+      }
+    })();
+  }, []);
+
+  // Load template usage summary
+  useEffect(() => {
+    (async () => {
+      try {
+        const res = await fetch('/api/material-templates/usage');
+        if (res.ok) {
+          const data = await res.json();
+          setUsedTemplateIds(new Set(data.usedIds || []));
+        }
+      } catch (e) {
+        console.warn('load material-templates usage failed', e);
       }
     })();
   }, []);
@@ -3047,13 +3065,23 @@ export default function AdminDashboard() {
                   <CardDescription>
                     Manage all material templates created for suppliers
                   </CardDescription>
-                  <div className="mt-4">
+                   <div className="mt-4 flex flex-wrap items-center gap-4">
                     <Input
                       placeholder="Search materials..."
                       value={masterSearch}
                       onChange={(e) => setMasterSearch(e.target.value)}
                       className="max-w-sm"
                     />
+                    <div className="flex items-center space-x-2">
+                      <Checkbox 
+                        id="unlinked-filter" 
+                        checked={showOnlyUnlinked} 
+                        onCheckedChange={(checked) => setShowOnlyUnlinked(!!checked)}
+                      />
+                      <Label htmlFor="unlinked-filter" className="text-sm font-medium cursor-pointer">
+                        Show Only Not Linked
+                      </Label>
+                    </div>
                   </div>
                 </CardHeader>
                 <CardContent>
@@ -3064,10 +3092,15 @@ export default function AdminDashboard() {
                   ) : (
                     <div className="space-y-2 max-h-80 overflow-y-auto p-2">
                       {masterMaterials
-                        .filter((t: any) => fuzzySearch(masterSearch, [t.name || "", t.code || "", t.category || ""]))
-                        .slice(0, 36)
+                        .filter((t: any) => {
+                          const matchesSearch = fuzzySearch(masterSearch, [t.name || "", t.code || "", t.category || ""]);
+                          if (showOnlyUnlinked) {
+                            return matchesSearch && !usedTemplateIds.has(t.id);
+                          }
+                          return matchesSearch;
+                        })
                         .map((template: any) => (
-                          <div key={template.id} className="p-4 border rounded flex items-center justify-between bg-white">
+                          <div key={template.id} className={`p-4 border rounded flex items-center justify-between ${!usedTemplateIds.has(template.id) ? 'bg-amber-50/40' : 'bg-white'}`}>
                             <div className="flex-1">
                               {editingMaterialId === template.id ? (
                                 <div className="space-y-3 w-full">
@@ -3228,7 +3261,14 @@ export default function AdminDashboard() {
                                     )}
                                   </div>
                                   <div>
-                                    <div className="font-medium text-sm">{template.name}</div>
+                                    <div className="flex items-center gap-2">
+                                      <div className="font-medium text-sm">{template.name}</div>
+                                      {!usedTemplateIds.has(template.id) && (
+                                        <Badge variant="outline" className="text-[9px] h-4 px-1.5 bg-amber-50 text-amber-600 border-amber-200">
+                                          Not Linked
+                                        </Badge>
+                                      )}
+                                    </div>
                                     <div className="text-xs text-muted-foreground">
                                       {template.code}
                                     </div>

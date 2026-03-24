@@ -7,7 +7,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
-import { Plus, Trash2, Save, ArrowLeft, Camera, Pencil, Layers, X, GripVertical, FileText, Search, MessageSquare, Image as ImageIcon, Move, Lock, Unlock, ShieldAlert, Cloud, Check, AlertTriangle } from "lucide-react";
+import { Plus, Trash2, Save, ArrowLeft, Camera, Pencil, Layers, X, GripVertical, FileText, Search, MessageSquare, Image as ImageIcon, Move, Lock, Unlock, ShieldAlert, Cloud, Check, AlertTriangle, FileUp, FileSpreadsheet, Download, Paperclip } from "lucide-react";
 import { Reorder, useDragControls } from "framer-motion";
 import { SketchPad } from "@/components/SketchPad";
 import apiFetch from "@/lib/api";
@@ -26,8 +26,15 @@ interface PlanImage {
   id?: string;
   url: string;
   name: string;
+  item_id?: string | null;
 }
 
+interface PlanAttachment {
+  id?: string;
+  url: string; // base64 or URL
+  name: string;
+  type: "pdf" | "excel" | "other";
+}
 interface PlanItem {
   id: string;
   material_id?: string;
@@ -40,15 +47,107 @@ interface PlanItem {
   unit: string;
   dimension_unit: "feet" | "mm";
   remarks: string;
-  images: PlanImage[]; // item-level images (base64 + name)
+  preImages: PlanImage[]; // PRE-work images
+  postImages: PlanImage[]; // POST-work images
+  images?: PlanImage[]; // Legacy field for compatibility
 }
+
+// Helper Component for Image Columns (Pre/Post)
+const PhotoColumn = ({ 
+  item, idx, category, images, isLocked, isCompact,
+  handleRowImageUpload, removeRowImage, renameRowImage, 
+  setPreviewImage, setSketchTarget, setSketchInitialData, 
+  lastSketchItemIdxRef, setSketchDialogOpen 
+}: any) => {
+  return (
+    <Dialog>
+      <DialogTrigger asChild>
+        <div className={cn(
+          "relative inline-block cursor-pointer p-0.5 border rounded hover:border-amber-300 transition-colors bg-white shadow-sm", 
+          isLocked && "pointer-events-auto hover:border-slate-200",
+          isCompact ? "scale-100" : ""
+        )}>
+          {images.length > 0 ? (
+            <div className={cn("relative rounded overflow-hidden", isCompact ? "w-6 h-6" : "w-8 h-8")}>
+              <img src={images[0].url} className="w-full h-full object-cover" />
+              <span className="absolute bottom-0 right-0 bg-amber-500 text-white text-[7px] px-0.5 rounded-tl font-bold leading-none">
+                {images.length}
+              </span>
+            </div>
+          ) : (
+            <div className={cn("flex items-center justify-center bg-slate-50 text-slate-300", isCompact ? "w-6 h-6" : "w-8 h-8")}>
+              <Camera className={cn(isCompact ? "w-3 h-3" : "w-4 h-4")} />
+            </div>
+          )}
+        </div>
+      </DialogTrigger>
+      <DialogContent className="max-w-2xl z-[120]">
+        <DialogHeader>
+          <DialogTitle>Item {category === "pre" ? "Pre-work" : "Post-work"} Photos - {item.item_name || `Item ${idx+1}`}</DialogTitle>
+        </DialogHeader>
+        <div className="grid grid-cols-4 gap-4 py-4 max-h-[60vh] overflow-y-auto">
+          {images.map((img: any, imgIdx: number) => (
+            <div key={imgIdx} className="relative group aspect-square rounded border overflow-hidden bg-slate-100">
+              <img 
+                src={img.url} 
+                className="w-full h-full object-cover cursor-pointer hover:opacity-80 transition-opacity" 
+                onClick={() => setPreviewImage(img)} 
+                title="Click to view full image" 
+              />
+              <div className="absolute bottom-0 left-0 right-0 bg-black/60 text-white text-[8px] p-1 truncate opacity-0 group-hover:opacity-100 transition-opacity pr-6 pointer-events-none">
+                {img.name}
+              </div>
+              {!isLocked && (
+                <div className="absolute top-1 left-1 flex gap-1 z-10">
+                  <button onClick={() => {
+                    setSketchTarget(`${category}-${idx}`);
+                    setSketchInitialData(img.url);
+                    lastSketchItemIdxRef.current = imgIdx;
+                    setSketchDialogOpen(true);
+                  }} className="bg-slate-800 text-white p-1 rounded opacity-0 group-hover:opacity-100 transition-opacity" title="Edit in Sketch Editor">
+                    <Pencil className="w-3 h-3" />
+                  </button>
+                </div>
+              )}
+              {!isLocked && (
+                <>
+                  <button onClick={() => renameRowImage(idx, imgIdx, category)} className="absolute bottom-1 right-1 bg-indigo-500 text-white p-1 rounded opacity-0 group-hover:opacity-100 transition-opacity z-10" title="Rename photo">
+                    <Pencil className="w-3 h-3" />
+                  </button>
+                  <button onClick={() => removeRowImage(idx, imgIdx, category)} className="absolute top-1 right-1 bg-red-500 text-white p-1 rounded opacity-0 group-hover:opacity-100 transition-opacity z-10" title="Delete photo">
+                    <X className="w-3 h-3" />
+                  </button>
+                </>
+              )}
+            </div>
+          ))}
+          {!isLocked && (
+            <>
+              <label className="aspect-square rounded border-2 border-dashed border-slate-200 flex flex-col items-center justify-center text-slate-400 hover:border-indigo-300 hover:text-indigo-400 cursor-pointer bg-slate-50 transition-colors">
+                <Plus className="w-5 h-5 mb-1" />
+                <span className="text-[10px] uppercase font-bold text-center">Add<br/>Photo</span>
+                <input type="file" multiple accept="image/*" onChange={(e) => handleRowImageUpload(idx, e, category)} className="hidden" />
+              </label>
+              <label className="aspect-square rounded border-2 border-dashed border-indigo-200 flex flex-col items-center justify-center text-indigo-400 hover:border-indigo-400 hover:bg-indigo-50 cursor-pointer transition-colors">
+                <Camera className="w-5 h-5 mb-1" />
+                <span className="text-[10px] uppercase font-bold text-center">Open<br/>Camera</span>
+                <input type="file" accept="image/*" capture="environment" onChange={(e) => handleRowImageUpload(idx, e, category)} className="hidden" />
+              </label>
+            </>
+          )}
+        </div>
+      </DialogContent>
+    </Dialog>
+  );
+};
 
 // Row Component for Drag and Drop
 const SketchPlanRow = ({ 
   item, idx, updateItem, removeItem, selectMaterial, 
   searchResults, searching, loadMaterials, setMaterialSearch,
   openPopoverIdx, setOpenPopoverIdx, renameRowImage, removeRowImage,
-  handleRowImageUpload, isLocked, setPreviewImage
+  handleRowImageUpload, isLocked, isCompact, setPreviewImage,
+  setSketchTarget, setSketchInitialData, lastSketchItemIdxRef, toast, setSketchDialogOpen
 }: any) => {
   const dragControls = useDragControls();
 
@@ -67,22 +166,22 @@ const SketchPlanRow = ({
           onPointerDown={(e) => dragControls.start(e)}
         />
       </td>
-      <td className="px-2 py-2 text-slate-400 font-medium">{idx + 1}</td>
-      <td className="px-2 py-2 w-[150px] min-w-[150px] max-w-[150px]">
+      <td className={cn("px-1 text-slate-400 font-medium text-[10px]", isCompact ? "py-0" : "py-2")}>{idx + 1}</td>
+      <td className={cn("px-1", isCompact ? "py-0 w-[100px] min-w-[100px]" : "py-2 w-[150px] min-w-[150px] max-w-[150px]")}>
          <Dialog>
             <TooltipProvider>
                <Tooltip>
                   <TooltipTrigger asChild>
                      <DialogTrigger asChild>
-                        <div className={cn("cursor-pointer hover:bg-slate-100 p-1 rounded flex items-center justify-between group min-h-[32px] border border-transparent hover:border-slate-200 w-full", isLocked && "pointer-events-auto hover:bg-transparent")}>
+                        <div className={cn("cursor-pointer hover:bg-slate-100 p-0.5 rounded flex items-center justify-between group border border-transparent hover:border-slate-200 w-full", isLocked && "pointer-events-auto hover:bg-transparent", isCompact ? "min-h-[22px]" : "min-h-[32px]")}>
                            <div className="flex-1 overflow-hidden">
                               {item.description ? (
-                                 <p className="line-clamp-2 text-[11px] text-slate-700 font-medium italic leading-tight">"{item.description}"</p>
+                                 <p className={cn("line-clamp-1 text-slate-700 font-medium italic leading-tight", isCompact ? "text-[9px]" : "text-[11px]")}>"{item.description}"</p>
                               ) : (
-                                 <p className="text-[11px] text-slate-400 italic">No notes...</p>
+                                 <p className={cn("text-slate-400 italic", isCompact ? "text-[9px]" : "text-[11px]")}>No notes...</p>
                               )}
                            </div>
-                           <MessageSquare className="w-3 h-3 text-slate-500 opacity-0 group-hover:opacity-100 transition-opacity ml-1 shrink-0" />
+                           <MessageSquare className={cn("text-slate-500 opacity-0 group-hover:opacity-100 transition-opacity ml-1 shrink-0", isCompact ? "w-2.5 h-2.5" : "w-3 h-3")} />
                         </div>
                      </DialogTrigger>
                   </TooltipTrigger>
@@ -126,13 +225,13 @@ const SketchPlanRow = ({
                }
             }}>
             <DialogTrigger asChild>
-               <Button variant="outline" size="sm" className="w-full justify-start text-left font-normal h-8 text-[11px] border-dashed border-slate-300 hover:border-indigo-400 p-2" disabled={isLocked}>
+               <Button variant="outline" size="sm" className={cn("w-full justify-start text-left font-normal border-dashed border-slate-300 hover:border-indigo-400 p-1", isLocked && "pointer-events-none", isCompact ? "h-6 text-[9px]" : "h-8 text-[11px]")} disabled={isLocked}>
                   {item.item_name ? (
-                     <span className="truncate max-w-[120px]">{item.item_name}</span>
+                     <span className={cn("truncate", isCompact ? "max-w-[80px]" : "max-w-[120px]")}>{item.item_name}</span>
                   ) : (
-                     <span className="text-slate-400 italic">+ Add Item</span>
+                     <span className="text-slate-400 italic font-normal">+ Add Item</span>
                   )}
-                  <Search className="ml-auto h-3 w-3 opacity-50" />
+                  <Search className={cn("ml-auto opacity-50", isCompact ? "h-2 w-2" : "h-3 w-3")} />
                </Button>
             </DialogTrigger>
             <DialogContent className="p-0 sm:max-w-[500px]">
@@ -188,91 +287,70 @@ const SketchPlanRow = ({
             </DialogContent>
          </Dialog>
       </td>
-      <td className="px-2 py-2">
+      <td className={cn("px-1", isCompact ? "py-0" : "py-2")}>
          <Select value={item.dimension_unit} onValueChange={(val: "feet" | "mm") => updateItem(idx, "dimension_unit", val)} disabled={isLocked}>
-            <SelectTrigger className="h-8 text-[10px] py-0 px-1 min-w-[50px]">
+            <SelectTrigger className={cn("text-[9px] py-0 px-1 min-w-[45px]", isCompact ? "h-5" : "h-8")}>
                <SelectValue />
             </SelectTrigger>
-            <SelectContent>
+            <SelectContent className="z-[110]">
                <SelectItem value="feet">ft</SelectItem>
                <SelectItem value="mm">mm</SelectItem>
             </SelectContent>
          </Select>
       </td>
-      <td className="px-2 py-2">
-        <Input value={item.length} onChange={(e) => updateItem(idx, "length", e.target.value)} className="h-8 text-xs px-1" placeholder="0" disabled={isLocked} />
+      <td className={cn("px-1", isCompact ? "py-0" : "py-2")}>
+        <Input value={item.length} onChange={(e) => updateItem(idx, "length", e.target.value)} className={cn("px-1", isCompact ? "h-5 text-[10px]" : "h-8 text-xs")} placeholder="0" disabled={isLocked} />
       </td>
-      <td className="px-2 py-2">
-        <Input value={item.width} onChange={(e) => updateItem(idx, "width", e.target.value)} className="h-8 text-xs px-1" placeholder="0" disabled={isLocked} />
+      <td className={cn("px-1", isCompact ? "py-0" : "py-2")}>
+        <Input value={item.width} onChange={(e) => updateItem(idx, "width", e.target.value)} className={cn("px-1", isCompact ? "h-5 text-[10px]" : "h-8 text-xs")} placeholder="0" disabled={isLocked} />
       </td>
-      <td className="px-2 py-2">
-        <Input value={item.height} onChange={(e) => updateItem(idx, "height", e.target.value)} className="h-8 text-xs px-1" placeholder="0" disabled={isLocked} />
+      <td className={cn("px-1", isCompact ? "py-0" : "py-2")}>
+        <Input value={item.height} onChange={(e) => updateItem(idx, "height", e.target.value)} className={cn("px-1", isCompact ? "h-5 text-[10px]" : "h-8 text-xs")} placeholder="0" disabled={isLocked} />
       </td>
-      <td className="px-2 py-2">
-        <Input value={item.qty} onChange={(e) => updateItem(idx, "qty", e.target.value)} className="h-8 text-xs bg-slate-50 font-bold text-indigo-700 px-1" disabled={isLocked} />
+      <td className={cn("px-1", isCompact ? "py-0" : "py-2")}>
+        <Input value={item.qty} onChange={(e) => updateItem(idx, "qty", e.target.value)} className={cn("bg-slate-50 font-bold text-indigo-700 px-1", isCompact ? "h-5 text-[10px]" : "h-8 text-xs")} disabled={isLocked} />
       </td>
-      <td className="px-2 py-2 text-center">
-         <Dialog>
-            <DialogTrigger asChild>
-               <div className={cn("relative inline-block cursor-pointer p-1 border rounded hover:border-amber-300 transition-colors bg-white shadow-sm", isLocked && "pointer-events-auto hover:border-slate-200")}>
-                   {item.images.length > 0 ? (
-                     <div className="relative w-8 h-8 rounded overflow-hidden">
-                        <img src={item.images[0].url} className="w-full h-full object-cover" />
-                        <span className="absolute bottom-0 right-0 bg-amber-500 text-white text-[8px] px-1 rounded-tl font-bold">
-                           {item.images.length}
-                        </span>
-                     </div>
-                   ) : (
-                     <div className="w-8 h-8 flex items-center justify-center bg-slate-50 text-slate-300">
-                        <Camera className="w-4 h-4" />
-                     </div>
-                  )}
-               </div>
-            </DialogTrigger>
-            <DialogContent className="max-w-2xl">
-               <DialogHeader>
-                  <DialogTitle>Item Photos - {item.item_name || `Item ${idx+1}`}</DialogTitle>
-               </DialogHeader>
-               <div className="grid grid-cols-3 gap-4 py-4">
-                   {item.images.map((img: any, imgIdx: number) => (
-                     <div key={imgIdx} className="relative group aspect-square rounded border overflow-hidden bg-slate-100">
-                        <img src={img.url} className="w-full h-full object-cover cursor-pointer hover:opacity-80 transition-opacity" onClick={() => setPreviewImage(img)} title="Click to view full image" />
-                        <div className="absolute bottom-0 left-0 right-0 bg-black/60 text-white text-[8px] p-1 truncate opacity-0 group-hover:opacity-100 transition-opacity pr-6 pointer-events-none">
-                           {img.name}
-                        </div>
-                        {!isLocked && (
-                           <>
-                             <button onClick={() => renameRowImage(idx, imgIdx)} className="absolute bottom-1 right-1 bg-indigo-500 text-white p-1 rounded opacity-0 group-hover:opacity-100 transition-opacity z-10" title="Rename photo">
-                                <Pencil className="w-3 h-3" />
-                             </button>
-                             <button onClick={() => removeRowImage(idx, imgIdx)} className="absolute top-1 right-1 bg-red-500 text-white p-1 rounded opacity-0 group-hover:opacity-100 transition-opacity z-10" title="Delete photo">
-                                <X className="w-3 h-3" />
-                             </button>
-                           </>
-                        )}
-                     </div>
-                   ))}
-                  {!isLocked && (
-                     <>
-                        <label className="aspect-square rounded border-2 border-dashed border-slate-200 flex flex-col items-center justify-center text-slate-400 hover:border-indigo-300 hover:text-indigo-400 cursor-pointer bg-slate-50 transition-colors">
-                           <Plus className="w-5 h-5 mb-1" />
-                           <span className="text-[10px] uppercase font-bold text-center">Add<br/>Photo</span>
-                           <input type="file" multiple accept="image/*" onChange={(e) => handleRowImageUpload(idx, e)} className="hidden" />
-                        </label>
-                        <label className="aspect-square rounded border-2 border-dashed border-indigo-200 flex flex-col items-center justify-center text-indigo-400 hover:border-indigo-400 hover:bg-indigo-50 cursor-pointer transition-colors">
-                           <Camera className="w-5 h-5 mb-1" />
-                           <span className="text-[10px] uppercase font-bold text-center">Open<br/>Camera</span>
-                           <input type="file" accept="image/*" capture="environment" onChange={(e) => handleRowImageUpload(idx, e)} className="hidden" />
-                        </label>
-                     </>
-                  )}
-               </div>
-            </DialogContent>
-         </Dialog>
+      {/* Pre-work Photos Column */}
+      <td className={cn("px-1 text-center", isCompact ? "py-0" : "py-2")}>
+         <PhotoColumn 
+            item={item} 
+            idx={idx} 
+            category="pre" 
+            images={item.preImages || []} 
+            isLocked={isLocked} 
+            isCompact={isCompact}
+            handleRowImageUpload={handleRowImageUpload}
+            removeRowImage={removeRowImage}
+            renameRowImage={renameRowImage}
+            setPreviewImage={setPreviewImage}
+            setSketchTarget={setSketchTarget}
+            setSketchInitialData={setSketchInitialData}
+            lastSketchItemIdxRef={lastSketchItemIdxRef}
+            setSketchDialogOpen={setSketchDialogOpen}
+         />
       </td>
-      <td className="px-2 py-2 text-center">
-        <Button variant="ghost" size="icon" onClick={() => removeItem(idx)} className="h-7 w-7 text-slate-300 hover:text-red-500 hover:bg-red-50 transition-colors" disabled={isLocked}>
-          <Trash2 className="w-3.5 h-3.5" />
+      {/* Post-work Photos Column */}
+      <td className={cn("px-1 text-center border-l", isCompact ? "py-0" : "py-2")}>
+         <PhotoColumn 
+            item={item} 
+            idx={idx} 
+            category="post" 
+            images={item.postImages || []} 
+            isLocked={isLocked} 
+            isCompact={isCompact}
+            handleRowImageUpload={handleRowImageUpload}
+            removeRowImage={removeRowImage}
+            renameRowImage={renameRowImage}
+            setPreviewImage={setPreviewImage}
+            setSketchTarget={setSketchTarget}
+            setSketchInitialData={setSketchInitialData}
+            lastSketchItemIdxRef={lastSketchItemIdxRef}
+            setSketchDialogOpen={setSketchDialogOpen}
+         />
+      </td>
+      <td className={cn("px-1 text-center", isCompact ? "py-0" : "py-2")}>
+        <Button variant="ghost" size="icon" onClick={() => removeItem(idx)} className={cn("text-slate-300 hover:text-red-500 hover:bg-red-50 transition-colors", isCompact ? "h-5 w-5" : "h-7 w-7")} disabled={isLocked}>
+          <Trash2 className={isCompact ? "w-3 h-3" : "w-3.5 h-3.5"} />
         </Button>
       </td>
     </Reorder.Item>
@@ -291,21 +369,25 @@ export default function CreateSketchPlan() {
   const [locationStr, setLocationStr] = useState("");
   const [planDate, setPlanDate] = useState(new Date().toISOString().split("T")[0]);
   const [items, setItems] = useState<PlanItem[]>([
-    { id: "1", item_name: "", description: "", length: "", width: "", height: "", qty: "1", unit: "Nos", dimension_unit: "feet", remarks: "", images: [] }
+    { id: "1", item_name: "", description: "", length: "", width: "", height: "", qty: "1", unit: "Nos", dimension_unit: "feet", remarks: "", preImages: [], postImages: [], images: [] }
   ]);
   
   const [projects, setProjects] = useState<any[]>([]);
   const [saving, setSaving] = useState(false);
   const [planImages, setPlanImages] = useState<PlanImage[]>([]);
+  const [attachments, setAttachments] = useState<PlanAttachment[]>([]);
   const [sketchTarget, setSketchTarget] = useState<string>("main"); // "main" or row id/index
   const [openPopoverIdx, setOpenPopoverIdx] = useState<number | null>(null);
   
   // PDF / Export State
   const [isPdfDialogOpen, setIsPdfDialogOpen] = useState(false);
-  const [selectedPdfCols, setSelectedPdfCols] = useState<string[]>(["#", "Item", "Notes", "L", "W", "H", "Qty", "Unit", "Photos"]);
+  const [selectedPdfCols, setSelectedPdfCols] = useState<string[]>(    ["#", "Item", "Notes", "L", "W", "H", "Qty", "Unit", "Pre Photos", "Post Photos"]
+  );
   const [isEmailDialogOpen, setIsEmailDialogOpen] = useState(false);
   const [recipientEmail, setRecipientEmail] = useState("");
   const [sendingEmail, setSendingEmail] = useState(false);
+  const [searchTerm, setSearchTerm] = useState("");
+  const [isCompact, setIsCompact] = useState(false);
 
   const [materialSearch, setMaterialSearch] = useState("");
   const [searchResults, setSearchResults] = useState<any[]>([]);
@@ -314,6 +396,11 @@ export default function CreateSketchPlan() {
   // New state
   const [projectOpen, setProjectOpen] = useState(false);
   const [previewImage, setPreviewImage] = useState<{url: string, name: string} | null>(null);
+  const [sketchInitialData, setSketchInitialData] = useState<string | undefined>(undefined);
+  const lastSketchItemIdxRef = useRef<number | null>(null); // To track which image we are "continously" auto-saving
+  const lastSketchPlanImgIdxRef = useRef<number | null>(null);
+  const [autoSaveStatus, setAutoSaveStatus] = useState<"idle" | "saving" | "saved" | "error">("idle");
+  const [sketchDialogOpen, setSketchDialogOpen] = useState(false);
 
   // Lock & Approval State
   const [isLocked, setIsLocked] = useState(false);
@@ -323,10 +410,89 @@ export default function CreateSketchPlan() {
   const [unlockReason, setUnlockReason] = useState("");
   const [submittingRequest, setSubmittingRequest] = useState(false);
   const [userRole, setUserRole] = useState<string>("user");
-  const [autoSaveStatus, setAutoSaveStatus] = useState<"idle" | "saving" | "saved" | "error">("idle");
   const lastSavedRef = useRef<string>("");
 
   const isAdmin = userRole === "admin";
+
+  // Memoized Sketch Editor Handlers
+  const handleSketchAutoSave = useCallback((dataUrl: string) => {
+    const fileName = `Sketch_Auto_${new Date().getTime()}`;
+    if (sketchTarget === "main") {
+      setPlanImages(prev => {
+        const next = [...prev];
+        if (lastSketchPlanImgIdxRef.current !== null && next[lastSketchPlanImgIdxRef.current]) {
+          next[lastSketchPlanImgIdxRef.current] = { ...next[lastSketchPlanImgIdxRef.current], url: dataUrl };
+          return next;
+        } else {
+          lastSketchPlanImgIdxRef.current = next.length;
+          return [...prev, { url: dataUrl, name: fileName }];
+        }
+      });
+    } else {
+      const isPre = sketchTarget.startsWith("pre-");
+      const isPost = sketchTarget.startsWith("post-");
+      const idx = parseInt(sketchTarget.replace(/^(pre-|post-)/, ""));
+      
+      if (!isNaN(idx) && idx >= 0 && idx < items.length) {
+        setItems(prev => {
+          const next = [...prev];
+          const imgField = isPost ? "postImages" : "preImages";
+          const rowImages = [...(next[idx][imgField] || [])];
+          
+          if (lastSketchItemIdxRef.current !== null && rowImages[lastSketchItemIdxRef.current]) {
+            rowImages[lastSketchItemIdxRef.current] = { ...rowImages[lastSketchItemIdxRef.current], url: dataUrl };
+          } else {
+            lastSketchItemIdxRef.current = rowImages.length;
+            rowImages.push({ url: dataUrl, name: fileName });
+          }
+          next[idx][imgField] = rowImages;
+          return next;
+        });
+      }
+    }
+    setAutoSaveStatus("saving");
+    setTimeout(() => setAutoSaveStatus("saved"), 1000);
+  }, [sketchTarget, items.length]);
+
+  const handleSketchSave = useCallback((dataUrl: string) => {
+    const fileName = `Sketch_${new Date().getTime()}`;
+    if (sketchTarget === "main") {
+      setPlanImages(prev => {
+        const next = [...prev];
+        if (lastSketchPlanImgIdxRef.current !== null && next[lastSketchPlanImgIdxRef.current]) {
+          next[lastSketchPlanImgIdxRef.current] = { ...next[lastSketchPlanImgIdxRef.current], url: dataUrl, name: fileName };
+          return next;
+        }
+        return [...prev, { url: dataUrl, name: fileName }];
+      });
+      toast({ title: "Sketch Saved", description: "Added to Plan-level Photos" });
+    } else {
+      const isPre = sketchTarget.startsWith("pre-");
+      const isPost = sketchTarget.startsWith("post-");
+      const idx = parseInt(sketchTarget.replace(/^(pre-|post-)/, ""));
+
+      if (!isNaN(idx) && idx >= 0 && idx < items.length) {
+        setItems(prev => {
+          const next = [...prev];
+          const imgField = isPost ? "postImages" : "preImages";
+          const rowImages = [...(next[idx][imgField] || [])];
+
+          if (lastSketchItemIdxRef.current !== null && rowImages[lastSketchItemIdxRef.current]) {
+            rowImages[lastSketchItemIdxRef.current] = { ...rowImages[lastSketchItemIdxRef.current], url: dataUrl, name: fileName };
+          } else {
+            rowImages.push({ url: dataUrl, name: fileName });
+          }
+          next[idx][imgField] = rowImages;
+          return next;
+        });
+        toast({ title: "Sketch Saved", description: `Attached to Row ${idx + 1} (${isPost ? "Post" : "Pre"})` });
+      }
+    }
+    lastSketchItemIdxRef.current = null;
+    lastSketchPlanImgIdxRef.current = null;
+    setSketchInitialData(undefined);
+    setSketchDialogOpen(false);
+  }, [sketchTarget, items.length, toast]);
 
   // Load user role and initial data
   useEffect(() => {
@@ -366,15 +532,27 @@ export default function CreateSketchPlan() {
             
             // Map items and their images
             const mappedItems = data.items.map((it: any) => {
-               const itemImages = data.images
-                .filter((img: any) => img.item_id === it.id)
-                .map((img: any) => ({ 
-                  id: img.id, 
-                  url: img.image_url, 
-                  name: img.image_name || img.name || `Photo ${img.id.split('-').pop()}` 
-                }));
-               return { ...it, images: itemImages || [] };
-            });
+                const itemImages = data.images.filter((img: any) => img.item_id === it.id);
+                const preImages: PlanImage[] = [];
+                const postImages: PlanImage[] = [];
+                
+                itemImages.forEach((img: any) => {
+                  const cleanedName = (img.image_name || img.name || "").replace(/^(PRE_|POST_)/, "");
+                  const mappedImg = { 
+                    id: img.id, 
+                    url: img.image_url, 
+                    name: cleanedName || `Photo ${img.id.split('-').pop()}` 
+                  };
+                  
+                  if ((img.image_name || img.name || "").startsWith("POST_")) {
+                    postImages.push(mappedImg);
+                  } else {
+                    preImages.push(mappedImg);
+                  }
+                });
+
+                return { ...it, preImages, postImages, images: [] };
+             });
             setItems(mappedItems.length > 0 ? mappedItems : items);
 
             // Plan-level images
@@ -386,6 +564,17 @@ export default function CreateSketchPlan() {
                 name: img.image_name || img.name || `Site Photo ${img.id.split('-').pop()}` 
               }));
             setPlanImages(plImages);
+                 
+            // Attachments
+            if (data.attachments && Array.isArray(data.attachments)) {
+              const mappedAtts: PlanAttachment[] = data.attachments.map((att: any) => ({
+                id: att.id,
+                url: att.file_url,
+                name: att.file_name,
+                type: att.file_type as any
+              }));
+              setAttachments(mappedAtts);
+            }
 
             // Initialize lastSavedRef to prevent redundant save on mount
             lastSavedRef.current = JSON.stringify({
@@ -394,7 +583,8 @@ export default function CreateSketchPlan() {
               location: p.location || "",
               plan_date: p.plan_date ? new Date(p.plan_date).toISOString().split("T")[0] : new Date().toISOString().split("T")[0],
               items: mappedItems,
-              images: plImages.map((img: any) => ({ item_id: null, image_url: img.url, name: img.name }))
+              images: plImages.map((img: any) => ({ item_id: null, image_url: img.url, name: img.name })),
+              attachments: data.attachments || []
             });
           }
         } else {
@@ -402,7 +592,7 @@ export default function CreateSketchPlan() {
           if (templateDataStr) {
             try {
               const td = JSON.parse(templateDataStr);
-              if (td.items) setItems(td.items.map((it: any) => ({ ...it, id: Date.now().toString() + Math.random(), images: it.images || [] })));
+              if (td.items) setItems(td.items.map((it: any) => ({ ...it, id: Date.now().toString() + Math.random(), preImages: it.preImages || [], postImages: it.postImages || [], images: [] })));
               if (td.location) setLocationStr(td.location);
               sessionStorage.removeItem("sketch_template_data");
               toast({ title: "Template Applied", description: "Form pre-filled from template" });
@@ -455,7 +645,7 @@ export default function CreateSketchPlan() {
   const addItem = () => {
     setItems([
       ...items,
-      { id: Date.now().toString(), item_name: "", description: "", length: "", width: "", height: "", qty: "1", unit: "Nos", dimension_unit: "feet", remarks: "", images: [] }
+      { id: Date.now().toString(), item_name: "", description: "", length: "", width: "", height: "", qty: "1", unit: "Nos", dimension_unit: "feet", remarks: "", preImages: [], postImages: [], images: [] }
     ]);
   };
 
@@ -492,7 +682,33 @@ export default function CreateSketchPlan() {
     setItems(newItems);
   };
 
-  const handleRowImageUpload = (idx: number, e: React.ChangeEvent<HTMLInputElement>) => {
+  const handlePlanImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+     if (!e.target.files) return;
+     const files = Array.from(e.target.files);
+     files.forEach(file => {
+       const reader = new FileReader();
+       const fileName = file.name;
+       reader.onloadend = () => {
+         setPlanImages(prev => [...prev, { url: reader.result as string, name: fileName }]);
+       };
+       reader.readAsDataURL(file);
+     });
+   };
+ 
+   const handleAttachmentUpload = (e: React.ChangeEvent<HTMLInputElement>, type: "pdf" | "excel") => {
+     if (!e.target.files) return;
+     const files = Array.from(e.target.files);
+     files.forEach(file => {
+       const reader = new FileReader();
+       const fileName = file.name;
+       reader.onloadend = () => {
+         setAttachments(prev => [...prev, { url: reader.result as string, name: fileName, type }]);
+       };
+       reader.readAsDataURL(file);
+     });
+   };
+
+  const handleRowImageUpload = (idx: number, e: React.ChangeEvent<HTMLInputElement>, category: "pre" | "post") => {
     const files = e.target.files;
     if (!files) return;
 
@@ -501,28 +717,38 @@ export default function CreateSketchPlan() {
       const fileName = file.name.split('.').slice(0, -1).join('.') || "Untitled Photo";
       reader.onloadend = () => {
         const newItems = [...items];
-        newItems[idx].images = [
-          ...newItems[idx].images, 
-          { url: reader.result as string, name: fileName }
-        ];
+        if (category === "pre") {
+          newItems[idx].preImages = [...newItems[idx].preImages, { url: reader.result as string, name: fileName }];
+        } else {
+          newItems[idx].postImages = [...newItems[idx].postImages, { url: reader.result as string, name: fileName }];
+        }
         setItems(newItems);
       };
       reader.readAsDataURL(file);
     });
   };
 
-  const removeRowImage = (itemIdx: number, imgIdx: number) => {
+  const removeRowImage = (itemIdx: number, imgIdx: number, category: "pre" | "post") => {
     const newItems = [...items];
-    newItems[itemIdx].images.splice(imgIdx, 1);
+    if (category === "pre") {
+      newItems[itemIdx].preImages.splice(imgIdx, 1);
+    } else {
+      newItems[itemIdx].postImages.splice(imgIdx, 1);
+    }
     setItems(newItems);
   };
 
-  const renameRowImage = (itemIdx: number, imgIdx: number) => {
-    const currentName = items[itemIdx].images[imgIdx].name;
+  const renameRowImage = (itemIdx: number, imgIdx: number, category: "pre" | "post") => {
+    const currentImages = category === "pre" ? items[itemIdx].preImages : items[itemIdx].postImages;
+    const currentName = currentImages[imgIdx].name;
     const newName = prompt("Rename Photo:", currentName);
     if (newName && newName !== currentName) {
       const newItems = [...items];
-      newItems[itemIdx].images[imgIdx] = { ...newItems[itemIdx].images[imgIdx], name: newName };
+      if (category === "pre") {
+        newItems[itemIdx].preImages[imgIdx] = { ...newItems[itemIdx].preImages[imgIdx], name: newName };
+      } else {
+        newItems[itemIdx].postImages[imgIdx] = { ...newItems[itemIdx].postImages[imgIdx], name: newName };
+      }
       setItems(newItems);
     }
   };
@@ -561,8 +787,15 @@ export default function CreateSketchPlan() {
         project_id: projectId === "none" ? null : projectId,
         location: locationStr,
         plan_date: planDate,
-        items,
-        images: planImages.map((img: any) => ({ item_id: null, image_url: img.url, name: img.name })) 
+        items: items.map(it => {
+          const flattenedImages = [
+            ...(it.preImages || []).map(img => ({ ...img, name: `PRE_${img.name}` })),
+            ...(it.postImages || []).map(img => ({ ...img, name: `POST_${img.name}` }))
+          ];
+          return { ...it, images: flattenedImages };
+        }),
+        images: planImages.map((img: any) => ({ item_id: null, image_url: img.url, name: img.name })),
+        attachments: attachments.map(att => ({ file_url: att.url, file_name: att.name, file_type: att.type }))
       };
 
       const jsonStr = JSON.stringify(payload);
@@ -620,9 +853,50 @@ export default function CreateSketchPlan() {
      return () => clearTimeout(timer);
   }, [name, projectId, locationStr, planDate, items, planImages, isLocked]);
 
+  const prepareImageForPdf = (url: string): Promise<string> => {
+    return new Promise((resolve) => {
+      const img = new Image();
+      img.crossOrigin = "Anonymous";
+      img.onload = () => {
+        const canvas = document.createElement("canvas");
+        canvas.width = img.width;
+        canvas.height = img.height;
+        const ctx = canvas.getContext("2d");
+        if (!ctx) {
+          resolve(url);
+          return;
+        }
+        ctx.drawImage(img, 0, 0);
+        try {
+          resolve(canvas.toDataURL("image/jpeg", 0.8));
+        } catch (e) {
+          resolve(url);
+        }
+      };
+      img.onerror = () => {
+        resolve(url);
+      };
+      img.src = url;
+    });
+  };
+
   const handleDownloadPdf = async (forEmail: boolean = false): Promise<string | undefined> => {
     try {
+      toast({ title: "Preparing PDF", description: "Processing images, please wait..." });
+
+      // Pre-process all images to ensure compatibility (WEBP/large images)
+      const processedItems = await Promise.all(items.map(async (item) => {
+        const preImg = item.preImages && item.preImages.length > 0 ? await prepareImageForPdf(item.preImages[0].url) : null;
+        const postImg = item.postImages && item.postImages.length > 0 ? await prepareImageForPdf(item.postImages[0].url) : null;
+        return { ...item, _pdfPre: preImg, _pdfPost: postImg };
+      }));
+
+      const processedPlanImages = await Promise.all(planImages.map(async (img) => {
+        return { ...img, url: await prepareImageForPdf(img.url) };
+      }));
+
       const doc = new jsPDF({ orientation: "landscape" });
+
       const pageWidth = doc.internal.pageSize.getWidth();
       const marginX = 10;
       const headerBoxY = 10;
@@ -649,7 +923,7 @@ export default function CreateSketchPlan() {
       doc.text(`Date: ${planDate}`, metaX, headerBoxY + 19, { align: "right" });
 
       const headers = selectedPdfCols;
-      const body = items.map((item, idx) => {
+      const body = processedItems.map((item, idx) => {
         const row: any[] = [];
         headers.forEach(h => {
           if (h === "#") row.push(idx + 1);
@@ -660,12 +934,14 @@ export default function CreateSketchPlan() {
           else if (h === "H") row.push(item.height);
           else if (h === "Qty") row.push(item.qty);
           else if (h === "Unit") row.push(item.unit);
-          else if (h === "Photos") row.push(""); 
+          else if (h === "Pre Photos") row.push(""); 
+          else if (h === "Post Photos") row.push(""); 
         });
         return row;
       });
 
-      const photoColIdx = headers.indexOf("Photos");
+      const prePhotoColIdx = headers.indexOf("Pre Photos");
+      const postPhotoColIdx = headers.indexOf("Post Photos");
       
       autoTable(doc, {
         head: [headers],
@@ -676,38 +952,38 @@ export default function CreateSketchPlan() {
         columnStyles: {
            // Ensure Notes column doesn't squeeze others too much if it's long
            [headers.indexOf("Notes")]: { cellWidth: 'auto' },
-           [photoColIdx]: { cellWidth: 50 },
+           [prePhotoColIdx]: { cellWidth: 25 },
+           [postPhotoColIdx]: { cellWidth: 25 },
         },
         didParseCell: (data) => {
-          if (data.section === 'body' && data.column.index === photoColIdx) {
-            const itemImages = items[data.row.index]?.images || [];
-            if (itemImages.length > 0) {
+          if (data.section === 'body' && (data.column.index === prePhotoColIdx || data.column.index === postPhotoColIdx)) {
+            const item = processedItems[data.row.index];
+            if (!item) return;
+            const pdfImg = data.column.index === prePhotoColIdx ? item._pdfPre : item._pdfPost;
+            if (pdfImg) {
               data.cell.styles.minCellHeight = 25;
             }
           }
         },
         didDrawCell: (data) => {
-          if (data.section === 'body' && data.column.index === photoColIdx) {
-            const item = items[data.row.index];
-            if (item && item.images && item.images.length > 0) {
-              let xPos = data.cell.x + 2;
-              item.images.slice(0, 2).forEach((img) => {
-                try {
-                  // Detect format from data URI if possible
-                  const format = img.url.split(';')[0].split('/')[1]?.toUpperCase() || "JPEG";
-                  doc.addImage(img.url, format === "PNG" ? "PNG" : "JPEG", xPos, data.cell.y + 2, 20, 20);
-                  xPos += 22;
-                } catch (e) {
-                  console.warn("Failed to add table image to PDF", e);
-                }
-              });
+          if (data.section === 'body' && (data.column.index === prePhotoColIdx || data.column.index === postPhotoColIdx)) {
+            const item = processedItems[data.row.index];
+            if (!item) return;
+            const pdfImg = data.column.index === prePhotoColIdx ? item._pdfPre : item._pdfPost;
+            if (pdfImg) {
+              const xPos = data.cell.x + 2;
+              try {
+                doc.addImage(pdfImg, "JPEG", xPos, data.cell.y + 2, 20, 20);
+              } catch (e) {
+                console.warn("Failed to add table image to PDF", e);
+              }
             }
           }
         }
       });
 
       // Add plan-level images if space remains
-      if (planImages.length > 0) {
+      if (processedPlanImages.length > 0) {
         let finalY = (doc as any).lastAutoTable.finalY + 15;
         if (finalY + 60 > doc.internal.pageSize.getHeight()) {
           doc.addPage();
@@ -723,7 +999,7 @@ export default function CreateSketchPlan() {
         const spacing = 10;
         const rowHeight = 65; // Image + text + spacing
 
-        planImages.forEach((img, i) => {
+        processedPlanImages.forEach((img, i) => {
           if (px + imgSize > pageWidth - 10) {
              px = 10;
              py += rowHeight;
@@ -734,8 +1010,7 @@ export default function CreateSketchPlan() {
              px = 10;
           }
           try {
-            const format = img.url.split(';')[0].split('/')[1]?.toUpperCase() || "JPEG";
-            doc.addImage(img.url, format === "PNG" ? "PNG" : "JPEG", px, py, imgSize, imgSize);
+            doc.addImage(img.url, "JPEG", px, py, imgSize, imgSize);
             
             // Photo Name - Smaller font and better placement
             doc.setFontSize(7);
@@ -866,20 +1141,20 @@ export default function CreateSketchPlan() {
 
   return (
     <Layout>
-      <div className="max-w-7xl mx-auto space-y-4 pb-20">
+      <div className="max-w-7xl mx-auto space-y-2 pb-20">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-3">
-            <Button variant="ghost" size="icon" onClick={() => setLocation("/sketch-plans")} className="hover:bg-slate-100 h-8 w-8">
-              <ArrowLeft className="w-5 h-5" />
+            <Button variant="ghost" size="icon" onClick={() => setLocation("/sketch-plans")} className="hover:bg-slate-100 h-7 w-7">
+              <ArrowLeft className="w-4 h-4" />
             </Button>
-            <h1 className="text-xl font-bold tracking-tight text-slate-800">{isEditing ? "Edit Sketch Plan" : "Create New Sketch Plan"}</h1>
+            <h1 className="text-lg font-bold tracking-tight text-slate-800">{isEditing ? "Edit Sketch Plan" : "Create New Sketch Plan"}</h1>
           </div>
           <div className="flex gap-2">
-            <Button variant="outline" size="sm" onClick={() => setIsPdfDialogOpen(true)} className="gap-2 h-9 text-xs border-indigo-200 text-indigo-600 hover:bg-indigo-50">
-              <FileText className="w-3.5 h-3.5" /> Export PDF
+            <Button variant="outline" size="sm" onClick={() => setIsPdfDialogOpen(true)} className="gap-1.5 h-8 text-[10px] border-indigo-200 text-indigo-600 hover:bg-indigo-50">
+              <FileText className="w-3 h-3" /> Export PDF
             </Button>
-            <Button variant="outline" size="sm" onClick={() => setIsEmailDialogOpen(true)} className="gap-2 h-9 text-xs border-indigo-200 text-indigo-600 hover:bg-indigo-50">
-              <MessageSquare className="w-3.5 h-3.5" /> Email Plan
+            <Button variant="outline" size="sm" onClick={() => setIsEmailDialogOpen(true)} className="gap-1.5 h-8 text-[10px] border-indigo-200 text-indigo-600 hover:bg-indigo-50">
+              <MessageSquare className="w-3 h-3" /> Email Plan
             </Button>
             <Button variant="outline" size="sm" onClick={() => {
                 const templateName = prompt("Enter a name for this template:", name);
@@ -890,8 +1165,8 @@ export default function CreateSketchPlan() {
                         body: JSON.stringify({ name: templateName, template_data: { items, location: locationStr } })
                     }).then(res => res.ok && toast({ title: "Success", description: "Template saved" }));
                 }
-            }} className="gap-2 h-9 text-xs">
-              <Layers className="w-3.5 h-3.5" /> Save as Template
+            }} className="gap-1.5 h-8 text-[10px]">
+              <Layers className="w-3 h-3" /> Save as Template
             </Button>
             <div className="hidden md:flex items-center gap-2 px-3 py-1.5 bg-slate-50 rounded-md border border-slate-100 min-w-[140px] justify-center transition-all">
                {autoSaveStatus === "saving" && (
@@ -919,8 +1194,8 @@ export default function CreateSketchPlan() {
                   </>
                )}
             </div>
-            <Button onClick={savePlan} disabled={saving || isLocked} className="gap-2 bg-indigo-600 hover:bg-indigo-700 text-white h-9 px-6 text-xs font-bold shadow-sm">
-              <Save className="w-3.5 h-3.5" /> {saving ? "Saving..." : "Save Plan"}
+            <Button onClick={savePlan} disabled={saving || isLocked} className="gap-1.5 bg-indigo-600 hover:bg-indigo-700 text-white h-8 px-4 text-[10px] font-bold shadow-sm">
+              <Save className="w-3 h-3" /> {saving ? "Saving..." : "Save Plan"}
             </Button>
             
             {isEditing && (
@@ -1011,12 +1286,12 @@ export default function CreateSketchPlan() {
 
         {/* Basic Details - Compact */}
         <Card className="border-slate-200 shadow-sm relative z-10">
-          <CardContent className="p-4 grid grid-cols-1 md:grid-cols-4 gap-4">
-            <div className="space-y-1 col-span-1 md:col-span-2">
+          <CardContent className="p-3 grid grid-cols-1 md:grid-cols-12 gap-3 items-end">
+            <div className="space-y-1 col-span-1 md:col-span-3">
               <Label className="text-[10px] uppercase font-bold text-slate-500">Plan Name</Label>
-              <Input value={name} onChange={(e) => setName(e.target.value)} className="h-9 text-sm" placeholder="e.g. Master Bedroom Site Visit" disabled={isLocked} />
+              <Input value={name} onChange={(e) => setName(e.target.value)} className="h-8 text-xs" placeholder="Plan Name" disabled={isLocked} />
             </div>
-            <div className="space-y-1">
+            <div className="space-y-1 col-span-1 md:col-span-3">
               <Label className="text-[10px] uppercase font-bold text-slate-500">Associated Project</Label>
               <Popover open={projectOpen} onOpenChange={setProjectOpen}>
                 <PopoverTrigger asChild>
@@ -1024,11 +1299,13 @@ export default function CreateSketchPlan() {
                     variant="outline"
                     role="combobox"
                     aria-expanded={projectOpen}
-                    className="w-full justify-between h-9 text-sm font-normal px-3"
+                    className="w-full justify-between h-8 text-xs font-normal px-2"
                     disabled={isLocked}
                   >
-                    {projectId !== "none" ? projects.find((project) => project.id === projectId)?.name || "Select project..." : "No Project"}
-                    <Search className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+                    <span className="truncate">
+                      {projectId !== "none" ? projects.find((project) => project.id === projectId)?.name || "Select project..." : "No Project"}
+                    </span>
+                    <Search className="ml-1 h-3.5 w-3.5 shrink-0 opacity-50" />
                   </Button>
                 </PopoverTrigger>
                 <PopoverContent className="w-[300px] p-0" align="start">
@@ -1062,52 +1339,83 @@ export default function CreateSketchPlan() {
                 </PopoverContent>
               </Popover>
             </div>
-            <div className="space-y-1">
+            <div className="space-y-1 col-span-1 md:col-span-2">
               <Label className="text-[10px] uppercase font-bold text-slate-500">Plan Date</Label>
-              <Input type="date" value={planDate} onChange={(e) => setPlanDate(e.target.value)} className="h-9 text-sm" disabled={isLocked} />
+              <Input type="date" value={planDate} onChange={(e) => setPlanDate(e.target.value)} className="h-8 text-xs" disabled={isLocked} />
             </div>
             <div className="space-y-1 col-span-1 md:col-span-4">
               <Label className="text-[10px] uppercase font-bold text-slate-500">Site Location / Address</Label>
-              <Input value={locationStr} onChange={(e) => setLocationStr(e.target.value)} className="h-9 text-sm" placeholder="City, Area or Full Address" disabled={isLocked} />
+              <Input value={locationStr} onChange={(e) => setLocationStr(e.target.value)} className="h-8 text-xs" placeholder="Address" disabled={isLocked} />
             </div>
           </CardContent>
         </Card>
 
         {/* Enhanced Items Section */}
-        <Card className="border-slate-200 shadow-sm overflow-hidden text-[11px]">
-          <CardHeader className="bg-slate-50/50 border-b py-2 px-4 flex flex-row items-center justify-between">
-            <CardTitle className="text-sm font-bold flex items-center gap-2 text-slate-700">
-               <GripVertical className="w-4 h-4 text-indigo-500" /> Site Requirements
-            </CardTitle>
-            <Button variant="outline" size="sm" onClick={addItem} className="h-7 text-[10px] gap-1.5 border-indigo-200 text-indigo-600 hover:bg-indigo-50 font-bold uppercase" disabled={isLocked}>
-              <Plus className="w-3 h-3" /> Add Item
-            </Button>
+        {/* Project Items - Main Workspace */}
+        <div className="flex flex-col md:flex-row justify-between items-center gap-4 mb-2">
+            <div className="relative w-full md:w-80">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+                <Input 
+                  value={searchTerm} 
+                  onChange={(e) => setSearchTerm(e.target.value)} 
+                  placeholder="Search item name or notes..." 
+                  className="pl-9 h-10 border-slate-200 shadow-sm focus:ring-indigo-500"
+                />
+            </div>
+            <div className="flex items-center gap-3 bg-white p-2 rounded-lg border border-slate-200 shadow-sm">
+                <Label htmlFor="compact-mode" className="text-xs font-bold text-slate-600 cursor-pointer">Compact View</Label>
+                <Checkbox 
+                  id="compact-mode" 
+                  checked={isCompact} 
+                  onCheckedChange={(checked) => setIsCompact(!!checked)}
+                />
+            </div>
+        </div>
+
+        <Card className="border-slate-200 shadow-sm overflow-hidden">
+          <CardHeader className="bg-slate-50/50 py-3 border-b flex flex-row items-center justify-between">
+              <CardTitle className="text-sm font-bold flex items-center gap-2">
+                 <FileText className="w-4 h-4 text-indigo-500" /> Project Itemized Requirements
+              </CardTitle>
+              <div className="flex gap-2">
+                 <Button onClick={addItem} size="sm" variant="outline" className="h-8 gap-1 border-indigo-200 text-indigo-600 hover:bg-indigo-50" disabled={isLocked}>
+                    <Plus className="w-3.5 h-3.5" /> Add New Row
+                 </Button>
+                 <Button onClick={() => setLocation("/sketch-plans")} size="sm" variant="ghost" className="h-8 text-slate-500">
+                    Cancel
+                 </Button>
+              </div>
           </CardHeader>
           <CardContent className="p-0">
             <div className="overflow-x-auto">
-              <table className="w-full text-xs table-fixed min-w-[800px]">
+              <table className="w-full border-collapse">
                 <thead>
-                  <tr className="bg-slate-50 border-b text-slate-500 uppercase text-[9px] font-bold">
-                    <th className="px-2 py-2 text-center w-8"></th>
-                    <th className="px-2 py-2 text-left w-8">#</th>
-                    <th className="px-2 py-2 text-left w-[150px]">Notes Preview</th>
-                    <th className="px-2 py-2 text-left w-[180px]">Item / Product</th>
-                    <th className="px-2 py-2 text-left w-16">Unit</th>
-                    <th className="px-2 py-2 text-left w-14">L</th>
-                    <th className="px-2 py-2 text-left w-14">W</th>
-                    <th className="px-2 py-2 text-left w-14">H</th>
-                    <th className="px-2 py-2 text-left w-16">Qty</th>
-                    <th className="px-2 py-2 text-center w-16">Photos</th>
-                    <th className="px-2 py-2 text-center w-10">Del</th>
+                  <tr className="bg-slate-50 text-[10px] uppercase tracking-wider text-slate-500 border-b">
+                    <th className={cn("w-8 px-2", isCompact ? "py-1" : "py-3")}></th>
+                    <th className={cn("w-10 px-2 text-left", isCompact ? "py-1" : "py-3")}>#</th>
+                    <th className={cn("px-2 text-left", isCompact ? "py-1" : "py-3")}>Notes/Review</th>
+                    <th className={cn("px-2 text-left", isCompact ? "py-1" : "py-3")}>Item/Product</th>
+                    <th className={cn("w-[60px] px-2 text-left", isCompact ? "py-1" : "py-3")}>Unit</th>
+                    <th className={cn("w-[60px] px-2 text-left font-bold text-indigo-900 border-l border-slate-200/50 bg-indigo-50/20", isCompact ? "py-1" : "py-3")}>L</th>
+                    <th className={cn("w-[60px] px-2 text-left font-bold text-indigo-900 bg-indigo-50/20", isCompact ? "py-1" : "py-3")}>W</th>
+                    <th className={cn("w-[60px] px-2 text-left font-bold text-indigo-900 bg-indigo-50/20", isCompact ? "py-1" : "py-3")}>H</th>
+                    <th className={cn("w-[80px] px-2 text-center bg-indigo-50 font-bold text-indigo-700", isCompact ? "py-1" : "py-3")}>QTY</th>
+                    <th className={cn("w-[60px] px-2 text-center border-l bg-amber-50/20 font-bold text-amber-700", isCompact ? "py-1" : "py-3")}>Pre</th>
+                    <th className={cn("w-[60px] px-2 text-center bg-amber-50/20 font-bold text-amber-700", isCompact ? "py-1" : "py-3")}>Post</th>
+                    <th className={cn("w-10 px-2 text-center", isCompact ? "py-1" : "py-3")}>Del</th>
                   </tr>
                 </thead>
                 <Reorder.Group as="tbody" axis="y" values={items} onReorder={setItems}>
-                  {items.map((item, idx) => (
+                  {items.filter(it => 
+                    it.item_name.toLowerCase().includes(searchTerm.toLowerCase()) || 
+                    it.description.toLowerCase().includes(searchTerm.toLowerCase())
+                  ).map((item, idx) => (
                     <SketchPlanRow 
                       key={item.id}
                       item={item}
-                      idx={idx}
+                      idx={items.indexOf(item)}
                       isLocked={isLocked}
+                      isCompact={isCompact}
                       updateItem={updateItem}
                       addItem={addItem}
                       removeItem={removeItem}
@@ -1122,6 +1430,11 @@ export default function CreateSketchPlan() {
                       removeRowImage={removeRowImage}
                       handleRowImageUpload={handleRowImageUpload}
                       setPreviewImage={setPreviewImage}
+                      lastSketchItemIdxRef={lastSketchItemIdxRef}
+                      setSketchTarget={setSketchTarget}
+                      setSketchInitialData={setSketchInitialData}
+                      toast={toast}
+                      setSketchDialogOpen={setSketchDialogOpen}
                     />
                   ))}
                 </Reorder.Group>
@@ -1148,6 +1461,18 @@ export default function CreateSketchPlan() {
                                     {img.name}
                                 </div>
                                 {!isLocked && (
+                                    <div className="absolute top-1 left-1 flex gap-1 z-10">
+                                        <button onClick={() => {
+                                            setSketchTarget("main");
+                                            setSketchInitialData(img.url);
+                                            lastSketchPlanImgIdxRef.current = idx;
+                                            setSketchDialogOpen(true);
+                                        }} className="bg-slate-800 text-white p-1 rounded opacity-0 group-hover:opacity-100 transition-opacity" title="Edit in Sketch Editor">
+                                            <Pencil className="w-3 h-3" />
+                                        </button>
+                                    </div>
+                                )}
+                                {!isLocked && (
                                    <>
                                      <button onClick={() => renamePlanImage(idx)} className="absolute bottom-1 right-1 bg-indigo-500 text-white p-1 rounded opacity-0 group-hover:opacity-100 transition-opacity z-10" title="Rename photo">
                                          <Pencil className="w-3 h-3" />
@@ -1161,24 +1486,12 @@ export default function CreateSketchPlan() {
                         ))}
                         {!isLocked && (
                            <>
-                              <label className="aspect-square rounded border-2 border-dashed border-slate-200 flex flex-col items-center justify-center text-slate-400 hover:border-indigo-300 hover:text-indigo-400 cursor-pointer bg-white transition-all shadow-sm">
-                                  <Plus className="w-5 h-5" />
-                                  <span className="text-[8px] font-bold mt-1 uppercase text-center">Add<br/>Photo</span>
-                                  <input type="file" multiple accept="image/*" onChange={(e) => {
-                                      const files = e.target.files;
-                                      if (files) {
-                                          Array.from(files).forEach(file => {
-                                              const reader = new FileReader();
-                                              const fileName = file.name.split('.').slice(0, -1).join('.') || "Untitled Photo";
-                                              reader.onloadend = () => setPlanImages(prev => [
-                                                ...prev, 
-                                                { url: reader.result as string, name: fileName }
-                                              ]);
-                                              reader.readAsDataURL(file);
-                                          });
-                                      }
-                                  }} className="hidden" />
-                              </label>
+                              <input type="file" multiple accept="image/*" className="hidden" id="plan-photo-upload" onChange={handlePlanImageUpload} disabled={isLocked} />
+                              <Button variant="ghost" size="sm" className="col-span-4 border-2 border-dashed border-slate-200 h-10 hover:bg-slate-100 p-0" asChild disabled={isLocked}>
+                                  <label htmlFor="plan-photo-upload" className="cursor-pointer flex flex-col items-center justify-center w-full h-full">
+                                      <Plus className="w-5 h-5 text-slate-400" />
+                                  </label>
+                              </Button>
                               <label className="aspect-square rounded border-2 border-dashed border-indigo-200 flex flex-col items-center justify-center text-indigo-400 hover:border-indigo-400 hover:bg-indigo-50 cursor-pointer transition-all shadow-sm bg-white">
                                   <Camera className="w-5 h-5" />
                                   <span className="text-[8px] font-bold mt-1 uppercase text-center">Open<br/>Camera</span>
@@ -1203,6 +1516,54 @@ export default function CreateSketchPlan() {
                 </CardContent>
             </Card>
 
+            {/* Plan-level Attachments (PDF/Excel) */}
+            <Card className="border-slate-200 shadow-sm col-span-1 md:col-span-2 lg:col-span-1 flex flex-col">
+                 <CardHeader className="bg-slate-50/50 py-2 border-b flex flex-row items-center justify-between">
+                     <CardTitle className="text-xs font-bold flex items-center gap-2">
+                         <Paperclip className="w-3.5 h-3.5 text-blue-500" /> Plan Attachments (PDF/Excel)
+                     </CardTitle>
+                     <div className="flex gap-1">
+                        <input type="file" accept=".pdf" className="hidden" id="pdf-upload" onChange={(e) => handleAttachmentUpload(e, "pdf")} disabled={isLocked} />
+                        <label htmlFor="pdf-upload" className={cn("cursor-pointer p-1 rounded hover:bg-slate-200 transition-colors", isLocked && "opacity-50 cursor-not-allowed")}>
+                            <FileUp className="w-3.5 h-3.5 text-red-500" />
+                        </label>
+                        <input type="file" accept=".xlsx,.xls" className="hidden" id="excel-upload" onChange={(e) => handleAttachmentUpload(e, "excel")} disabled={isLocked} />
+                        <label htmlFor="excel-upload" className={cn("cursor-pointer p-1 rounded hover:bg-slate-200 transition-colors", isLocked && "opacity-50 cursor-not-allowed")}>
+                            <FileSpreadsheet className="w-3.5 h-3.5 text-green-600" />
+                        </label>
+                     </div>
+                 </CardHeader>
+                 <CardContent className="p-3 flex-1 overflow-y-auto max-h-[220px]">
+                     {attachments.length === 0 ? (
+                         <div className="flex flex-col items-center justify-center h-20 text-slate-400 text-[10px] border-2 border-dashed rounded">
+                             <p>No attachments uploaded</p>
+                             <p>Click icons above to add PDF or Excel</p>
+                         </div>
+                     ) : (
+                         <div className="space-y-1.5">
+                             {attachments.map((att, idx) => (
+                                 <div key={idx} className="flex items-center justify-between p-2 rounded bg-slate-50 border border-slate-100 group">
+                                     <div className="flex items-center gap-2 overflow-hidden">
+                                         {att.type === "pdf" ? <FileText className="w-4 h-4 text-red-500 shrink-0" /> : <FileSpreadsheet className="w-4 h-4 text-green-600 shrink-0" />}
+                                         <span className="text-[10px] font-medium truncate">{att.name}</span>
+                                     </div>
+                                     <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                                         <a href={att.url} download={att.name} className="p-1 text-slate-500 hover:text-indigo-600 hover:bg-white rounded transition-colors">
+                                             <Download className="w-3.5 h-3.5" />
+                                         </a>
+                                         {!isLocked && (
+                                             <button onClick={() => setAttachments(attachments.filter((_, i) => i !== idx))} className="p-1 text-slate-500 hover:text-red-500 hover:bg-white rounded transition-colors">
+                                                 <X className="w-3.5 h-3.5" />
+                                             </button>
+                                         )}
+                                     </div>
+                                 </div>
+                             ))}
+                         </div>
+                     )}
+                 </CardContent>
+             </Card>
+
             {/* Sketch pad Section */}
             <Card className="border-slate-200 shadow-sm flex flex-col">
                 <CardHeader className="bg-slate-50/50 py-2 border-b">
@@ -1220,14 +1581,31 @@ export default function CreateSketchPlan() {
                            <p className="text-[9px] text-slate-500">Draw once and attach it to any row or main plan photos.</p>
                        </div>
                     </div>
-                    <Dialog>
+                    <Dialog open={sketchDialogOpen} onOpenChange={setSketchDialogOpen}>
                         <DialogTrigger asChild>
-                            <Button size="sm" className="bg-slate-800 hover:bg-black text-white text-[10px] h-8 px-4 w-full mt-3" disabled={isLocked}>Open Sketch Editor</Button>
+                            <Button onClick={() => {
+                                // Clear initial data if opening fresh
+                                if (!sketchInitialData) {
+                                  setSketchInitialData(undefined);
+                                  lastSketchItemIdxRef.current = null;
+                                  lastSketchPlanImgIdxRef.current = null;
+                                }
+                            }} size="sm" className="bg-slate-800 hover:bg-black text-white text-[10px] h-8 px-4 w-full mt-3" disabled={isLocked}>Open Sketch Editor</Button>
                         </DialogTrigger>
                         <DialogContent className="max-w-[850px] w-[95vw] max-h-[95vh] h-[90vh] overflow-y-auto flex flex-col p-1 sm:p-4">
                             <DialogHeader className="px-2 sm:px-4">
                                 <DialogTitle className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2 pr-8">
-                                   <span className="text-sm sm:text-base">Site Sketch Editor</span>
+                                    <div className="flex items-center gap-3">
+                                       <span className="text-sm sm:text-base">Site Sketch Editor</span>
+                                       {autoSaveStatus !== "idle" && (
+                                          <Badge variant="outline" className={cn(
+                                             "text-[9px] font-black uppercase tracking-widest px-2 py-0 border-none",
+                                             autoSaveStatus === "saving" ? "bg-amber-100 text-amber-600 animate-pulse" : "bg-emerald-100 text-emerald-600"
+                                          )}>
+                                             {autoSaveStatus === "saving" ? "Saving..." : "Saved"}
+                                          </Badge>
+                                       )}
+                                    </div>
                                    <div className="flex items-center gap-2 text-[10px] sm:text-xs font-normal">
                                       <span className="text-slate-500">Save to:</span>
                                       <Select value={sketchTarget} onValueChange={setSketchTarget}>
@@ -1237,36 +1615,25 @@ export default function CreateSketchPlan() {
                                          <SelectContent>
                                             <SelectItem value="main">Main (Plan Photos)</SelectItem>
                                             {items.map((item, i) => (
-                                               <SelectItem key={item.id} value={i.toString()}>Row {i + 1}: {item.item_name || "Untitled"}</SelectItem>
+                                               <React.Fragment key={item.id}>
+                                                  <SelectItem value={`pre-${i}`}>Row {i + 1} (Pre): {item.item_name || "Untitled"}</SelectItem>
+                                                  <SelectItem value={`post-${i}`}>Row {i + 1} (Post): {item.item_name || "Untitled"}</SelectItem>
+                                               </React.Fragment>
                                             ))}
                                          </SelectContent>
                                       </Select>
                                    </div>
                                 </DialogTitle>
                             </DialogHeader>
-                            <div className="py-2">
-                                <SketchPad
-                                    readOnly={isLocked}
-                                    unitPrefix={sketchTarget === "main" ? (items[0]?.dimension_unit || "ft") : (items[parseInt(sketchTarget)]?.dimension_unit || "ft")}
-                                    onSave={(dataUrl) => {
-                                        const fileName = `Sketch_${new Date().getTime()}`;
-                                        if (sketchTarget === "main") {
-                                            setPlanImages(prev => [...prev, { url: dataUrl, name: fileName }]);
-                                            toast({ title: "Sketch Saved", description: "Added to Plan-level Photos" });
-                                        } else {
-                                            const idx = parseInt(sketchTarget);
-                                            if (idx >= 0 && idx < items.length) {
-                                              const newItems = [...items];
-                                              newItems[idx].images = [...newItems[idx].images, { url: dataUrl, name: fileName }];
-                                              setItems(newItems);
-                                              toast({ title: "Sketch Saved", description: `Attached to Row ${idx + 1}` });
-                                            } else {
-                                               toast({ title: "Save Canceled", description: "Invalid target selection", variant: "destructive" });
-                                            }
-                                        }
-                                    }}
-                                />
-                            </div>
+                             <div className="py-2">
+                                 <SketchPad
+                                     readOnly={isLocked}
+                                     initialData={sketchInitialData}
+                                     unitPrefix={sketchTarget === "main" ? (items[0]?.dimension_unit || "ft") as string : (items[parseInt(sketchTarget.replace(/^(pre-|post-)/, ""))]?.dimension_unit || "ft") as string}
+                                     onAutoSave={handleSketchAutoSave}
+                                     onSave={handleSketchSave}
+                                 />
+                             </div>
                         </DialogContent>
                     </Dialog>
                 </CardContent>
@@ -1295,7 +1662,7 @@ export default function CreateSketchPlan() {
                  <DialogTitle>Select Columns for PDF Report</DialogTitle>
               </DialogHeader>
               <div className="grid grid-cols-2 gap-4 py-4">
-                 {["#", "Item", "Notes", "L", "W", "H", "Qty", "Unit", "Photos"].map((col) => (
+                  {["#", "Item", "Notes", "L", "W", "H", "Qty", "Unit", "Pre Photos", "Post Photos"].map((col) => (
                     <div key={col} className="flex items-center space-x-2">
                        <Checkbox 
                           id={`col-${col}`} 
