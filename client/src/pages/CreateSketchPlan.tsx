@@ -45,7 +45,7 @@ interface PlanItem {
   height: string;
   qty: string;
   unit: string;
-  dimension_unit: "feet" | "mm";
+  dimension_unit: "feet" | "mm" | "inch" | "cm" | "meter" | "sqft" | "sqmt" | "rft" | "rmt" | "nos" | "pcs" | "kg" | "litre" | "set" | "ls";
   remarks: string;
   preImages: PlanImage[]; // PRE-work images
   postImages: PlanImage[]; // POST-work images
@@ -303,13 +303,26 @@ const SketchPlanRow = ({
          </Dialog>
       </td>
       <td className={cn("px-1", isCompact ? "py-0" : "py-2")}>
-         <Select value={item.dimension_unit} onValueChange={(val: "feet" | "mm") => updateItem(idx, "dimension_unit", val)} disabled={isLocked}>
-            <SelectTrigger className={cn("text-[9px] py-0 px-1 min-w-[45px]", isCompact ? "h-5" : "h-8")}>
+         <Select value={item.dimension_unit} onValueChange={(val: any) => updateItem(idx, "dimension_unit", val)} disabled={isLocked}>
+            <SelectTrigger className={cn("text-[9px] py-0 px-1 min-w-[50px]", isCompact ? "h-5" : "h-8")}>
                <SelectValue />
             </SelectTrigger>
-            <SelectContent className="z-[110]">
+            <SelectContent className="z-[110] max-h-[180px] overflow-y-auto">
                <SelectItem value="feet">ft</SelectItem>
                <SelectItem value="mm">mm</SelectItem>
+               <SelectItem value="inch">inch</SelectItem>
+               <SelectItem value="cm">cm</SelectItem>
+               <SelectItem value="meter">m</SelectItem>
+               <SelectItem value="sqft">sqft</SelectItem>
+               <SelectItem value="sqmt">sqmt</SelectItem>
+               <SelectItem value="rft">rft</SelectItem>
+               <SelectItem value="rmt">rmt</SelectItem>
+               <SelectItem value="nos">nos</SelectItem>
+               <SelectItem value="pcs">pcs</SelectItem>
+               <SelectItem value="kg">kg</SelectItem>
+               <SelectItem value="litre">ltr</SelectItem>
+               <SelectItem value="set">set</SelectItem>
+               <SelectItem value="ls">LS</SelectItem>
             </SelectContent>
          </Select>
       </td>
