@@ -12,6 +12,54 @@ export async function registerRoutes(
   httpServer: Server,
   app: Express,
 ): Promise<Server> {
+  const { archiveService } = await import("./archive_service");
+
+  // --- ARCHIVE & TRASH API ENDPOINTS ---
+  app.get('/api/archive', authMiddleware, (req, res) => {
+    res.json({ items: archiveService.getArchived() });
+  });
+
+  app.get('/api/trash', authMiddleware, (req, res) => {
+    res.json({ items: archiveService.getTrashed() });
+  });
+
+  app.post('/api/archive/:id/trash', authMiddleware, (req, res) => {
+    const item = archiveService.trashArchiveItem(req.params.id);
+    if (item) res.json({ success: true, item });
+    else res.status(404).json({ error: "Item not found in archive" });
+  });
+
+  app.post('/api/archive/:id/restore', authMiddleware, (req, res) => {
+    const success = archiveService.restoreArchiveItem(req.params.id);
+    if (success) res.json({ success: true });
+    else res.status(404).json({ error: "Item not found in archive or trash" });
+  });
+
+  app.delete('/api/archive/:id/permanent', authMiddleware, async (req, res) => {
+    try {
+      const item = archiveService.permanentlyDelete(req.params.id);
+      if (!item) return res.status(404).json({ error: "Item not found" });
+
+      // Actually delete from DB now based on module
+      if (item.module === 'materials') {
+        await query("DELETE FROM materials WHERE id = $1", [item.originId]);
+      } else if (item.module === 'products') {
+        await query("DELETE FROM products WHERE id = $1", [item.originId]);
+      } else if (item.module === 'templates') {
+        await query("DELETE FROM material_templates WHERE id = $1", [item.originId]);
+      } else if (item.module === 'categories') {
+        await query("DELETE FROM vendor_categories WHERE id = $1", [item.originId]);
+      } else if (item.module === 'subcategories') {
+        await query("DELETE FROM vendor_subcategories WHERE id = $1", [item.originId]);
+      } // add others as needed
+
+      res.json({ success: true, message: "Permanently deleted" });
+    } catch (e) {
+      console.error(e);
+      res.status(500).json({ error: "Failed to permanently delete" });
+    }
+  });
+  // --- END ARCHIVE ENDPOINTS ---
   // Helper to parse numeric values safely from strings (e.g. "₹ 1,500.00")
   const parseSafeNumeric = (val: any): number | null => {
     if (val === undefined || val === null || val === "") return null;
@@ -1633,8 +1681,8 @@ export async function registerRoutes(
       // Query materials table (independent try/catch)
       try {
         const r = hasQuery
-          ? await query(`SELECT id::text, name, COALESCE(code,'') as code, rate, unit, category, 'Material' as type FROM materials WHERE name ILIKE $1 OR COALESCE(code,'') ILIKE $1 ORDER BY name ASC LIMIT 50`, [searchPattern])
-          : await query(`SELECT id::text, name, COALESCE(code,'') as code, rate, unit, category, 'Material' as type FROM materials ORDER BY name ASC LIMIT 50`);
+          ? await query(`SELECT m.id::text, m.name, COALESCE(m.code,'') as code, m.rate, m.unit, m.category, COALESCE(m.image, t.image) as image, 'Material' as type FROM materials m LEFT JOIN material_templates t ON m.template_id = t.id WHERE m.name ILIKE $1 OR COALESCE(m.code,'') ILIKE $1 ORDER BY m.name ASC LIMIT 50`, [searchPattern])
+          : await query(`SELECT m.id::text, m.name, COALESCE(m.code,'') as code, m.rate, m.unit, m.category, COALESCE(m.image, t.image) as image, 'Material' as type FROM materials m LEFT JOIN material_templates t ON m.template_id = t.id ORDER BY m.name ASC LIMIT 50`);
         materialsRows = r.rows || [];
         console.log(`[api/search] materials: ${materialsRows.length}`);
       } catch (e) {
@@ -1644,8 +1692,8 @@ export async function registerRoutes(
       // Query material_templates table (independent try/catch)
       try {
         const r = hasQuery
-          ? await query(`SELECT id::text, name, COALESCE(code,'') as code, null as rate, null as unit, COALESCE(category,'') as category, 'Template' as type FROM material_templates WHERE name ILIKE $1 OR COALESCE(code,'') ILIKE $1 ORDER BY name ASC LIMIT 50`, [searchPattern])
-          : await query(`SELECT id::text, name, COALESCE(code,'') as code, null as rate, null as unit, COALESCE(category,'') as category, 'Template' as type FROM material_templates ORDER BY name ASC LIMIT 50`);
+          ? await query(`SELECT id::text, name, COALESCE(code,'') as code, null as rate, null as unit, COALESCE(category,'') as category, image, 'Template' as type FROM material_templates WHERE name ILIKE $1 OR COALESCE(code,'') ILIKE $1 ORDER BY name ASC LIMIT 50`, [searchPattern])
+          : await query(`SELECT id::text, name, COALESCE(code,'') as code, null as rate, null as unit, COALESCE(category,'') as category, image, 'Template' as type FROM material_templates ORDER BY name ASC LIMIT 50`);
         templatesRows = r.rows || [];
         console.log(`[api/search] templates: ${templatesRows.length}`);
       } catch (e) {
@@ -1655,8 +1703,8 @@ export async function registerRoutes(
       // Query products table (independent try/catch)
       try {
         const r = hasQuery
-          ? await query(`SELECT id::text, name, null as code, null as rate, null as unit, COALESCE(subcategory,'') as category, 'Product' as type FROM products WHERE name ILIKE $1 ORDER BY name ASC LIMIT 50`, [searchPattern])
-          : await query(`SELECT id::text, name, null as code, null as rate, null as unit, COALESCE(subcategory,'') as category, 'Product' as type FROM products ORDER BY name ASC LIMIT 50`);
+          ? await query(`SELECT id::text, name, null as code, null as rate, null as unit, COALESCE(subcategory,'') as category, image, 'Product' as type FROM products WHERE name ILIKE $1 ORDER BY name ASC LIMIT 50`, [searchPattern])
+          : await query(`SELECT id::text, name, null as code, null as rate, null as unit, COALESCE(subcategory,'') as category, image, 'Product' as type FROM products ORDER BY name ASC LIMIT 50`);
         productsRows = r.rows || [];
         console.log(`[api/search] products: ${productsRows.length}`);
       } catch (e) {
@@ -1685,7 +1733,12 @@ export async function registerRoutes(
          WHERE m.approved IS TRUE 
          ORDER BY m.created_at DESC`,
       );
-      res.json({ materials: result.rows });
+      
+      const archivedIds = archiveService.getArchivedItemIds('materials');
+      const trashedIds = archiveService.getTrashedItemIds('materials');
+      const filtered = result.rows.filter(r => !archivedIds.includes(r.id) && !trashedIds.includes(r.id));
+      
+      res.json({ materials: filtered });
     } catch (err) {
       // eslint-disable-next-line no-console
       console.error("/api/materials error", err);
@@ -2092,28 +2145,15 @@ export async function registerRoutes(
         const id = req.params.id;
 
         // Look up the material first to find template_id and shop_id
-        const matResult = await query("SELECT template_id, shop_id, name, code FROM materials WHERE id = $1", [id]);
+        const matResult = await query("SELECT * FROM materials WHERE id = $1", [id]);
         const mat = matResult.rows[0];
 
-        // Delete the material
-        await query("DELETE FROM materials WHERE id = $1", [id]);
-
-        // Also clean up matching material_submissions so stale data doesn't resurface
-        if (mat) {
-          if (mat.template_id && mat.shop_id) {
-            await query(
-              "DELETE FROM material_submissions WHERE template_id = $1 AND shop_id = $2",
-              [mat.template_id, mat.shop_id]
-            );
-          }
-          // Also try to clean up by name/code match if template_id was null
-          if (!mat.template_id && mat.shop_id && (mat.name || mat.code)) {
-            await query(
-              "DELETE FROM material_submissions WHERE shop_id = $1 AND (name = $2 OR code = $3)",
-              [mat.shop_id, mat.name, mat.code]
-            );
-          }
+        if (!mat) {
+          return res.status(404).json({ message: "Material not found" });
         }
+
+        // Archive the material instead of deleting
+        archiveService.archiveItem(id, 'materials', mat);
 
         res.json({ message: "deleted" });
       } catch (err) {
@@ -2980,13 +3020,17 @@ export async function registerRoutes(
         // Return all subcategories for a category (including seeded ones)
         const result = await query(
           `
-        SELECT DISTINCT name FROM material_subcategories 
+        SELECT id, name FROM material_subcategories 
         WHERE category = $1
         ORDER BY name ASC
       `,
           [category],
         );
+
+        const archivedIds = archiveService.getArchivedItemIds('subcategories');
+        const trashedIds = archiveService.getTrashedItemIds('subcategories');
         const subcategories = result.rows
+          .filter(r => !archivedIds.includes(r.id) && !trashedIds.includes(r.id))
           .map((row) => row.name)
           .filter(Boolean);
         res.json({ subcategories });
@@ -3269,52 +3313,22 @@ export async function registerRoutes(
     }
   );
 
-  // DELETE /api/subcategories/:id - Delete a subcategory (Admin/Software Team/Purchase Team)
+  // DELETE /api/subcategories/:id - Archive a subcategory
   app.delete(
     "/api/subcategories/:id",
     authMiddleware,
     requireRole("admin", "software_team", "purchase_team", "pre_sales", "product_manager"),
     async (req: Request, res: Response) => {
       try {
-        const id = req.params.id;
-
-        // Find subcategory name first to update materials/templates
-        const subResult = await query("SELECT name FROM material_subcategories WHERE id = $1", [id]);
+        const { id } = req.params;
+        const subResult = await query("SELECT * FROM material_subcategories WHERE id = $1", [id]);
         if (subResult.rows.length === 0) {
           return res.status(404).json({ message: "Subcategory not found" });
         }
-        const subName = subResult.rows[0].name;
 
-        // Update materials to be uncategorized for this subcategory
-        await query(
-          "UPDATE materials SET subcategory = NULL WHERE subcategory = $1",
-          [subName]
-        );
+        archiveService.archiveItem(id, 'subcategories', subResult.rows[0]);
 
-        // Update material templates
-        await query(
-          "UPDATE material_templates SET subcategory = NULL WHERE subcategory = $1",
-          [subName]
-        );
-
-        // Also clear products that were assigned this subcategory (products.subcategory is a text column)
-        await query(
-          "UPDATE products SET subcategory = NULL WHERE subcategory = $1",
-          [subName]
-        );
-
-        // Simply delete the subcategory record from lookup table
-        const result = await query(
-          "DELETE FROM material_subcategories WHERE id = $1 RETURNING id",
-          [id],
-        );
-
-        if (result.rowCount === 0) {
-          res.status(404).json({ message: "Subcategory not found" });
-          return;
-        }
-
-        res.json({ message: "Subcategory deleted successfully (materials uncategorized)" });
+        res.json({ message: "Subcategory archived", subcategory: subResult.rows[0] });
       } catch (err: any) {
         console.error("/api/subcategories DELETE error:", {
           message: err.message,
@@ -3337,7 +3351,11 @@ export async function registerRoutes(
         ORDER BY created_at DESC
       `);
 
-      res.json({ categories: result.rows.map((r) => r.name) });
+      const archivedNames = archiveService.getArchivedItemIds('categories');
+      const trashedNames = archiveService.getTrashedItemIds('categories');
+      const filtered = result.rows.map((r) => r.name).filter(name => !archivedNames.includes(name) && !trashedNames.includes(name));
+
+      res.json({ categories: filtered });
     } catch (err: unknown) {
       console.error("/api/categories error", err as any);
       res.status(500).json({ message: "failed to list categories" });
@@ -3356,47 +3374,14 @@ export async function registerRoutes(
         if (!name)
           return res.status(400).json({ message: "category name required" });
 
-        // Update materials to be uncategorized for this category
-        console.log("Uncategorizing materials for category:", name);
-        const materialsUpdateResult = await query(
-          "UPDATE materials SET category = NULL WHERE category = $1",
-          [name],
-        );
-        console.log("Updated materials (uncategorized):", materialsUpdateResult.rowCount);
-
-        // Update material_templates to be uncategorized for this category
-        console.log("Uncategorizing material templates for category:", name);
-        const templatesUpdateResult = await query(
-          "UPDATE material_templates SET category = NULL WHERE category = $1",
-          [name],
-        );
-        console.log("Updated templates (uncategorized):", templatesUpdateResult.rowCount);
-
-        // Delete subcategories for this category (Lookup table entries)
-        console.log("Deleting subcategories records for category:", name);
-        const subcatsResult = await query(
-          "DELETE FROM material_subcategories WHERE category = $1",
-          [name],
-        );
-        console.log("Deleted subcategories records:", subcatsResult.rowCount);
-
-        // Delete the category record itself
-        console.log("Deleting category record:", name);
-        const result = await query(
-          "DELETE FROM material_categories WHERE name = $1 RETURNING *",
-          [name],
-        );
-        console.log(
-          "Deleted category record result:",
-          result.rowCount,
-          result.rows[0],
-        );
-
-        if (result.rowCount === 0) {
+        const getCat = await query("SELECT * FROM material_categories WHERE name = $1", [name]);
+        if (getCat.rows.length === 0) {
           return res.status(404).json({ message: "Category not found" });
         }
 
-        res.json({ message: "Category deleted (materials and templates uncategorized)", category: result.rows[0] });
+        archiveService.archiveItem(name, 'categories', getCat.rows[0]);
+
+        res.json({ message: "Category archived", category: getCat.rows[0] });
       } catch (err) {
         console.error("/api/categories/:name DELETE error", err);
         res.status(500).json({ message: "failed to delete category" });
@@ -3413,7 +3398,11 @@ export async function registerRoutes(
         ORDER BY category ASC, name ASC
       `);
 
-      res.json({ subcategories: result.rows });
+      const archivedIds = archiveService.getArchivedItemIds('subcategories');
+      const trashedIds = archiveService.getTrashedItemIds('subcategories');
+      const filtered = result.rows.filter((r) => !archivedIds.includes(r.id) && !trashedIds.includes(r.id));
+
+      res.json({ subcategories: filtered });
     } catch (err) {
       console.error("/api/subcategories-admin error", err);
       res.status(500).json({ message: "failed to list subcategories" });
@@ -3532,8 +3521,11 @@ export async function registerRoutes(
         LEFT JOIN material_categories c ON LOWER(TRIM(s.category)) = LOWER(TRIM(c.name))
         ORDER BY p.created_at DESC
       `);
+      const archivedIds = archiveService.getArchivedItemIds('products');
+      const trashedIds = archiveService.getTrashedItemIds('products');
+      const filtered = result.rows.filter((r: any) => !archivedIds.includes(r.id) && !trashedIds.includes(r.id));
 
-      res.json({ products: result.rows });
+      res.json({ products: filtered });
     } catch (err) {
       console.error("/api/products GET error", err);
       res.status(500).json({ message: "Failed to list products" });
@@ -3605,7 +3597,7 @@ export async function registerRoutes(
         const { id } = req.params;
 
         const result = await query(
-          "DELETE FROM products WHERE id = $1 RETURNING *",
+          "SELECT * FROM products WHERE id = $1",
           [id],
         );
 
@@ -3614,7 +3606,9 @@ export async function registerRoutes(
           return;
         }
 
-        res.json({ message: "Product deleted", product: result.rows[0] });
+        archiveService.archiveItem(id, 'products', result.rows[0]);
+
+        res.json({ message: "Product archived", product: result.rows[0] });
       } catch (err) {
         console.error("/api/products DELETE error", err);
         res.status(500).json({ message: "Failed to delete product" });
@@ -4235,7 +4229,13 @@ export async function registerRoutes(
 
         const result = await query(q, params);
 
-        res.json({ versions: result.rows || [] });
+        const archivedIds = archiveService.getArchivedItemIds('boq_versions');
+        const trashedIds = archiveService.getTrashedItemIds('boq_versions');
+        const filtered = (result.rows || []).filter(
+          (r: any) => !archivedIds.includes(r.id) && !trashedIds.includes(r.id)
+        );
+
+        res.json({ versions: filtered });
       } catch (err) {
         console.error("GET /api/boq-versions error", err);
         res.status(500).json({ message: "Failed to fetch versions" });
@@ -4834,26 +4834,25 @@ export async function registerRoutes(
       const { versionId } = req.params;
 
       try {
-        // Get project_id before deleting
-        const verRes = await query(`SELECT project_id FROM boq_versions WHERE id = $1`, [versionId]);
-        const projectId = verRes.rows[0]?.project_id;
+        // Get full version record before archiving
+        const verRes = await query(`SELECT * FROM boq_versions WHERE id = $1`, [versionId]);
+        if (verRes.rows.length === 0) {
+          res.status(404).json({ message: "Version not found" });
+          if (client && typeof client.release === "function") client.release();
+          return;
+        }
 
-        // Use transaction to ensure both deletes succeed together
-        await query("BEGIN");
+        const versionData = verRes.rows[0];
+        const projectId = versionData.project_id;
 
-        // Delete BOQ items tied to this version
-        await query(`DELETE FROM boq_items WHERE version_id = $1`, [versionId]);
-
-        // Delete the version itself
-        await query(`DELETE FROM boq_versions WHERE id = $1`, [versionId]);
-
-        await query("COMMIT");
+        // Archive the version instead of deleting
+        archiveService.archiveItem(versionId, 'boq_versions', versionData);
 
         if (projectId) {
           await recalculateProjectValue(projectId);
         }
 
-        res.json({ message: "Version and its items deleted" });
+        res.json({ message: "Version archived" });
       } catch (err) {
         try {
           await query("ROLLBACK");
@@ -5239,7 +5238,10 @@ export async function registerRoutes(
   app.get("/api/boq-templates", authMiddleware, async (req: Request, res: Response) => {
     try {
       const result = await query("SELECT * FROM boq_templates ORDER BY name ASC");
-      res.json({ templates: result.rows });
+      const archivedIds = archiveService.getArchivedItemIds('boq_templates');
+      const trashedIds = archiveService.getTrashedItemIds('boq_templates');
+      const filtered = result.rows.filter((r) => !archivedIds.includes(r.id) && !trashedIds.includes(r.id));
+      res.json({ templates: filtered });
     } catch (err) {
       console.error("GET /api/boq-templates error", err);
       res.status(500).json({ message: "Failed to fetch templates" });
@@ -5272,8 +5274,11 @@ export async function registerRoutes(
   app.delete("/api/boq-templates/:id", authMiddleware, async (req: Request, res: Response) => {
     try {
       const { id } = req.params;
-      await query("DELETE FROM boq_templates WHERE id = $1", [id]);
-      res.json({ message: "Template deleted" });
+      const getTpl = await query("SELECT * FROM boq_templates WHERE id = $1", [id]);
+      if (getTpl.rows.length === 0) return res.status(404).json({ message: "Template not found" });
+      
+      archiveService.archiveItem(id, 'boq_templates', getTpl.rows[0]);
+      res.json({ message: "Template archived" });
     } catch (err) {
       console.error("DELETE /api/boq-templates error", err);
       res.status(500).json({ message: "Failed to delete template" });
@@ -5288,7 +5293,10 @@ export async function registerRoutes(
   app.get("/api/bom-templates", authMiddleware, async (req: Request, res: Response) => {
     try {
       const result = await query("SELECT * FROM bom_templates ORDER BY name ASC");
-      res.json({ templates: result.rows });
+      const archivedIds = archiveService.getArchivedItemIds('bom_templates');
+      const trashedIds = archiveService.getTrashedItemIds('bom_templates');
+      const filtered = result.rows.filter((r) => !archivedIds.includes(r.id) && !trashedIds.includes(r.id));
+      res.json({ templates: filtered });
     } catch (err) {
       console.error("GET /api/bom-templates error", err);
       res.status(500).json({ message: "Failed to fetch BOM templates" });
@@ -5321,8 +5329,11 @@ export async function registerRoutes(
   app.delete("/api/bom-templates/:id", authMiddleware, async (req: Request, res: Response) => {
     try {
       const { id } = req.params;
-      await query("DELETE FROM bom_templates WHERE id = $1", [id]);
-      res.json({ message: "BOM Template deleted" });
+      const getTpl = await query("SELECT * FROM bom_templates WHERE id = $1", [id]);
+      if (getTpl.rows.length === 0) return res.status(404).json({ message: "Template not found" });
+      
+      archiveService.archiveItem(id, 'bom_templates', getTpl.rows[0]);
+      res.json({ message: "BOM Template archived" });
     } catch (err) {
       console.error("DELETE /api/bom-templates error", err);
       res.status(500).json({ message: "Failed to delete BOM template" });
