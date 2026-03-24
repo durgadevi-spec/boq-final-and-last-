@@ -27,7 +27,7 @@ import {
   DialogFooter,
 } from "@/components/ui/dialog";
 import { Checkbox } from "@/components/ui/checkbox";
-import { cn } from "@/lib/utils";
+import { fuzzySearch, cn } from "@/lib/utils";
 import XLSX from 'xlsx-js-style';
 import { useLocation } from "wouter";
 import { useToast } from "@/hooks/use-toast";
@@ -36,7 +36,7 @@ import { computeBoq } from "@/lib/boqCalc";
 
 import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
-import { Trash2, Copy, GripVertical, GripHorizontal, Eye, EyeOff, Edit2, ChevronDown, Briefcase, MapPin, IndianRupee, Lock, Edit3, CheckCircle2, Clock } from "lucide-react";
+import { Trash2, Copy, GripVertical, GripHorizontal, Eye, EyeOff, Edit2, ChevronDown, Briefcase, MapPin, IndianRupee, Lock, Edit3, CheckCircle2, Clock, Search } from "lucide-react";
 
 /** Helper to generate Excel-style column names (A, B, C... Z, AA, AB...) */
 const getExcelColumnName = (n: number) => {
@@ -411,11 +411,18 @@ export default function FinalizeBoq() {
   const [selectedProductIds, setSelectedProductIds] = useState<Set<string>>(new Set());
   const [productDescriptions, setProductDescriptions] = useState<{ [id: string]: string }>({});
   const [projectStatusFilter, setProjectStatusFilter] = useState<string>("all");
+  const [projectSearchTerm, setProjectSearchTerm] = useState("");
 
   const filteredProjects = React.useMemo(() => {
-    if (projectStatusFilter === "all") return projects;
-    return projects.filter((p) => p.project_status === projectStatusFilter);
-  }, [projects, projectStatusFilter]);
+    return projects.filter((p) => {
+      // Filter by search term
+      if (projectSearchTerm && !fuzzySearch(projectSearchTerm, [p.name, p.client])) return false;
+
+      // Filter by status
+      if (projectStatusFilter === "all") return true;
+      return p.project_status === projectStatusFilter;
+    });
+  }, [projects, projectStatusFilter, projectSearchTerm]);
   const [savingLayoutId, setSavingLayoutId] = useState<string | null>(null);
   const [showColumnTotals, setShowColumnTotals] = useState(true);
   const [hideSystemTotalFooter, setHideSystemTotalFooter] = useState(false);
@@ -2404,18 +2411,37 @@ export default function FinalizeBoq() {
                   <SelectTrigger className="bg-white border-slate-200">
                     <SelectValue placeholder="Select project" />
                   </SelectTrigger>
-                  <SelectContent className="max-h-[300px] overflow-y-auto">
-                    {filteredProjects.map((p) => {
-                      const sm = getProjectStatusMeta(p.project_status);
-                      return (
-                        <SelectItem value={p.id} key={p.id}>
-                          <span className="flex items-center gap-2">
-                            {p.name}
-                            <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded-full ${sm.color}`}>{sm.label}</span>
-                          </span>
-                        </SelectItem>
-                      );
-                    })}
+                  <SelectContent className="max-h-[350px] overflow-hidden flex flex-col">
+                    <div className="sticky top-0 z-10 bg-white p-2 border-b border-slate-100">
+                      <div className="relative">
+                        <Search className="absolute left-2 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
+                        <Input
+                          placeholder="Search projects..."
+                          value={projectSearchTerm}
+                          onChange={(e) => setProjectSearchTerm(e.target.value)}
+                          onKeyDown={(e) => e.stopPropagation()}
+                          className="pl-8 h-9 text-xs border-slate-200 bg-slate-50 focus:bg-white transition-colors w-full"
+                        />
+                      </div>
+                    </div>
+                    <div className="overflow-y-auto max-h-[250px]">
+                      {filteredProjects.map((p) => {
+                        const sm = getProjectStatusMeta(p.project_status);
+                        return (
+                          <SelectItem value={p.id} key={p.id}>
+                            <span className="flex items-center gap-2">
+                              {p.name}
+                              <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded-full ${sm.color}`}>{sm.label}</span>
+                            </span>
+                          </SelectItem>
+                        );
+                      })}
+                      {filteredProjects.length === 0 && (
+                        <div className="py-6 text-center text-slate-400 text-xs italic">
+                          No projects found
+                        </div>
+                      )}
+                    </div>
                   </SelectContent>
                 </Select>
                 {selectedProjectId && (() => {

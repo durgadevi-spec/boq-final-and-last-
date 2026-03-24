@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from "react";
+import React, { useState, useEffect, useCallback, useRef } from "react";
 import { useLocation, useParams } from "wouter";
 import { Layout } from "@/components/layout/Layout";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -7,7 +7,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
-import { Plus, Trash2, Save, ArrowLeft, Camera, Pencil, Layers, X, GripVertical, FileText, Search, MessageSquare, Image as ImageIcon, Move, Lock, Unlock, ShieldAlert } from "lucide-react";
+import { Plus, Trash2, Save, ArrowLeft, Camera, Pencil, Layers, X, GripVertical, FileText, Search, MessageSquare, Image as ImageIcon, Move, Lock, Unlock, ShieldAlert, Cloud, Check, AlertTriangle } from "lucide-react";
 import { Reorder, useDragControls } from "framer-motion";
 import { SketchPad } from "@/components/SketchPad";
 import apiFetch from "@/lib/api";
@@ -280,10 +280,11 @@ const SketchPlanRow = ({
 };
 
 export default function CreateSketchPlan() {
-  const { id } = useParams<{ id?: string }>();
+  const { id: paramId } = useParams<{ id?: string }>();
   const [, setLocation] = useLocation();
   const { toast } = useToast();
-  const isEditing = !!id;
+  const [currentId, setCurrentId] = useState<string | null>(paramId || null);
+  const isEditing = !!currentId;
 
   const [name, setName] = useState("");
   const [projectId, setProjectId] = useState<string>("none");
@@ -322,6 +323,8 @@ export default function CreateSketchPlan() {
   const [unlockReason, setUnlockReason] = useState("");
   const [submittingRequest, setSubmittingRequest] = useState(false);
   const [userRole, setUserRole] = useState<string>("user");
+  const [autoSaveStatus, setAutoSaveStatus] = useState<"idle" | "saving" | "saved" | "error">("idle");
+  const lastSavedRef = useRef<string>("");
 
   const isAdmin = userRole === "admin";
 
@@ -346,8 +349,8 @@ export default function CreateSketchPlan() {
           setProjects(data.projects || []);
         }
 
-        if (isEditing) {
-          const planRes = await apiFetch(`/api/sketch-plans/${id}`);
+        if (paramId) {
+          const planRes = await apiFetch(`/api/sketch-plans/${paramId}`);
           if (planRes.ok) {
             const data = await planRes.json();
             const p = data.plan;
@@ -383,6 +386,16 @@ export default function CreateSketchPlan() {
                 name: img.image_name || img.name || `Site Photo ${img.id.split('-').pop()}` 
               }));
             setPlanImages(plImages);
+
+            // Initialize lastSavedRef to prevent redundant save on mount
+            lastSavedRef.current = JSON.stringify({
+              name: p.name,
+              project_id: p.project_id || "none",
+              location: p.location || "",
+              plan_date: p.plan_date ? new Date(p.plan_date).toISOString().split("T")[0] : new Date().toISOString().split("T")[0],
+              items: mappedItems,
+              images: plImages.map((img: any) => ({ item_id: null, image_url: img.url, name: img.name }))
+            });
           }
         } else {
           const templateDataStr = sessionStorage.getItem("sketch_template_data");
@@ -404,7 +417,7 @@ export default function CreateSketchPlan() {
     };
 
     loadInitialData();
-  }, [id, isEditing]);
+  }, [paramId]); // Only run when URL parameter changes
 
   // Fetch materials from API
   const loadMaterials = useCallback(async (q: string = "") => {
@@ -535,17 +548,13 @@ export default function CreateSketchPlan() {
      setSearchResults([]);
   };
 
-  const savePlan = async () => {
-    if (isLocked) {
-      toast({ title: "Plan Locked", description: "You cannot save changes to a locked plan.", variant: "destructive" });
-      return;
-    }
-    if (!name.trim()) {
-      toast({ title: "Error", description: "Plan name is required", variant: "destructive" });
-      return;
-    }
+  const performSave = async (showToast: boolean = true) => {
+    if (isLocked) return;
+    if (!name.trim()) return;
 
-    setSaving(true);
+    if (!showToast) setAutoSaveStatus("saving");
+    else setSaving(true);
+
     try {
       const payload = {
         name,
@@ -553,25 +562,63 @@ export default function CreateSketchPlan() {
         location: locationStr,
         plan_date: planDate,
         items,
-        images: planImages.map(img => ({ item_id: null, image_url: img.url, name: img.name })) 
+        images: planImages.map((img: any) => ({ item_id: null, image_url: img.url, name: img.name })) 
       };
 
-      const res = await apiFetch(isEditing ? `/api/sketch-plans/${id}` : "/api/sketch-plans", {
-        method: isEditing ? "PUT" : "POST",
+      const jsonStr = JSON.stringify(payload);
+      if (jsonStr === lastSavedRef.current) {
+        if (!showToast) setAutoSaveStatus("saved");
+        return;
+      }
+
+      const res = await apiFetch(currentId ? `/api/sketch-plans/${currentId}` : "/api/sketch-plans", {
+        method: currentId ? "PUT" : "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload)
+        body: jsonStr
       });
 
       if (res.ok) {
-        toast({ title: "Success", description: `Plan ${isEditing ? "updated" : "created"} successfully` });
-        setLocation("/sketch-plans");
+        const data = await res.json();
+        lastSavedRef.current = jsonStr;
+        
+        if (!currentId && data.id) {
+          setCurrentId(data.id);
+          // Update URL without full reload if possible, or just let it stay as is for now
+          // For now, let's just update common state
+        }
+
+        if (showToast) {
+          toast({ title: "Success", description: `Plan ${isEditing ? "updated" : "created"} successfully` });
+          setLocation("/sketch-plans");
+        } else {
+          setAutoSaveStatus("saved");
+        }
+      } else {
+        if (!showToast) setAutoSaveStatus("error");
       }
     } catch (err) {
-      toast({ title: "Error", description: "Failed to save plan", variant: "destructive" });
+      console.error("Save error", err);
+      if (!showToast) setAutoSaveStatus("error");
     } finally {
       setSaving(false);
     }
   };
+
+  const savePlan = () => performSave(true);
+
+  // Debounced auto-save
+  useEffect(() => {
+     if (isLocked || !name.trim()) return;
+     
+     // Don't auto-save if we are already in the middle of a manual save
+     if (saving) return;
+
+     const timer = setTimeout(() => {
+        performSave(false);
+     }, 3000); // 3 second debounce for auto-save
+
+     return () => clearTimeout(timer);
+  }, [name, projectId, locationStr, planDate, items, planImages, isLocked]);
 
   const handleDownloadPdf = async (forEmail: boolean = false): Promise<string | undefined> => {
     try {
@@ -768,7 +815,7 @@ export default function CreateSketchPlan() {
   const handleLockPlan = async () => {
      if (!confirm("Are you sure you want to lock this plan? Once locked, further editing will be disabled until approved by an admin.")) return;
      try {
-        const res = await apiFetch(`/api/sketch-plans/${id}/lock`, { method: "POST" });
+        const res = await apiFetch(`/api/sketch-plans/${currentId}/lock`, { method: "POST" });
         if (res.ok) {
            toast({ title: "Plan Locked", description: "This plan is now read-only." });
            setIsLocked(true);
@@ -783,7 +830,7 @@ export default function CreateSketchPlan() {
      }
      setSubmittingRequest(true);
      try {
-        const res = await apiFetch(`/api/sketch-plans/${id}/request-unlock`, {
+        const res = await apiFetch(`/api/sketch-plans/${currentId}/request-unlock`, {
            method: "POST",
            headers: { "Content-Type": "application/json" },
            body: JSON.stringify({ reason: unlockReason })
@@ -800,7 +847,7 @@ export default function CreateSketchPlan() {
 
   const handleAdminUnlock = async (action: 'approve' | 'reject') => {
      try {
-        const res = await apiFetch(`/api/sketch-plans/${id}/handle-unlock`, {
+        const res = await apiFetch(`/api/sketch-plans/${currentId}/handle-unlock`, {
            method: "POST",
            headers: { "Content-Type": "application/json" },
            body: JSON.stringify({ action })
@@ -846,7 +893,33 @@ export default function CreateSketchPlan() {
             }} className="gap-2 h-9 text-xs">
               <Layers className="w-3.5 h-3.5" /> Save as Template
             </Button>
-            <Button onClick={savePlan} disabled={saving || isLocked} className="gap-2 bg-indigo-600 hover:bg-indigo-700 text-white h-9 px-6 text-xs font-bold">
+            <div className="hidden md:flex items-center gap-2 px-3 py-1.5 bg-slate-50 rounded-md border border-slate-100 min-w-[140px] justify-center transition-all">
+               {autoSaveStatus === "saving" && (
+                  <>
+                     <div className="w-2 h-2 bg-amber-400 rounded-full animate-pulse" />
+                     <span className="text-[10px] font-medium text-slate-500 italic">Saving changes...</span>
+                  </>
+               )}
+               {autoSaveStatus === "saved" && (
+                  <>
+                     <Check className="w-3 h-3 text-green-500" />
+                     <span className="text-[10px] font-medium text-slate-500">All changes saved</span>
+                  </>
+               )}
+               {autoSaveStatus === "error" && (
+                  <>
+                     <AlertTriangle className="w-3 h-3 text-red-500" />
+                     <span className="text-[10px] font-medium text-red-500">Save failed</span>
+                  </>
+               )}
+               {autoSaveStatus === "idle" && (
+                  <>
+                     <Cloud className="w-3 h-3 text-slate-300" />
+                     <span className="text-[10px] font-medium text-slate-400">Auto-save ready</span>
+                  </>
+               )}
+            </div>
+            <Button onClick={savePlan} disabled={saving || isLocked} className="gap-2 bg-indigo-600 hover:bg-indigo-700 text-white h-9 px-6 text-xs font-bold shadow-sm">
               <Save className="w-3.5 h-3.5" /> {saving ? "Saving..." : "Save Plan"}
             </Button>
             

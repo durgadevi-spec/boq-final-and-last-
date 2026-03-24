@@ -876,7 +876,7 @@ export default function CreateBom() {
   const [qtyIncreases, setQtyIncreases] = useState<any[]>([]);
   const [pendingAddProductData, setPendingAddProductData] = useState<any>(null);
   const [ignoredMismatches, setIgnoredMismatches] = useState<Set<string>>(new Set());
-  const [projectStatusFilter, setProjectStatusFilter] = useState<string>("active");
+  const [projectStatusFilter, setProjectStatusFilter] = useState<string>("all");
   const [projectSearchTerm, setProjectSearchTerm] = useState("");
 
   // BOM Template state
@@ -2019,27 +2019,9 @@ export default function CreateBom() {
                     <div className="space-y-2">
                       <div className="flex items-center justify-between px-1">
                         <Label className="text-[10px] uppercase tracking-wider text-slate-500 font-bold">Project Filters</Label>
-                        <div className="relative w-48">
-                          <Search className="absolute left-2 top-1/2 -translate-y-1/2 h-3 w-3 text-slate-400" />
-                          <Input
-                            placeholder="Search projects..."
-                            value={projectSearchTerm}
-                            onChange={(e) => setProjectSearchTerm(e.target.value)}
-                            className="pl-7 h-7 text-[11px] border-slate-200 bg-slate-50 focus:bg-white transition-colors"
-                          />
-                        </div>
                       </div>
 
                       <div className="flex flex-wrap gap-1.5 p-1 bg-slate-50 rounded-lg border border-slate-200">
-                        <button
-                          onClick={() => setProjectStatusFilter("active")}
-                          className={cn(
-                            "px-2 py-1 text-[9px] font-bold uppercase rounded-md transition-all border border-transparent shadow-sm",
-                            projectStatusFilter === "active" ? "bg-white text-blue-600 border-blue-100 ring-1 ring-blue-50/50" : "text-slate-500 hover:bg-slate-100"
-                          )}
-                        >
-                          Active
-                        </button>
                         {PROJECT_STATUSES.map(s => (
                           <button
                             key={s.value}
@@ -2070,30 +2052,41 @@ export default function CreateBom() {
                         <SelectTrigger className="w-full bg-slate-50 border-slate-200 h-9 px-3 hover:bg-slate-100/50 transition-colors">
                           <SelectValue placeholder={projects.length === 0 ? "No projects" : "Choose from filtered list..."} />
                         </SelectTrigger>
-                        <SelectContent className="max-h-[300px] overflow-auto">
-                          {projects
-                            .filter(p => {
-                              // Filter by search term
-                              if (projectSearchTerm && !fuzzySearch(projectSearchTerm, [p.name, p.client])) return false;
+                        <SelectContent className="max-h-[300px] overflow-hidden flex flex-col">
+                          <div className="sticky top-0 z-10 bg-white p-2 border-b border-slate-100">
+                            <div className="relative">
+                              <Search className="absolute left-2 top-1/2 -translate-y-1/2 h-3 w-3 text-slate-400" />
+                              <Input
+                                placeholder="Search projects..."
+                                value={projectSearchTerm}
+                                onChange={(e) => setProjectSearchTerm(e.target.value)}
+                                onKeyDown={(e) => e.stopPropagation()}
+                                className="pl-7 h-8 text-[11px] border-slate-200 bg-slate-50 focus:bg-white transition-colors w-full"
+                              />
+                            </div>
+                          </div>
+                          <div className="overflow-y-auto max-h-[250px]">
+                            {projects
+                              .filter(p => {
+                                // Filter by search term
+                                if (projectSearchTerm && !fuzzySearch(projectSearchTerm, [p.name, p.client])) return false;
 
-                              // Filter by status
-                              if (projectStatusFilter === "all") return true;
-                              if (projectStatusFilter === "active") {
-                                return p.project_status === "started" || p.project_status === "in_progress" || !p.project_status;
-                              }
-                              return p.project_status === projectStatusFilter;
-                            })
-                            .map((p: Project) => {
-                              const sm = getProjectStatusMeta(p.project_status);
-                              return (
-                                <SelectItem value={p.id} key={p.id}>
-                                  <span className="flex items-center gap-2">
-                                    {p.name}
-                                    <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded-full ${sm.color}`}>{sm.label}</span>
-                                  </span>
-                                </SelectItem>
-                              );
-                            })}
+                                // Filter by status
+                                if (projectStatusFilter === "all") return true;
+                                return p.project_status === projectStatusFilter;
+                              })
+                              .map((p: Project) => {
+                                const sm = getProjectStatusMeta(p.project_status);
+                                return (
+                                  <SelectItem value={p.id} key={p.id}>
+                                    <span className="flex items-center gap-2">
+                                      {p.name}
+                                      <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded-full ${sm.color}`}>{sm.label}</span>
+                                    </span>
+                                  </SelectItem>
+                                );
+                              })}
+                          </div>
                         </SelectContent>
                       </Select>
                       {selectedProjectId && (() => {
