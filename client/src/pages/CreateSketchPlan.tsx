@@ -51,6 +51,21 @@ interface PlanItem {
   postImages: PlanImage[]; // POST-work images
   images?: PlanImage[]; // Legacy field for compatibility
 }
+ 
+const parseImages = (imageField: any): string[] => {
+  if (!imageField) return [];
+  if (Array.isArray(imageField)) return imageField;
+  if (typeof imageField !== 'string') return [String(imageField)];
+  try {
+    if (imageField.startsWith('[') || imageField.startsWith('{')) {
+       const parsed = JSON.parse(imageField);
+       return Array.isArray(parsed) ? parsed : [imageField];
+    }
+    return [imageField];
+  } catch (e) {
+    return [imageField];
+  }
+};
 
 // Helper Component for Image Columns (Pre/Post)
 const PhotoColumn = ({ 
@@ -167,7 +182,7 @@ const SketchPlanRow = ({
         />
       </td>
       <td className={cn("px-1 text-slate-400 font-medium text-[10px]", isCompact ? "py-0" : "py-2")}>{idx + 1}</td>
-      <td className={cn("px-1", isCompact ? "py-0 w-[100px] min-w-[100px]" : "py-2 w-[150px] min-w-[150px] max-w-[150px]")}>
+      <td className={cn("px-1", isCompact ? "py-0 w-[130px] min-w-[130px]" : "py-2 w-[220px] min-w-[220px] max-w-[220px]")}>
          <Dialog>
             <TooltipProvider>
                <Tooltip>
@@ -214,7 +229,7 @@ const SketchPlanRow = ({
             </DialogContent>
          </Dialog>
       </td>
-      <td className="px-2 py-2">
+      <td className={cn("px-2", isCompact ? "py-0 w-[120px] min-w-[120px] max-w-[120px]" : "py-2 w-[160px] min-w-[160px] max-w-[160px]")}>
         <Dialog open={openPopoverIdx === idx} onOpenChange={(open) => {
                if (open) {
                   setOpenPopoverIdx(idx);
@@ -768,7 +783,23 @@ export default function CreateSketchPlan() {
      newItems[idx].material_id = material.id;
      newItems[idx].item_name = material.name;
      if (material.unit) newItems[idx].unit = material.unit;
-     // Pre-fill dimensions if it's a template/product that might have them (though backend doesn't return them yet)
+
+     // Automatically load material image into PRE option if available
+     if (material.image) {
+        const imageUrls = parseImages(material.image);
+        if (imageUrls.length > 0) {
+           const firstUrl = imageUrls[0];
+           const hasImage = (newItems[idx].preImages || []).some(img => img.url === firstUrl);
+           if (!hasImage) {
+              const materialImage = { 
+                 url: firstUrl, 
+                 name: `Template_${material.name}` 
+              };
+              newItems[idx].preImages = [...(newItems[idx].preImages || []), materialImage];
+           }
+        }
+     }
+
      setItems(newItems);
      setMaterialSearch("");
      setSearchResults([]);
@@ -1393,8 +1424,8 @@ export default function CreateSketchPlan() {
                   <tr className="bg-slate-50 text-[10px] uppercase tracking-wider text-slate-500 border-b">
                     <th className={cn("w-8 px-2", isCompact ? "py-1" : "py-3")}></th>
                     <th className={cn("w-10 px-2 text-left", isCompact ? "py-1" : "py-3")}>#</th>
-                    <th className={cn("px-2 text-left", isCompact ? "py-1" : "py-3")}>Notes/Review</th>
-                    <th className={cn("px-2 text-left", isCompact ? "py-1" : "py-3")}>Item/Product</th>
+                    <th className={cn("w-[220px] min-w-[220px] px-2 text-left", isCompact ? "py-1" : "py-3")}>Notes/Review</th>
+                    <th className={cn("w-[160px] min-w-[160px] max-w-[160px] px-2 text-left", isCompact ? "py-1" : "py-3")}>Item/Product</th>
                     <th className={cn("w-[60px] px-2 text-left", isCompact ? "py-1" : "py-3")}>Unit</th>
                     <th className={cn("w-[60px] px-2 text-left font-bold text-indigo-900 border-l border-slate-200/50 bg-indigo-50/20", isCompact ? "py-1" : "py-3")}>L</th>
                     <th className={cn("w-[60px] px-2 text-left font-bold text-indigo-900 bg-indigo-50/20", isCompact ? "py-1" : "py-3")}>W</th>

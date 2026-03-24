@@ -2457,45 +2457,46 @@ export default function FinalizeBoq() {
 
   return (
     <Layout>
-      <div className="space-y-6">
+      <div className="space-y-3">
         <h1 className="text-2xl font-semibold">Finalize {activeVersion?.type === 'boq' ? 'BOQ' : 'BOM'}</h1>
 
         {/* Project creation moved to dedicated Create Project page */}
 
         {/* Header Controls Section */}
         <Card className="border-none shadow-sm bg-slate-50/50">
-          <CardContent className="p-4 space-y-4">
-            <div className="grid grid-cols-1 md:grid-cols-12 gap-4 items-end">
-              {/* Project Select */}
-              <div className="md:col-span-5 space-y-1.5">
-                <Label className="text-[11px] uppercase tracking-wider text-slate-500 font-bold ml-1">Project</Label>
-                <div className="space-y-2">
-                  <Label className="text-[10px] uppercase tracking-wider text-slate-500 font-bold px-1">Filter by Status</Label>
-                  <div className="flex flex-wrap gap-1.5 p-1 bg-slate-50 rounded-lg border border-slate-200">
-                    {PROJECT_STATUSES.map((s) => (
-                      <button
-                        key={s.value}
-                        onClick={() => setProjectStatusFilter(s.value)}
-                        className={cn(
-                          "px-2.5 py-1 text-[9px] font-bold uppercase rounded-md transition-all border border-transparent hover:bg-slate-100",
-                          projectStatusFilter === s.value ? "bg-white text-blue-600 shadow-sm border-blue-100 ring-1 ring-blue-100" : "text-slate-500"
-                        )}
-                      >
-                        {s.label}
-                      </button>
-                    ))}
-                    <button
-                      onClick={() => setProjectStatusFilter("all")}
-                      className={cn(
-                        "px-2.5 py-1 text-[9px] font-bold uppercase rounded-md transition-all border border-transparent hover:bg-slate-100",
-                        projectStatusFilter === "all" ? "bg-white text-blue-600 shadow-sm border-blue-100 ring-1 ring-blue-100" : "text-slate-500"
-                      )}
-                    >
-                      All
-                    </button>
-                  </div>
-                </div>
+          <CardContent className="p-2 space-y-2">
+            {/* Filter by Status Row */}
+            <div className="flex items-center gap-3 px-3 py-1.5 bg-slate-50/80 rounded-lg border border-slate-100/50 shadow-sm">
+              <Label className="text-[10px] uppercase tracking-wider text-slate-500 font-bold whitespace-nowrap">Filter Status:</Label>
+              <div className="flex flex-wrap md:flex-nowrap gap-1.5">
+                {PROJECT_STATUSES.map((s) => (
+                  <button
+                    key={s.value}
+                    onClick={() => setProjectStatusFilter(s.value)}
+                    className={cn(
+                      "px-2.5 py-1 text-[9px] font-bold uppercase rounded-md transition-all border border-transparent hover:bg-slate-100",
+                      projectStatusFilter === s.value ? "bg-white text-blue-600 shadow-sm border-blue-100 ring-1 ring-blue-100" : "text-slate-500"
+                    )}
+                  >
+                    {s.label}
+                  </button>
+                ))}
+                <button
+                  onClick={() => setProjectStatusFilter("all")}
+                  className={cn(
+                    "px-2.5 py-1 text-[9px] font-bold uppercase rounded-md transition-all border border-transparent hover:bg-slate-100",
+                    projectStatusFilter === "all" ? "bg-white text-blue-600 shadow-sm border-blue-100 ring-1 ring-blue-100" : "text-slate-500"
+                  )}
+                >
+                  All
+                </button>
+              </div>
+            </div>
 
+            <div className="grid grid-cols-1 md:grid-cols-12 gap-2 items-end pt-1">
+              {/* Project Select */}
+              <div className="md:col-span-4 space-y-1">
+                <Label className="text-[11px] uppercase tracking-wider text-slate-500 font-bold ml-1">Project</Label>
                 <Select onValueChange={(v) => setSelectedProjectId(v || null)} value={selectedProjectId || ""}>
                   <SelectTrigger className="bg-white border-slate-200">
                     <SelectValue placeholder="Select project" />
@@ -2562,7 +2563,7 @@ export default function FinalizeBoq() {
 
               {/* BOM Version Select */}
               {selectedProjectId && (
-                <div className="md:col-span-3 space-y-1.5">
+                <div className="md:col-span-2 space-y-1">
                   <Label className="text-[11px] uppercase tracking-wider text-slate-500 font-bold ml-1">BOM Version</Label>
                   <div className="flex gap-2">
                     <Select
@@ -2619,7 +2620,7 @@ export default function FinalizeBoq() {
 
               {/* BOQ Version Select */}
               {selectedProjectId && (
-                <div className="md:col-span-4 space-y-1.5">
+                <div className="md:col-span-3 space-y-1">
                   <div className="flex justify-between items-center ml-1">
                     <Label className="text-[11px] uppercase tracking-wider text-slate-500 font-bold">BOQ Version</Label>
                     <button
@@ -2719,7 +2720,7 @@ export default function FinalizeBoq() {
 
               {/* Template Select */}
               {selectedProjectId && (
-                <div className="md:col-span-3 space-y-1.5">
+                <div className="md:col-span-3 space-y-1">
                   <div className="flex justify-between items-center ml-1">
                     <Label className="text-[11px] uppercase tracking-wider text-slate-500 font-bold">Template</Label>
                     <button
@@ -2773,7 +2774,7 @@ export default function FinalizeBoq() {
 
             {/* Compact Summary Bar */}
             {activeVersion && (
-              <div className="flex flex-wrap items-center gap-x-6 gap-y-2 py-2.5 px-4 bg-white border border-slate-200 rounded-lg shadow-sm overflow-hidden">
+              <div className="flex flex-wrap items-center gap-x-4 gap-y-2 py-1.5 px-4 bg-white border border-slate-200 rounded-lg shadow-sm overflow-hidden text-[11px]">
                 <div className="flex items-center gap-2 min-w-fit">
                   <div className="p-1.5 bg-blue-50 rounded text-blue-600"><Briefcase className="h-3.5 w-3.5" /></div>
                   <div className="flex flex-col">

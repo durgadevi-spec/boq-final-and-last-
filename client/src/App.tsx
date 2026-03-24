@@ -29,6 +29,8 @@ import BulkMaterialUpload from "@/pages/admin/BulkMaterialUpload";
 import ProductApprovals from "@/pages/admin/ProductApprovals";
 import BomApprovals from "@/pages/admin/BomApprovals";
 import AdminAccessControl from "@/pages/admin/AdminAccessControl";
+import Archive from "@/pages/admin/Archive";
+import Trash from "@/pages/admin/Trash";
 import GeneratePO from "@/pages/GeneratePO";
 
 
@@ -120,6 +122,8 @@ function Router() {
       <Route path="/admin/product-approvals" component={ProductApprovals} />
       <Route path="/admin/bom-approvals" component={BomApprovals} />
       <Route path="/admin/access-control" component={AdminAccessControl} />
+      <Route path="/admin/archive" component={Archive} />
+      <Route path="/admin/trash" component={Trash} />
       <Route path="/generate-po" component={GeneratePO} />
 
       {/* ✅ Supplier Approval (MAIN) */}

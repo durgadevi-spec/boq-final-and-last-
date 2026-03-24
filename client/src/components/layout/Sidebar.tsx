@@ -31,6 +31,12 @@ import {
   ClipboardCheck,
   BookOpen,
   ShieldCheck,
+  Eye,
+  EyeOff,
+  RotateCcw,
+  Edit3,
+  Archive,
+  Trash2,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -84,6 +90,95 @@ export function Sidebar({ isOpen, setIsOpen }: SidebarProps) {
   const [loadingSubcategories, setLoadingSubcategories] = useState(true);
   const { user, logout, supportMessages, materialApprovalRequests } = useData();
   const [alertsCount, setAlertsCount] = useState(0);
+
+  // --- Sidebar Hiding Logic ---
+  const [hiddenItems, setHiddenItems] = useState<Set<string>>(new Set());
+  const [isEditMode, setIsEditMode] = useState(false);
+
+  useEffect(() => {
+    const saved = localStorage.getItem("sidebar_hidden_items");
+    if (saved) {
+      try {
+        setHiddenItems(new Set(JSON.parse(saved)));
+      } catch (e) {
+        console.error("Failed to parse hidden items", e);
+      }
+    }
+  }, []);
+
+  const toggleHideItem = (e: React.MouseEvent, itemKey: string) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setHiddenItems(prev => {
+      const next = new Set(prev);
+      if (next.has(itemKey)) next.delete(itemKey);
+      else next.add(itemKey);
+      localStorage.setItem("sidebar_hidden_items", JSON.stringify(Array.from(next)));
+      return next;
+    });
+  };
+
+  const resetHiddenItems = () => {
+    if (confirm("Show all hidden sidebar items?")) {
+      setHiddenItems(new Set());
+      localStorage.removeItem("sidebar_hidden_items");
+    }
+  };
+
+  const SidebarNavItem = ({ href, icon: Icon, label, badge, count, adminTab, id, condition = true }: {
+    href: string | null;
+    icon: any;
+    label: string;
+    badge?: React.ReactNode;
+    count?: number;
+    adminTab?: string;
+    id: string;
+    condition?: boolean;
+  }) => {
+    if (!isVisible(id, condition)) return null;
+    if (!href) return null;
+    const isHidden = hiddenItems.has(id);
+    if (isHidden && !isEditMode) return null;
+
+    const currentTab = new URLSearchParams(typeof window !== "undefined" ? window.location.search : "").get("tab");
+    const isActive = adminTab ? currentTab === adminTab : location === href;
+
+    return (
+      <Link href={href}>
+        <span
+          className={cn(
+            "flex items-center gap-3 rounded-md px-3 py-2 text-sm font-medium transition-colors mb-2 cursor-pointer group relative",
+            isActive
+              ? "bg-sidebar-primary text-sidebar-primary-foreground shadow-sm"
+              : "text-sidebar-foreground hover:bg-sidebar-accent",
+            isHidden && "opacity-40 grayscale-[0.5]"
+          )}
+          onClick={closeSidebarOnMobile}
+        >
+          <Icon className="h-4 w-4 shrink-0" />
+          <span className="truncate flex-1">{label}</span>
+          {count !== undefined && count > 0 && (
+            <Badge variant="destructive" className="ml-auto pointer-events-none">
+              {count}
+            </Badge>
+          )}
+          {badge && !count && <span className="ml-auto">{badge}</span>}
+          
+          <button
+            onClick={(e) => toggleHideItem(e, id)}
+            className={cn(
+              "p-1 rounded-full bg-black/10 hover:bg-black/20 dark:bg-white/10 dark:hover:bg-white/20 transition-all",
+              isEditMode ? "opacity-100 scale-100" : "opacity-0 scale-75 group-hover:opacity-100 group-hover:scale-100"
+            )}
+            title={isHidden ? "Unhide" : "Hide"}
+          >
+            {isHidden ? <Eye className="h-3 w-3" /> : <EyeOff className="h-3 w-3" />}
+          </button>
+        </span>
+      </Link>
+    );
+  };
+  // ----------------------------
 
   const closeSidebarOnMobile = () => {
     if (window.innerWidth < 768) {
@@ -381,94 +476,92 @@ export function Sidebar({ isOpen, setIsOpen }: SidebarProps) {
           <h1 className="text-xl font-bold tracking-tight text-sidebar-primary font-heading">
             BUILD<span className="text-foreground">ESTIMATE</span>
           </h1>
-          <Button 
-            variant="ghost" 
-            size="icon" 
-            className="h-8 w-8 text-muted-foreground hover:text-foreground"
-            onClick={() => setIsOpen(false)}
-          >
-            <X className="h-5 w-5" />
-          </Button>
+          <div className="flex items-center gap-1">
+            <Button
+              variant="ghost"
+              size="icon"
+              className={cn("h-8 w-8 hover:bg-black/5 dark:hover:bg-white/5", isEditMode && "text-sidebar-primary bg-sidebar-primary/10")}
+              onClick={() => setIsEditMode(!isEditMode)}
+              title={isEditMode ? "Exit Edit Mode" : "Manage Sidebar items"}
+            >
+              <Settings className={cn("h-4 w-4 transition-transform duration-500", isEditMode && "rotate-90 text-sidebar-primary")} />
+            </Button>
+            <Button 
+              variant="ghost" 
+              size="icon" 
+              className="h-8 w-8 text-muted-foreground hover:text-foreground hover:bg-black/5 dark:hover:bg-white/5"
+              onClick={() => setIsOpen(false)}
+            >
+              <X className="h-5 w-5" />
+            </Button>
+          </div>
         </div>
 
         <nav className="flex-1 overflow-y-auto py-4 px-3 space-y-1">
+          {/* Edit Mode Controls */}
+          {isEditMode && (
+            <div className="px-3 py-2 mb-4 bg-sidebar-primary/5 rounded-md border border-sidebar-primary/10 shadow-inner">
+              <div className="flex items-center justify-between mb-2">
+                <span className="text-[10px] font-black uppercase tracking-tight text-sidebar-primary">Manage Sidebar</span>
+                <Badge variant="outline" className="text-[9px] px-1 py-0 h-4 border-sidebar-primary/30 text-sidebar-primary font-bold">Edit Mode</Badge>
+              </div>
+              <div className="grid grid-cols-1 gap-1.5">
+                <Button 
+                  variant="outline" 
+                  size="sm" 
+                  className="h-7 text-[10px] w-full justify-start font-bold border-white/30 text-white hover:bg-white/10 hover:text-white"
+                  onClick={resetHiddenItems}
+                >
+                  <RotateCcw className="h-3 w-3 mr-2" /> Reset All Hidden
+                </Button>
+                <Button 
+                  variant="default" 
+                  size="sm" 
+                  className="h-7 text-[10px] w-full bg-sidebar-primary hover:bg-sidebar-primary/90 text-white font-bold"
+                  onClick={() => setIsEditMode(false)}
+                >
+                  <CheckCircle2 className="h-3 w-3 mr-2 text-white" /> Finish Editing
+                </Button>
+              </div>
+            </div>
+          )}
+
           {/* Overview Section */}
           {!isVoltAmpele && (isVisible('dashboard', !isPreSales && !isContractor && user?.role !== "supplier" && !isProductManager) || isVisible('project_dashboard', isAdminOrSoftware) || isVisible('alerts', isAdminOnly) || isAdminOnly) && (
             <>
               <div className="px-3 mb-2 text-xs font-semibold text-muted-foreground uppercase tracking-wider">
                 Overview
               </div>
-              {/* Dashboard Link */}
-              {isVisible('dashboard', !isPreSales && !isContractor && user?.role !== "supplier" && !isProductManager) && (
-                <Link href="/dashboard">
-                  <span
-                    className={cn(
-                      "flex items-center gap-3 rounded-md px-3 py-2 text-sm font-medium transition-colors mb-2 cursor-pointer",
-                      location === "/dashboard"
-                        ? "bg-sidebar-primary text-sidebar-primary-foreground"
-                        : "text-sidebar-foreground hover:bg-sidebar-accent",
-                    )}
-                    onClick={closeSidebarOnMobile}
-                  >
-                    <LayoutDashboard className="h-4 w-4" />
-                    Dashboard
-                  </span>
-                </Link>
-              )}
-
-              {isVisible('project_dashboard', isAdminOrSoftware) && (
-                <Link href="/project-dashboard">
-                  <span
-                    className={cn(
-                      "flex items-center gap-3 rounded-md px-3 py-2 text-sm font-medium transition-colors mb-2 cursor-pointer",
-                      location === "/project-dashboard"
-                        ? "bg-sidebar-primary text-sidebar-primary-foreground"
-                        : "text-sidebar-foreground hover:bg-sidebar-accent",
-                    )}
-                    onClick={closeSidebarOnMobile}
-                  >
-                    <FolderKanban className="h-4 w-4" /> Project Dashboard
-                  </span>
-                </Link>
-              )}
-
-              {isVisible('alerts', isAdminOnly) && (
-                <Link href="/admin/dashboard?tab=alerts">
-                  <span
-                    className={cn(
-                      "flex items-center gap-3 rounded-md px-3 py-2 text-sm font-medium transition-colors mb-2 cursor-pointer",
-                      currentAdminTab === "alerts"
-                        ? "bg-sidebar-primary text-sidebar-primary-foreground"
-                        : "text-sidebar-foreground hover:bg-sidebar-accent",
-                    )}
-                    onClick={closeSidebarOnMobile}
-                  >
-                    <AlertCircle className="h-4 w-4" /> Alerts
-                    {alertsCount > 0 && (
-                      <Badge variant="destructive" className="ml-auto">
-                        {alertsCount}
-                      </Badge>
-                    )}
-                  </span>
-                </Link>
-              )}
-
-              {/* Access Control — admin only, always visible to admin regardless of custom management */}
-              {isAdminOnly && (
-                <Link href="/admin/access-control">
-                  <span
-                    className={cn(
-                      "flex items-center gap-3 rounded-md px-3 py-2 text-sm font-medium transition-colors mb-2 cursor-pointer",
-                      location === "/admin/access-control"
-                        ? "bg-sidebar-primary text-sidebar-primary-foreground"
-                        : "text-sidebar-foreground hover:bg-sidebar-accent",
-                    )}
-                    onClick={closeSidebarOnMobile}
-                  >
-                    <ShieldCheck className="h-4 w-4" /> Access Control
-                  </span>
-                </Link>
-              )}
+              <SidebarNavItem 
+                id="dashboard" 
+                href="/dashboard" 
+                icon={LayoutDashboard} 
+                label="Dashboard" 
+                condition={!isPreSales && !isContractor && user?.role !== "supplier" && !isProductManager} 
+              />
+              <SidebarNavItem 
+                id="project_dashboard" 
+                href="/project-dashboard" 
+                icon={FolderKanban} 
+                label="Project Dashboard" 
+                condition={isAdminOrSoftware} 
+              />
+              <SidebarNavItem 
+                id="alerts" 
+                href="/admin/dashboard?tab=alerts" 
+                icon={AlertCircle} 
+                label="Alerts" 
+                count={alertsCount} 
+                adminTab="alerts" 
+                condition={isAdminOnly} 
+              />
+              <SidebarNavItem 
+                id="access_control" 
+                href="/admin/access-control" 
+                icon={ShieldCheck} 
+                label="Access Control" 
+                condition={isAdminOnly} 
+              />
             </>
           )}
 
@@ -481,81 +574,43 @@ export function Sidebar({ isOpen, setIsOpen }: SidebarProps) {
                 <div className="px-3 mb-2 mt-4 text-xs font-semibold text-muted-foreground uppercase tracking-wider">
                   Creations
                 </div>
-                {isVisible('create_item', isAdminOrSoftwareOrPurchaseTeam && !isPreSales && !isContractor && !isProductManager && !isVoltAmpele) && (
-                  <Link href="/admin/dashboard?tab=materials">
-                    <span
-                      className={cn(
-                        "flex items-center gap-3 rounded-md px-3 py-2 text-sm font-medium transition-colors cursor-pointer",
-                        currentAdminTab === "materials"
-                          ? "bg-sidebar-primary text-sidebar-primary-foreground"
-                          : "text-sidebar-foreground hover:bg-sidebar-accent",
-                      )}
-                      onClick={closeSidebarOnMobile}
-                    >
-                      <Package className="h-4 w-4" /> Create Item
-                    </span>
-                  </Link>
-                )}
-                {isVisible('create_product', isAdminOrSoftwareOrPurchaseTeam || isPreSales || isProductManager || isVoltAmpele) && (
-                  <Link href="/admin/dashboard?tab=create-product">
-                    <span
-                      className={cn(
-                        "flex items-center gap-3 rounded-md px-3 py-2 text-sm font-medium transition-colors cursor-pointer",
-                        (currentAdminTab === "create-product" || location === "/admin/dashboard?tab=create-product")
-                          ? "bg-sidebar-primary text-sidebar-primary-foreground"
-                          : "text-sidebar-foreground hover:bg-sidebar-accent",
-                      )}
-                      onClick={closeSidebarOnMobile}
-                    >
-                      <Package className="h-4 w-4" /> Create Product
-                    </span>
-                  </Link>
-                )}
-                {isVisible('create_project', canCreateBOQAndProject && !isProductManager && !isVoltAmpele) && (
-                  <Link href="/create-project">
-                    <span
-                      className={cn(
-                        "flex items-center gap-3 rounded-md px-3 py-2 text-sm font-medium transition-colors cursor-pointer",
-                        location === "/create-project"
-                          ? "bg-sidebar-primary text-sidebar-primary-foreground"
-                          : "text-sidebar-foreground hover:bg-sidebar-accent",
-                      )}
-                      onClick={closeSidebarOnMobile}
-                    >
-                      <Building2 className="h-4 w-4" /> Create Project
-                    </span>
-                  </Link>
-                )}
-                {isVisible('create_vendor_category', isAdminOrSoftwareOrPurchaseTeam && !isPreSales && !isContractor && !isProductManager) && (
-                  <Link href="/admin/vendor-categories">
-                    <span
-                      className={cn(
-                        "flex items-center gap-3 rounded-md px-3 py-2 text-sm font-medium transition-colors cursor-pointer",
-                        location === "/admin/vendor-categories"
-                          ? "bg-sidebar-primary text-sidebar-primary-foreground"
-                          : "text-sidebar-foreground hover:bg-sidebar-accent",
-                      )}
-                      onClick={closeSidebarOnMobile}
-                    >
-                      <Tags className="h-4 w-4" /> Create Vendor Category
-                    </span>
-                  </Link>
-                )}
-                {isVisible('sketch_plan', canCreateBOQAndProject) && (
-                  <Link href="/sketch-plans">
-                    <span
-                      className={cn(
-                        "flex items-center gap-3 rounded-md px-3 py-2 text-sm font-medium transition-colors cursor-pointer",
-                        location === "/sketch-plans"
-                          ? "bg-sidebar-primary text-sidebar-primary-foreground"
-                          : "text-sidebar-foreground hover:bg-sidebar-accent",
-                      )}
-                      onClick={closeSidebarOnMobile}
-                    >
-                      <span className="text-lg">📐</span> Sketch a Plan
-                    </span>
-                  </Link>
-                )}
+                <SidebarNavItem 
+                  id="create_item" 
+                  href="/admin/dashboard?tab=materials" 
+                  icon={Package} 
+                  label="Create Item" 
+                  adminTab="materials" 
+                  condition={isAdminOrSoftwareOrPurchaseTeam && !isPreSales && !isContractor && !isProductManager && !isVoltAmpele} 
+                />
+                <SidebarNavItem 
+                  id="create_product" 
+                  href="/admin/dashboard?tab=create-product" 
+                  icon={Package} 
+                  label="Create Product" 
+                  adminTab="create-product" 
+                  condition={isAdminOrSoftwareOrPurchaseTeam || isPreSales || isProductManager || isVoltAmpele} 
+                />
+                <SidebarNavItem 
+                  id="create_project" 
+                  href="/create-project" 
+                  icon={Building2} 
+                  label="Create Project" 
+                  condition={canCreateBOQAndProject && !isProductManager && !isVoltAmpele} 
+                />
+                <SidebarNavItem 
+                  id="create_vendor_category" 
+                  href="/admin/vendor-categories" 
+                  icon={Tags} 
+                  label="Create Vendor Category" 
+                  condition={isAdminOrSoftwareOrPurchaseTeam && !isPreSales && !isContractor && !isProductManager} 
+                />
+                <SidebarNavItem 
+                  id="sketch_plan" 
+                  href="/sketch-plans" 
+                  icon={Hammer} 
+                  label="Sketch a Plan" 
+                  condition={canCreateBOQAndProject} 
+                />
               </>
             )}
 
@@ -569,88 +624,41 @@ export function Sidebar({ isOpen, setIsOpen }: SidebarProps) {
                 <div className="px-3 mb-2 mt-4 text-xs font-semibold text-muted-foreground uppercase tracking-wider">
                   Management
                 </div>
-                {isVisible('manage_product', true) && (
-                  <Link href="/admin/manage-product">
-                    <span
-                      className={cn(
-                        "flex items-center gap-3 rounded-md px-3 py-2 text-sm font-medium transition-colors cursor-pointer",
-                        location === "/admin/manage-product"
-                          ? "bg-sidebar-primary text-sidebar-primary-foreground"
-                          : "text-sidebar-foreground hover:bg-sidebar-accent",
-                      )}
-                      onClick={closeSidebarOnMobile}
-                    >
-                      <Package className="h-4 w-4" /> Manage Product
-                    </span>
-                  </Link>
-                )}
-                {!isVoltAmpele && isAdminOrSoftwareOrPurchaseTeam && !isPreSales && !isContractor && !isProductManager && (
-                  <>
-                    {isVisible('manage_materials', true) && (
-                      <Link href="/admin/manage-materials">
-                        <span
-                          className={cn(
-                            "flex items-center gap-3 rounded-md px-3 py-2 text-sm font-medium transition-colors cursor-pointer",
-                            location === "/admin/manage-materials"
-                              ? "bg-sidebar-primary text-sidebar-primary-foreground"
-                              : "text-sidebar-foreground hover:bg-sidebar-accent",
-                          )}
-                          onClick={closeSidebarOnMobile}
-                        >
-                          <Package className="h-4 w-4" /> Manage Materials
-                        </span>
-                      </Link>
-                    )}
-
-                    {isVisible('manage_shops', true) && (
-                      <Link href="/admin/dashboard?tab=shops">
-                        <span
-                          className={cn(
-                            "flex items-center gap-3 rounded-md px-3 py-2 text-sm font-medium transition-colors cursor-pointer",
-                            currentAdminTab === "shops"
-                              ? "bg-sidebar-primary text-sidebar-primary-foreground"
-                              : "text-sidebar-foreground hover:bg-sidebar-accent",
-                          )}
-                          onClick={closeSidebarOnMobile}
-                        >
-                          <Building2 className="h-4 w-4" /> Manage Shops
-                        </span>
-                      </Link>
-                    )}
-
-                    {isVisible('manage_categories', true) && (
-                      <Link href="/admin/manage-categories">
-                        <span
-                          className={cn(
-                            "flex items-center gap-3 rounded-md px-3 py-2 text-sm font-medium transition-colors cursor-pointer",
-                            location === "/admin/manage-categories"
-                              ? "bg-sidebar-primary text-sidebar-primary-foreground"
-                              : "text-sidebar-foreground hover:bg-sidebar-accent",
-                          )}
-                          onClick={closeSidebarOnMobile}
-                        >
-                          <Tags className="h-4 w-4" /> Manage Categories
-                        </span>
-                      </Link>
-                    )}
-
-                    {isVisible('bulk_upload', true) && (
-                      <Link href="/admin/bulk-material-upload">
-                        <span
-                          className={cn(
-                            "flex items-center gap-3 rounded-md px-3 py-2 text-sm font-medium transition-colors cursor-pointer",
-                            location === "/admin/bulk-material-upload"
-                              ? "bg-sidebar-primary text-sidebar-primary-foreground"
-                              : "text-sidebar-foreground hover:bg-sidebar-accent",
-                          )}
-                          onClick={closeSidebarOnMobile}
-                        >
-                          <Package className="h-4 w-4" /> Bulk Upload
-                        </span>
-                      </Link>
-                    )}
-                  </>
-                )}
+                <SidebarNavItem 
+                  id="manage_product" 
+                  href="/admin/manage-product" 
+                  icon={Package} 
+                  label="Manage Product" 
+                />
+                <SidebarNavItem 
+                  id="manage_materials" 
+                  href="/admin/manage-materials" 
+                  icon={Package} 
+                  label="Manage Materials" 
+                  condition={!isVoltAmpele && isAdminOrSoftwareOrPurchaseTeam && !isPreSales && !isContractor && !isProductManager} 
+                />
+                <SidebarNavItem 
+                  id="manage_shops" 
+                  href="/admin/dashboard?tab=shops" 
+                  icon={Building2} 
+                  label="Manage Shops" 
+                  adminTab="shops" 
+                  condition={!isVoltAmpele && isAdminOrSoftwareOrPurchaseTeam && !isPreSales && !isContractor && !isProductManager} 
+                />
+                <SidebarNavItem 
+                  id="manage_categories" 
+                  href="/admin/manage-categories" 
+                  icon={Tags} 
+                  label="Manage Categories" 
+                  condition={!isVoltAmpele && isAdminOrSoftwareOrPurchaseTeam && !isPreSales && !isContractor && !isProductManager} 
+                />
+                <SidebarNavItem 
+                  id="bulk_upload" 
+                  href="/admin/bulk-material-upload" 
+                  icon={Package} 
+                  label="Bulk Upload" 
+                  condition={!isVoltAmpele && isAdminOrSoftwareOrPurchaseTeam && !isPreSales && !isContractor && !isProductManager} 
+                />
               </>
             )}
 
@@ -662,51 +670,27 @@ export function Sidebar({ isOpen, setIsOpen }: SidebarProps) {
                 <div className="px-3 mb-2 mt-4 text-xs font-semibold text-muted-foreground uppercase tracking-wider">
                   BOQ / Projects
                 </div>
-                {isVisible('generate_bom', true) && (
-                  <Link href="/create-bom">
-                    <span
-                      className={cn(
-                        "flex items-center gap-3 rounded-md px-3 py-2 text-sm font-medium transition-colors cursor-pointer",
-                        location === "/create-bom"
-                          ? "bg-sidebar-primary text-sidebar-primary-foreground"
-                          : "text-sidebar-foreground hover:bg-sidebar-accent",
-                      )}
-                      onClick={closeSidebarOnMobile}
-                    >
-                      <ShoppingCart className="h-4 w-4" /> Generate BOM
-                    </span>
-                  </Link>
-                )}
-                {!isProductManager && isVisible('generate_po', true) && (
-                  <Link href="/generate-po">
-                    <span
-                      className={cn(
-                        "flex items-center gap-3 rounded-md px-3 py-2 text-sm font-medium transition-colors cursor-pointer",
-                        location === "/generate-po"
-                          ? "bg-sidebar-primary text-sidebar-primary-foreground"
-                          : "text-sidebar-foreground hover:bg-sidebar-accent",
-                      )}
-                      onClick={closeSidebarOnMobile}
-                    >
-                      <FileText className="h-4 w-4" /> Generate PO
-                    </span>
-                  </Link>
-                )}
-                {isVisible('finalize_boq', isAdminOrSoftware) && (
-                  <Link href="/finalize-bom">
-                    <span
-                      className={cn(
-                        "flex items-center gap-3 rounded-md px-3 py-2 text-sm font-medium transition-colors cursor-pointer",
-                        location === "/finalize-bom"
-                          ? "bg-sidebar-primary text-sidebar-primary-foreground"
-                          : "text-sidebar-foreground hover:bg-sidebar-accent",
-                      )}
-                      onClick={closeSidebarOnMobile}
-                    >
-                      <CheckCircle2 className="h-4 w-4" /> Finalize BOQ
-                    </span>
-                  </Link>
-                )}
+                <SidebarNavItem 
+                  id="generate_bom" 
+                  href="/create-bom" 
+                  icon={ShoppingCart} 
+                  label="Generate BOM" 
+                  condition={isAdminOrSoftware || isPreSales || isProductManager || isPurchaseTeam} 
+                />
+                <SidebarNavItem 
+                  id="generate_po" 
+                  href="/generate-po" 
+                  icon={FileText} 
+                  label="Generate PO" 
+                  condition={(isAdminOrSoftware || isPreSales || isProductManager || isPurchaseTeam) && !isProductManager} 
+                />
+                <SidebarNavItem 
+                  id="finalize_boq" 
+                  href="/finalize-bom" 
+                  icon={CheckCircle2} 
+                  label="Finalize BOQ" 
+                  condition={isAdminOrSoftware} 
+                />
               </>
             )}
 
@@ -717,36 +701,20 @@ export function Sidebar({ isOpen, setIsOpen }: SidebarProps) {
                 <div className="px-3 mb-2 mt-4 text-xs font-semibold text-muted-foreground uppercase tracking-wider">
                   Procurement
                 </div>
-                {isVisible('purchase_orders', true) && (
-                  <Link href="/purchase-orders">
-                    <span
-                      className={cn(
-                        "flex items-center gap-3 rounded-md px-3 py-2 text-sm font-medium transition-colors cursor-pointer",
-                        location === "/purchase-orders"
-                          ? "bg-sidebar-primary text-sidebar-primary-foreground"
-                          : "text-sidebar-foreground hover:bg-sidebar-accent",
-                      )}
-                      onClick={closeSidebarOnMobile}
-                    >
-                      <FileText className="h-4 w-4" /> Purchase Orders
-                    </span>
-                  </Link>
-                )}
-                {isVisible('po_approvals', true) && (
-                  <Link href="/po-approvals">
-                    <span
-                      className={cn(
-                        "flex items-center gap-3 rounded-md px-3 py-2 text-sm font-medium transition-colors cursor-pointer",
-                        location === "/po-approvals"
-                          ? "bg-sidebar-primary text-sidebar-primary-foreground"
-                          : "text-sidebar-foreground hover:bg-sidebar-accent",
-                      )}
-                      onClick={closeSidebarOnMobile}
-                    >
-                      <ClipboardCheck className="h-4 w-4" /> PO Approvals
-                    </span>
-                  </Link>
-                )}
+                <SidebarNavItem 
+                  id="purchase_orders" 
+                  href="/purchase-orders" 
+                  icon={FileText} 
+                  label="Purchase Orders" 
+                  condition={isAdminOrSoftware || isPurchaseTeam} 
+                />
+                <SidebarNavItem 
+                  id="po_approvals" 
+                  href="/po-approvals" 
+                  icon={ClipboardCheck} 
+                  label="PO Approvals" 
+                  condition={isAdminOrSoftware} 
+                />
               </>
             )}
 
@@ -759,47 +727,22 @@ export function Sidebar({ isOpen, setIsOpen }: SidebarProps) {
                 <div className="px-3 mb-2 mt-4 text-xs font-semibold text-muted-foreground uppercase tracking-wider">
                   PO Requests
                 </div>
-                {isVisible('raise_po_request', true) && (
-                  <Link href="/raise-po-request">
-                    <span
-                      className={cn(
-                        "flex items-center gap-3 rounded-md px-3 py-2 text-sm font-medium transition-colors cursor-pointer",
-                        location === "/raise-po-request"
-                          ? "bg-sidebar-primary text-sidebar-primary-foreground"
-                          : "text-sidebar-foreground hover:bg-sidebar-accent",
-                      )}
-                      onClick={closeSidebarOnMobile}
-                    >
-                      <FileText className="h-4 w-4" /> Raise PO Request
-                      <Badge variant="outline" className="ml-auto text-[9px] px-1 py-0 h-3.5 border-amber-200 bg-amber-50 text-amber-700 font-medium tracking-wide leading-none flex items-center">
-                        Under Const.
-                      </Badge>
-                    </span>
-                  </Link>
-                )}
-                {isVisible('my_po_requests', true) && (
-                  <Link href="/my-po-requests">
-                    <span
-                      className={cn(
-                        "flex items-center gap-3 rounded-md px-3 py-2 text-sm font-medium transition-colors cursor-pointer",
-                        location === "/my-po-requests"
-                          ? "bg-sidebar-primary text-sidebar-primary-foreground"
-                          : "text-sidebar-foreground hover:bg-sidebar-accent",
-                      )}
-                      onClick={closeSidebarOnMobile}
-                    >
-                      <ClipboardCheck className="h-4 w-4" /> My Requests
-                      <Badge variant="outline" className="ml-auto text-[9px] px-1 py-0 h-3.5 border-amber-200 bg-amber-50 text-amber-700 font-medium tracking-wide leading-none flex items-center">
-                        Under Const.
-                      </Badge>
-                    </span>
-                  </Link>
-                )}
-                {isAdminOrSoftware && (
-                  <>
-
-                  </>
-                )}
+                <SidebarNavItem 
+                  id="raise_po_request" 
+                  href="/raise-po-request" 
+                  icon={FileText} 
+                  label="Raise PO Request" 
+                  badge={<Badge variant="outline" className="ml-auto text-[9px] px-1 py-0 h-3.5 border-amber-200 bg-amber-50 text-amber-700 font-medium tracking-wide">Under Const.</Badge>}
+                  condition={!isVoltAmpele && !isContractor && user?.role !== "supplier"} 
+                />
+                <SidebarNavItem 
+                  id="my_po_requests" 
+                  href="/my-po-requests" 
+                  icon={ClipboardCheck} 
+                  label="My Requests" 
+                  badge={<Badge variant="outline" className="ml-auto text-[9px] px-1 py-0 h-3.5 border-amber-200 bg-amber-50 text-amber-700 font-medium tracking-wide">Under Const.</Badge>}
+                  condition={!isVoltAmpele && !isContractor && user?.role !== "supplier"} 
+                />
               </>
             )}
 
@@ -813,217 +756,140 @@ export function Sidebar({ isOpen, setIsOpen }: SidebarProps) {
                 <div className="px-3 mb-2 mt-4 text-xs font-semibold text-muted-foreground uppercase tracking-wider">
                   Approvals
                 </div>
-                {isVisible('shop_approvals', !isProductManager) && (
-                  <Link href="/admin/dashboard?tab=approvals">
-                    <span
-                      className={cn(
-                        "flex items-center gap-3 rounded-md px-3 py-2 text-sm font-medium transition-colors cursor-pointer",
-                        currentAdminTab === "approvals"
-                          ? "bg-sidebar-primary text-sidebar-primary-foreground"
-                          : "text-sidebar-foreground hover:bg-sidebar-accent",
-                      )}
-                      onClick={closeSidebarOnMobile}
-                    >
-                      <ShieldAlert className="h-4 w-4" /> Shop Approvals
-                      {pendingShopCount > 0 && (
-                        <Badge variant="destructive" className="ml-auto">
-                          {pendingShopCount}
-                        </Badge>
-                      )}
-                    </span>
-                  </Link>
-                )}
-
-                {isVisible('material_approvals', !isProductManager) && (
-                  <Link href="/admin/dashboard?tab=material-approvals">
-                    <span
-                      className={cn(
-                        "flex items-center gap-3 rounded-md px-3 py-2 text-sm font-medium transition-colors cursor-pointer",
-                        currentAdminTab === "material-approvals"
-                          ? "bg-sidebar-primary text-sidebar-primary-foreground"
-                          : "text-sidebar-foreground hover:bg-sidebar-accent",
-                      )}
-                      onClick={closeSidebarOnMobile}
-                    >
-                      <CheckCircle2 className="h-4 w-4" /> Material Approvals
-                      {pendingMaterialCount > 0 && (
-                        <Badge variant="destructive" className="ml-auto">
-                          {pendingMaterialCount}
-                        </Badge>
-                      )}
-                    </span>
-                  </Link>
-                )}
-
-
-                {/* Supplier approvals (admin only) */}
-                {isVisible('supplier_approvals', isAdminOnly) && (
-                  <Link href="/admin/suppliers">
-                    <span
-                      className={cn(
-                        "flex items-center gap-3 rounded-md px-3 py-2 text-sm font-medium transition-colors cursor-pointer",
-                        location === "/admin/suppliers"
-                          ? "bg-sidebar-primary text-sidebar-primary-foreground"
-                          : "text-sidebar-foreground hover:bg-sidebar-accent",
-                      )}
-                      onClick={closeSidebarOnMobile}
-                    >
-                      <Users className="h-4 w-4" /> Supplier Approvals
-                    </span>
-                  </Link>
-                )}
-
-                {/* Product approvals (admin + software_team + product_manager) */}
-                {isVisible('product_approvals', isAdminOrSoftware || isProductManager) && (
-                  <Link href="/admin/product-approvals">
-                    <span
-                      className={cn(
-                        "flex items-center gap-3 rounded-md px-3 py-2 text-sm font-medium transition-colors cursor-pointer",
-                        location === "/admin/product-approvals"
-                          ? "bg-sidebar-primary text-sidebar-primary-foreground"
-                          : "text-sidebar-foreground hover:bg-sidebar-accent",
-                      )}
-                      onClick={closeSidebarOnMobile}
-                    >
-                      <FolderKanban className="h-4 w-4" /> Product Approvals
-                      {pendingProductCount > 0 && (
-                        <Badge variant="destructive" className="ml-auto">
-                          {pendingProductCount}
-                        </Badge>
-                      )}
-                    </span>
-                  </Link>
-                )}
-
-                {/* BOM approvals (admin + software_team) */}
-                {isVisible('bom_approvals', isAdminOrSoftware) && (
-                  <Link href="/admin/bom-approvals">
-                    <span
-                      className={cn(
-                        "flex items-center gap-3 rounded-md px-3 py-2 text-sm font-medium transition-colors cursor-pointer",
-                        location === "/admin/bom-approvals"
-                          ? "bg-sidebar-primary text-sidebar-primary-foreground"
-                          : "text-sidebar-foreground hover:bg-sidebar-accent",
-                      )}
-                      onClick={closeSidebarOnMobile}
-                    >
-                      <CheckCircle2 className="h-4 w-4" /> BOM Approvals
-                      {pendingBomCount > 0 && (
-                        <Badge variant="destructive" className="ml-auto">
-                          {pendingBomCount}
-                        </Badge>
-                      )}
-                    </span>
-                  </Link>
-                )}
+                <SidebarNavItem 
+                  id="shop_approvals" 
+                  href="/admin/dashboard?tab=approvals" 
+                  icon={ShieldAlert} 
+                  label="Shop Approvals" 
+                  count={pendingShopCount} 
+                  adminTab="approvals" 
+                  condition={!isProductManager} 
+                />
+                <SidebarNavItem 
+                  id="material_approvals" 
+                  href="/admin/dashboard?tab=material-approvals" 
+                  icon={CheckCircle2} 
+                  label="Material Approvals" 
+                  count={pendingMaterialCount} 
+                  adminTab="material-approvals" 
+                  condition={!isProductManager} 
+                />
+                <SidebarNavItem 
+                  id="supplier_approvals" 
+                  href="/admin/suppliers" 
+                  icon={Users} 
+                  label="Supplier Approvals" 
+                  condition={isAdminOnly} 
+                />
+                <SidebarNavItem 
+                  id="product_approvals" 
+                  href="/admin/product-approvals" 
+                  icon={FolderKanban} 
+                  label="Product Approvals" 
+                  count={pendingProductCount} 
+                  condition={isAdminOrSoftware || isProductManager} 
+                />
+                <SidebarNavItem 
+                  id="bom_approvals" 
+                  href="/admin/bom-approvals" 
+                  icon={CheckCircle2} 
+                  label="BOM Approvals" 
+                  count={pendingBomCount} 
+                  condition={isAdminOrSoftware} 
+                />
               </>
             )}
+
+          {/* Storage Section */}
+          {(user?.role === "admin" || user?.role === "software_team") && (
+            <>
+              <div className="px-3 mb-2 mt-4 text-xs font-semibold text-muted-foreground uppercase tracking-wider">
+                Storage
+              </div>
+              <SidebarNavItem 
+                id="archive" 
+                href="/admin/archive" 
+                icon={Archive} 
+                label="Archive" 
+              />
+              <SidebarNavItem 
+                id="trash" 
+                href="/admin/trash" 
+                icon={Trash2} 
+                label="Trash" 
+              />
+            </>
+          )}
+
           {/* Communication Section */}
           {isVisible('support_chat', !isVoltAmpele && isAdminOrSoftwareOrPurchaseTeam && !isPreSales && !isContractor && !isProductManager) && (
             <>
               <div className="px-3 mb-2 mt-4 text-xs font-semibold text-muted-foreground uppercase tracking-wider">
                 Communication
               </div>
-              <Link href="/admin/dashboard?tab=messages">
-                <span
-                  className={cn(
-                    "flex items-center gap-3 rounded-md px-3 py-2 text-sm font-medium transition-colors cursor-pointer",
-                    currentAdminTab === "messages"
-                      ? "bg-sidebar-primary text-sidebar-primary-foreground"
-                      : "text-sidebar-foreground hover:bg-sidebar-accent",
-                  )}
-                  onClick={() => setIsOpen(false)}
-                >
-                  <MessageSquare className="h-4 w-4" /> Messages
-                  {messageCount > 0 && (
-                    <Badge variant="secondary" className="ml-auto">
-                      {messageCount}
-                    </Badge>
-                  )}
-                </span>
-              </Link>
+              <SidebarNavItem 
+                id="support_chat" 
+                href="/admin/dashboard?tab=messages" 
+                icon={MessageSquare} 
+                label="Messages" 
+                count={messageCount} 
+                adminTab="messages" 
+                condition={!isVoltAmpele && isAdminOrSoftwareOrPurchaseTeam && !isPreSales && !isContractor && !isProductManager} 
+              />
             </>
           )}
 
           {/* Supplier Role Sections */}
-          {!isVoltAmpele && !isPreSales && !isContractor && user?.role === "supplier" ? (
+          {!isVoltAmpele && !isPreSales && !isContractor && user?.role === "supplier" && (
             <>
               <div className="px-3 mb-2 mt-4 text-xs font-semibold text-muted-foreground uppercase tracking-wider">
                 Supplier
               </div>
-              <Link href="/supplier/shops">
-                <span
-                  className={cn(
-                    "flex items-center gap-3 rounded-md px-3 py-2 text-sm font-medium transition-colors cursor-pointer",
-                    location === "/supplier/shops"
-                      ? "bg-sidebar-primary text-sidebar-primary-foreground"
-                      : "text-sidebar-foreground hover:bg-sidebar-accent",
-                  )}
-                  onClick={() => setIsOpen(false)}
-                >
-                  <Building2 className="h-4 w-4" /> Add Shop
-                </span>
-              </Link>
-              <Link href="/supplier/materials">
-                <span
-                  className={cn(
-                    "flex items-center gap-3 rounded-md px-3 py-2 text-sm font-medium transition-colors cursor-pointer",
-                    location === "/supplier/materials"
-                      ? "bg-sidebar-primary text-sidebar-primary-foreground"
-                      : "text-sidebar-foreground hover:bg-sidebar-accent",
-                  )}
-                  onClick={() => setIsOpen(false)}
-                >
-                  <Package className="h-4 w-4" /> Manage Materials
-                </span>
-              </Link>
+              <SidebarNavItem 
+                id="supplier_add_shop" 
+                href="/supplier/shops" 
+                icon={Building2} 
+                label="Add Shop" 
+              />
+              <SidebarNavItem 
+                id="supplier_manage_materials" 
+                href="/supplier/materials" 
+                icon={Package} 
+                label="Manage Materials" 
+              />
             </>
-          ) : null}
+          )}
 
           {/* Other Resources Section */}
           {(isVisible('subscription', !isVoltAmpele && !isPreSales && !isContractor) ||
             isVisible('user_manual', !isVoltAmpele && !isPreSales && !isContractor)) && (
-              <>
-                <div className="mt-6 px-3 mb-2 text-xs font-semibold text-muted-foreground uppercase tracking-wider">
-                  Resources
-                </div>
-                {isVisible('subscription', !isVoltAmpele && !isPreSales && !isContractor) && (
-                  <Link href="/subscription">
-                    <span 
-                      className="flex items-center gap-3 rounded-md px-3 py-2 text-sm font-medium text-sidebar-foreground hover:bg-sidebar-accent cursor-pointer"
-                      onClick={closeSidebarOnMobile}
-                    >
-                      <Package className="h-4 w-4" />
-                      Subscription
-                    </span>
-                  </Link>
-                )}
-                {isVisible('user_manual', !isVoltAmpele && !isPreSales && !isContractor) && (
-                  <Link href="/user-manual">
-                    <span 
-                      className={cn(
-                        "flex items-center gap-3 rounded-md px-3 py-2 text-sm font-medium transition-colors cursor-pointer",
-                        location === "/user-manual"
-                          ? "bg-sidebar-primary text-sidebar-primary-foreground"
-                          : "text-sidebar-foreground hover:bg-sidebar-accent",
-                      )}
-                      onClick={closeSidebarOnMobile}
-                    >
-                      <BookOpen className="h-4 w-4" />
-                      User Manual
-                    </span>
-                  </Link>
-                )}
-              </>
-            )}
+            <>
+              <div className="mt-6 px-3 mb-2 text-xs font-semibold text-muted-foreground uppercase tracking-wider">
+                Resources
+              </div>
+              <SidebarNavItem 
+                id="subscription" 
+                href="/subscription" 
+                icon={Package} 
+                label="Subscription" 
+                condition={!isVoltAmpele && !isPreSales && !isContractor} 
+              />
+              <SidebarNavItem 
+                id="user_manual" 
+                href="/user-manual" 
+                icon={BookOpen} 
+                label="User Manual" 
+                condition={!isVoltAmpele && !isPreSales && !isContractor} 
+              />
+            </>
+          )}
+
         </nav>
 
         <div className="border-t border-sidebar-border p-4">
           <div className="flex items-center gap-3 mb-3">
             <div className="h-8 w-8 rounded-full bg-sidebar-primary/20 flex items-center justify-center text-sidebar-primary font-bold">
-              {(user as any)?.fullName?.[0]?.toUpperCase() ||
-                (user as any)?.username?.[0]?.toUpperCase() ||
-                "U"}
+              {((user as any)?.fullName || (user as any)?.username || "")?.charAt(0)?.toUpperCase() || "U"}
             </div>
             <div className="flex flex-col overflow-hidden">
               <span className="text-sm font-medium text-sidebar-foreground truncate">
