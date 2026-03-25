@@ -11,8 +11,10 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { Loader2, CheckCircle2, XCircle, ChevronDown, ChevronUp } from "lucide-react";
+import { Loader2, CheckCircle2, XCircle, ChevronDown, ChevronUp, Edit, Save, RotateCcw } from "lucide-react";
 import apiFetch from "@/lib/api";
+import { useLocation } from "wouter";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
 import { computeBoq } from "@/lib/boqCalc";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -58,6 +60,7 @@ type ApprovalItem = {
 };
 
 export default function ProductApprovals() {
+  const [, setLocation] = useLocation();
   const [approvals, setApprovals] = useState<Approval[]>([]);
   const [loading, setLoading] = useState(true);
   const [expandedId, setExpandedId] = useState<string | null>(null);
@@ -65,6 +68,9 @@ export default function ProductApprovals() {
   const [loadingItems, setLoadingItems] = useState(false);
   const [actionLoading, setActionLoading] = useState<string | null>(null);
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
+  const [isEditing, setIsEditing] = useState<string | null>(null);
+  const [editApproval, setEditApproval] = useState<Approval | null>(null);
+  const [editItems, setEditItems] = useState<ApprovalItem[]>([]);
   const { toast } = useToast();
   const { user } = useData();
 
@@ -107,6 +113,96 @@ export default function ProductApprovals() {
       console.error("Failed to load items:", err);
     } finally {
       setLoadingItems(false);
+    }
+  };
+
+  const handleStartEdit = (approval: Approval) => {
+    setIsEditing(approval.id);
+    setEditApproval({ ...approval });
+    setEditItems([...expandedItems]);
+    if (expandedId !== approval.id) {
+      setExpandedId(approval.id);
+    }
+  };
+
+  const handleCancelEdit = () => {
+    setIsEditing(null);
+    setEditApproval(null);
+    setEditItems([]);
+  };
+
+  const handleHeaderChange = (field: keyof Approval, value: any) => {
+    if (!editApproval) return;
+    setEditApproval({ ...editApproval, [field]: value });
+  };
+
+  const handleItemChange = (index: number, field: keyof ApprovalItem, value: any) => {
+    const newItems = [...editItems];
+    (newItems[index] as any)[field] = value;
+    setEditItems(newItems);
+  };
+
+  const handleSave = async () => {
+    if (!isEditing || !editApproval) return;
+    setActionLoading(isEditing);
+    try {
+      // Recompute total cost
+      const basis = {
+        requiredUnitType: (editApproval.required_unit_type as any) || "Sqft",
+        baseRequiredQty: Number(editApproval.base_required_qty || 100),
+        wastagePctDefault: Number(editApproval.wastage_pct_default || 0)
+      };
+      const materialLines = editItems.map(it => ({
+        id: it.id,
+        name: it.material_name,
+        unit: it.unit,
+        location: it.location,
+        baseQty: Number(it.base_qty || 0),
+        wastagePct: it.wastage_pct !== undefined ? Number(it.wastage_pct) : undefined,
+        supplyRate: Number(it.supply_rate || 0),
+        installRate: Number(it.install_rate || 0),
+        applyWastage: Boolean(it.apply_wastage),
+        shop_name: it.shop_name
+      }));
+      const boqRes = computeBoq(basis, materialLines, basis.baseRequiredQty);
+      
+      const res = await apiFetch(`/api/product-approvals/${isEditing}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          configName: editApproval.config_name,
+          totalCost: boqRes.grandTotal.toString(),
+          requiredUnitType: editApproval.required_unit_type,
+          baseRequiredQty: editApproval.base_required_qty,
+          wastagePctDefault: editApproval.wastage_pct_default,
+          description: editApproval.description,
+          items: editItems.map((it, idx) => ({
+            ...it,
+            qty: boqRes.computed[idx].roundOffQty.toString(), // Final total qty
+            amount: boqRes.computed[idx].lineTotal.toString()
+          }))
+        })
+      });
+
+      if (res.ok) {
+        toast({ title: "Updated", description: "Changes saved successfully." });
+        setIsEditing(null);
+        fetchApprovals();
+        // Refresh items for the expanded view
+        const itemsRes = await apiFetch(`/api/product-approvals/${isEditing}`);
+        if (itemsRes.ok) {
+          const data = await itemsRes.json();
+          setExpandedItems(data.items || []);
+        }
+      } else {
+        const data = await res.json();
+        toast({ title: "Error", description: data.message || "Failed to save changes", variant: "destructive" });
+      }
+    } catch (err) {
+      console.error(err);
+      toast({ title: "Error", description: "Failed to save changes", variant: "destructive" });
+    } finally {
+      setActionLoading(null);
     }
   };
 
@@ -424,6 +520,15 @@ export default function ProductApprovals() {
                                   <>
                                     <Button
                                       size="sm"
+                                      variant="outline"
+                                      className="h-8 px-3 border-primary text-primary hover:bg-primary/10"
+                                      onClick={() => handleStartEdit(approval)}
+                                      disabled={isEditing === approval.id}
+                                    >
+                                      <Edit className="h-3 w-3 mr-1" /> Edit Configuration
+                                    </Button>
+                                    <Button
+                                      size="sm"
                                       onClick={() => handleApprove(approval.id)}
                                       disabled={actionLoading === approval.id}
                                       className="bg-green-600 hover:bg-green-700 text-white h-8 px-3"
@@ -466,18 +571,53 @@ export default function ProductApprovals() {
                               <TableCell colSpan={8} className="bg-slate-50 p-0">
                                 <div className="p-4 space-y-4">
                                   {/* Config Summary Bar */}
-                                  <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
+                                  <div className="grid grid-cols-2 md:grid-cols-6 gap-3">
                                     <div className="bg-white rounded-lg border p-3">
                                       <p className="text-[10px] uppercase font-bold text-muted-foreground">Unit Type</p>
-                                      <p className="font-bold text-sm">{approval.required_unit_type || "Sqft"}</p>
+                                      {isEditing === approval.id ? (
+                                        <Select 
+                                          value={editApproval?.required_unit_type} 
+                                          onValueChange={(v) => handleHeaderChange("required_unit_type", v)}
+                                        >
+                                          <SelectTrigger className="h-7 text-xs">
+                                            <SelectValue />
+                                          </SelectTrigger>
+                                          <SelectContent>
+                                            <SelectItem value="Sqft">Sqft</SelectItem>
+                                            <SelectItem value="Rft">Rft</SelectItem>
+                                            <SelectItem value="Nos">Nos</SelectItem>
+                                            <SelectItem value="Kg">Kg</SelectItem>
+                                          </SelectContent>
+                                        </Select>
+                                      ) : (
+                                        <p className="font-bold text-sm">{approval.required_unit_type || "Sqft"}</p>
+                                      )}
                                     </div>
                                     <div className="bg-white rounded-lg border p-3">
                                       <p className="text-[10px] uppercase font-bold text-muted-foreground">Basis Qty</p>
-                                      <p className="font-bold text-sm">{approval.base_required_qty || "100"}</p>
+                                      {isEditing === approval.id ? (
+                                        <Input 
+                                          type="number" 
+                                          value={editApproval?.base_required_qty} 
+                                          onChange={(e) => handleHeaderChange("base_required_qty", e.target.value)}
+                                          className="h-7 text-xs"
+                                        />
+                                      ) : (
+                                        <p className="font-bold text-sm">{approval.base_required_qty || "100"}</p>
+                                      )}
                                     </div>
                                     <div className="bg-white rounded-lg border p-3">
                                       <p className="text-[10px] uppercase font-bold text-muted-foreground">Wastage %</p>
-                                      <p className="font-bold text-sm">{approval.wastage_pct_default || "0"}%</p>
+                                      {isEditing === approval.id ? (
+                                        <Input 
+                                          type="number" 
+                                          value={editApproval?.wastage_pct_default} 
+                                          onChange={(e) => handleHeaderChange("wastage_pct_default", e.target.value)}
+                                          className="h-7 text-xs"
+                                        />
+                                      ) : (
+                                        <p className="font-bold text-sm">{approval.wastage_pct_default || "0"}%</p>
+                                      )}
                                     </div>
                                     <div className="bg-white rounded-lg border p-3">
                                       <p className="text-[10px] uppercase font-bold text-muted-foreground">Category</p>
@@ -486,6 +626,18 @@ export default function ProductApprovals() {
                                     <div className="bg-white rounded-lg border p-3">
                                       <p className="text-[10px] uppercase font-bold text-muted-foreground">Subcategory</p>
                                       <p className="font-bold text-sm truncate">{approval.subcategory_id || "N/A"}</p>
+                                    </div>
+                                    <div className="flex items-end pb-1">
+                                      {isEditing === approval.id && (
+                                        <div className="flex gap-2 w-full">
+                                          <Button size="sm" className="flex-1 h-9 bg-blue-600 hover:bg-blue-700" onClick={handleSave} disabled={actionLoading === approval.id}>
+                                            <Save className="h-3.5 w-3.5 mr-1.5" /> Save
+                                          </Button>
+                                          <Button size="sm" variant="outline" className="h-9" onClick={handleCancelEdit}>
+                                            <RotateCcw className="h-3.5 w-3.5 mr-1.5" /> Cancel
+                                          </Button>
+                                        </div>
+                                      )}
                                     </div>
                                   </div>
 
@@ -503,16 +655,21 @@ export default function ProductApprovals() {
                                     </div>
                                   ) : (
                                     <div className="rounded-lg border overflow-hidden bg-white">
-                                      {/* Build basis for computeBoq using the approval record */}
+                                      {/* Build basis for computeBoq using the current state */}
                                       {(() => {
-                                        const selectedApproval = approvals.find(a => a.id === expandedId);
-                                        const basis = {
-                                          requiredUnitType: (selectedApproval?.required_unit_type as any) || "Sqft",
-                                          baseRequiredQty: Number(selectedApproval?.base_required_qty || 100),
-                                          wastagePctDefault: Number(selectedApproval?.wastage_pct_default || 0)
+                                        const basis = isEditing === approval.id && editApproval ? {
+                                          requiredUnitType: (editApproval.required_unit_type as any) || "Sqft",
+                                          baseRequiredQty: Number(editApproval.base_required_qty || 100),
+                                          wastagePctDefault: Number(editApproval.wastage_pct_default || 0)
+                                        } : {
+                                          requiredUnitType: (approval.required_unit_type as any) || "Sqft",
+                                          baseRequiredQty: Number(approval.base_required_qty || 100),
+                                          wastagePctDefault: Number(approval.wastage_pct_default || 0)
                                         };
 
-                                        const materialLines = (expandedItems || []).map((it: any) => ({
+                                        const currentItems = isEditing === approval.id ? editItems : (expandedItems || []);
+
+                                        const materialLines = currentItems.map((it: any) => ({
                                           id: it.id || it.material_id,
                                           name: it.material_name || it.name,
                                           unit: it.unit,
@@ -539,10 +696,19 @@ export default function ProductApprovals() {
                                                 <TableHead className="w-[100px] font-bold">Qty</TableHead>
                                                 <TableHead className="w-[100px] font-bold">Rate</TableHead>
                                                 <TableHead className="w-[110px] font-bold">Base Amount</TableHead>
-                                                <TableHead className="w-[70px] font-bold text-center">
+                                                <TableHead className="w-[80px] font-bold text-center">
                                                   <div className="flex flex-col items-center gap-1">
-                                                    <span className="text-[10px]">Selection</span>
-                                                    <Checkbox disabled checked={boqRes.computed.length > 0 && boqRes.computed.every(m => m.applyWastage)} />
+                                                    <span className="text-[10px]">Wastage</span>
+                                                    <Checkbox 
+                                                      disabled={isEditing !== approval.id} 
+                                                      checked={boqRes.computed.length > 0 && boqRes.computed.every(m => m.applyWastage)}
+                                                      onCheckedChange={(checked) => {
+                                                        if (isEditing === approval.id) {
+                                                          const newItems = editItems.map(it => ({ ...it, apply_wastage: !!checked }));
+                                                          setEditItems(newItems);
+                                                        }
+                                                      }}
+                                                    />
                                                     <span className="text-[9px] font-normal">All</span>
                                                   </div>
                                                 </TableHead>
@@ -562,18 +728,64 @@ export default function ProductApprovals() {
                                                     <TableCell className="font-semibold">{m.name}</TableCell>
                                                     <TableCell>{m.shop_name || "N/A"}</TableCell>
                                                     <TableCell>
-                                                      <Input value={m.location} disabled className="h-8 border-muted text-[10px] px-2" />
+                                                      <Input 
+                                                        value={isEditing === approval.id ? (editItems[idx].location || "") : m.location} 
+                                                        onChange={(e) => handleItemChange(idx, "location", e.target.value)}
+                                                        disabled={isEditing !== approval.id} 
+                                                        className="h-8 border-muted text-[10px] px-2" 
+                                                      />
                                                     </TableCell>
                                                     <TableCell className="text-[10px] font-medium">{m.unit}</TableCell>
                                                     <TableCell>
                                                       <div className="flex justify-center">
-                                                        <Input value={m.baseQty} disabled className="h-8 border-muted text-[11px] px-2 font-bold w-20 text-center" />
+                                                        <Input 
+                                                          type="number"
+                                                          value={isEditing === approval.id ? editItems[idx].base_qty : m.baseQty} 
+                                                          onChange={(e) => handleItemChange(idx, "base_qty", e.target.value)}
+                                                          disabled={isEditing !== approval.id} 
+                                                          className="h-8 border-muted text-[11px] px-2 font-bold w-20 text-center" 
+                                                        />
                                                       </div>
                                                     </TableCell>
-                                                    <TableCell className="text-[10px] font-bold">₹{((m.supplyRate || 0) + (m.installRate || 0)).toLocaleString()}</TableCell>
+                                                    <TableCell className="text-[10px] font-bold">
+                                                      {isEditing === approval.id ? (
+                                                        <div className="flex flex-col gap-1">
+                                                          <Input 
+                                                            type="number" 
+                                                            placeholder="Supply" 
+                                                            value={editItems[idx].supply_rate} 
+                                                            onChange={(e) => handleItemChange(idx, "supply_rate", e.target.value)}
+                                                            className="h-7 text-[10px] px-1 w-16"
+                                                          />
+                                                          <Input 
+                                                            type="number" 
+                                                            placeholder="Install" 
+                                                            value={editItems[idx].install_rate} 
+                                                            onChange={(e) => handleItemChange(idx, "install_rate", e.target.value)}
+                                                            className="h-7 text-[10px] px-1 w-16"
+                                                          />
+                                                        </div>
+                                                      ) : (
+                                                        `₹${((m.supplyRate || 0) + (m.installRate || 0)).toLocaleString()}`
+                                                      )}
+                                                    </TableCell>
                                                     <TableCell className="text-[10px] font-bold">₹{baseAmt.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</TableCell>
-                                                    <TableCell className="text-center"><Checkbox disabled checked={!!m.applyWastage} /></TableCell>
-                                                    <TableCell><Input value={m.wastagePct ?? ''} disabled className="h-8 border-orange-200 text-[10px] px-2 font-bold w-full" /></TableCell>
+                                                    <TableCell className="text-center">
+                                                      <Checkbox 
+                                                        disabled={isEditing !== approval.id} 
+                                                        checked={!!m.applyWastage} 
+                                                        onCheckedChange={(checked) => handleItemChange(idx, "apply_wastage", !!checked)}
+                                                      />
+                                                    </TableCell>
+                                                    <TableCell>
+                                                      <Input 
+                                                        type="number"
+                                                        value={isEditing === approval.id ? (editItems[idx].wastage_pct ?? '') : (m.wastagePct ?? '')} 
+                                                        onChange={(e) => handleItemChange(idx, "wastage_pct", e.target.value)}
+                                                        disabled={isEditing !== approval.id} 
+                                                        className="h-8 border-orange-200 text-[10px] px-2 font-bold w-full" 
+                                                      />
+                                                    </TableCell>
                                                     <TableCell className="text-[10px] font-bold text-orange-600">{m.wastageQty.toFixed(2)}</TableCell>
                                                     <TableCell className="text-[10px] font-bold">{m.roundOffQty.toFixed(2)}</TableCell>
                                                     <TableCell className="text-[10px] font-bold text-blue-600">₹{m.lineTotal.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</TableCell>

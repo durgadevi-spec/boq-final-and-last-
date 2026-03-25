@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from "react";
+import React, { useState, useEffect, useCallback } from "react";
 import apiFetch from "@/lib/api";
 import { useToast } from "@/hooks/use-toast";
 import { Button } from "@/components/ui/button";
@@ -14,8 +14,10 @@ import {
   RefreshCw,
   Loader2,
   Clock,
+  Hammer,
 } from "lucide-react";
 import { PermissionDialog } from "@/components/admin/PermissionDialog";
+import { ALL_SIDEBAR_MODULES } from "@/lib/permissions";
 
 interface UserEntry {
   id: string;
@@ -110,11 +112,16 @@ export default function AdminAccessControl() {
     return map[role] || "bg-gray-100 text-gray-700";
   };
 
-  const moduleIcons: Record<string, JSX.Element> = {
+  const moduleIcons: Record<string, React.ReactNode> = {
     boq: <Settings2 className="h-3 w-3" />,
     purchase: <ShieldCheck className="h-3 w-3" />,
     reports: <Users className="h-3 w-3" />,
     admin: <UserCheck className="h-3 w-3" />,
+    sketch_plan: <Hammer className="h-3 w-3" />,
+  };
+
+  const getModuleLabel = (key: string) => {
+    return ALL_SIDEBAR_MODULES.find(m => m.key === key)?.label || key;
   };
 
   const filteredPending = pendingUsers.filter(
@@ -275,9 +282,9 @@ export default function AdminAccessControl() {
 
                     <div className="flex flex-wrap gap-2 mt-3 pl-14">
                       {user.modules?.map((m) => (
-                        <Badge key={m} className="flex gap-1 text-xs">
+                        <Badge key={m} className="flex gap-1 text-[10px] items-center py-0.5 px-2">
                           {moduleIcons[m]}
-                          {m}
+                          {getModuleLabel(m)}
                         </Badge>
                       ))}
                     </div>

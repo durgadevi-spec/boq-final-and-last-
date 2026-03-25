@@ -163,7 +163,7 @@ export function Sidebar({ isOpen, setIsOpen }: SidebarProps) {
             </Badge>
           )}
           {badge && !count && <span className="ml-auto">{badge}</span>}
-          
+
           <button
             onClick={(e) => toggleHideItem(e, id)}
             className={cn(
@@ -448,8 +448,8 @@ export function Sidebar({ isOpen, setIsOpen }: SidebarProps) {
     <>
       {/* Mobile/Desktop Overlay */}
       {isOpen && (
-        <div 
-          className="fixed inset-0 bg-black/20 z-30 md:hidden" 
+        <div
+          className="fixed inset-0 bg-black/20 z-30 md:hidden"
           onClick={() => setIsOpen(false)}
         />
       )}
@@ -486,9 +486,9 @@ export function Sidebar({ isOpen, setIsOpen }: SidebarProps) {
             >
               <Settings className={cn("h-4 w-4 transition-transform duration-500", isEditMode && "rotate-90 text-sidebar-primary")} />
             </Button>
-            <Button 
-              variant="ghost" 
-              size="icon" 
+            <Button
+              variant="ghost"
+              size="icon"
               className="h-8 w-8 text-muted-foreground hover:text-foreground hover:bg-black/5 dark:hover:bg-white/5"
               onClick={() => setIsOpen(false)}
             >
@@ -506,17 +506,17 @@ export function Sidebar({ isOpen, setIsOpen }: SidebarProps) {
                 <Badge variant="outline" className="text-[9px] px-1 py-0 h-4 border-sidebar-primary/30 text-sidebar-primary font-bold">Edit Mode</Badge>
               </div>
               <div className="grid grid-cols-1 gap-1.5">
-                <Button 
-                  variant="outline" 
-                  size="sm" 
+                <Button
+                  variant="outline"
+                  size="sm"
                   className="h-7 text-[10px] w-full justify-start font-bold border-white/30 text-white hover:bg-white/10 hover:text-white"
                   onClick={resetHiddenItems}
                 >
                   <RotateCcw className="h-3 w-3 mr-2" /> Reset All Hidden
                 </Button>
-                <Button 
-                  variant="default" 
-                  size="sm" 
+                <Button
+                  variant="default"
+                  size="sm"
                   className="h-7 text-[10px] w-full bg-sidebar-primary hover:bg-sidebar-primary/90 text-white font-bold"
                   onClick={() => setIsEditMode(false)}
                 >
@@ -532,35 +532,35 @@ export function Sidebar({ isOpen, setIsOpen }: SidebarProps) {
               <div className="px-3 mb-2 text-xs font-semibold text-muted-foreground uppercase tracking-wider">
                 Overview
               </div>
-              <SidebarNavItem 
-                id="dashboard" 
-                href="/dashboard" 
-                icon={LayoutDashboard} 
-                label="Dashboard" 
-                condition={!isPreSales && !isContractor && user?.role !== "supplier" && !isProductManager} 
+              <SidebarNavItem
+                id="dashboard"
+                href="/dashboard"
+                icon={LayoutDashboard}
+                label="Dashboard"
+                condition={!isPreSales && !isContractor && user?.role !== "supplier" && !isProductManager}
               />
-              <SidebarNavItem 
-                id="project_dashboard" 
-                href="/project-dashboard" 
-                icon={FolderKanban} 
-                label="Project Dashboard" 
-                condition={isAdminOrSoftware} 
+              <SidebarNavItem
+                id="project_dashboard"
+                href="/project-dashboard"
+                icon={FolderKanban}
+                label="Project Dashboard"
+                condition={isAdminOrSoftware}
               />
-              <SidebarNavItem 
-                id="alerts" 
-                href="/admin/dashboard?tab=alerts" 
-                icon={AlertCircle} 
-                label="Alerts" 
-                count={alertsCount} 
-                adminTab="alerts" 
-                condition={isAdminOnly} 
+              <SidebarNavItem
+                id="alerts"
+                href="/admin/dashboard?tab=alerts"
+                icon={AlertCircle}
+                label="Alerts"
+                count={alertsCount}
+                adminTab="alerts"
+                condition={isAdminOnly}
               />
-              <SidebarNavItem 
-                id="access_control" 
-                href="/admin/access-control" 
-                icon={ShieldCheck} 
-                label="Access Control" 
-                condition={isAdminOnly} 
+              <SidebarNavItem
+                id="access_control"
+                href="/admin/access-control"
+                icon={ShieldCheck}
+                label="Access Control"
+                condition={isAdminOnly}
               />
             </>
           )}
@@ -569,47 +569,48 @@ export function Sidebar({ isOpen, setIsOpen }: SidebarProps) {
           {(isVisible('create_item', isAdminOrSoftwareOrPurchaseTeam && !isPreSales && !isContractor && !isProductManager && !isVoltAmpele) ||
             isVisible('create_product', isAdminOrSoftwareOrPurchaseTeam || isPreSales || isProductManager || isVoltAmpele) ||
             isVisible('create_project', canCreateBOQAndProject && !isProductManager && !isVoltAmpele) ||
-            isVisible('create_vendor_category', isAdminOrSoftwareOrPurchaseTeam && !isPreSales && !isContractor && !isProductManager)) && (
+            isVisible('create_vendor_category', isAdminOrSoftwareOrPurchaseTeam && !isPreSales && !isContractor && !isProductManager) ||
+            isVisible('sketch_plan', canCreateBOQAndProject)) && (
               <>
                 <div className="px-3 mb-2 mt-4 text-xs font-semibold text-muted-foreground uppercase tracking-wider">
                   Creations
                 </div>
-                <SidebarNavItem 
-                  id="create_item" 
-                  href="/admin/dashboard?tab=materials" 
-                  icon={Package} 
-                  label="Create Item" 
-                  adminTab="materials" 
-                  condition={isAdminOrSoftwareOrPurchaseTeam && !isPreSales && !isContractor && !isProductManager && !isVoltAmpele} 
+                <SidebarNavItem
+                  id="create_item"
+                  href="/admin/dashboard?tab=materials"
+                  icon={Package}
+                  label="Create Item"
+                  adminTab="materials"
+                  condition={isAdminOrSoftwareOrPurchaseTeam && !isPreSales && !isContractor && !isProductManager && !isVoltAmpele}
                 />
-                <SidebarNavItem 
-                  id="create_product" 
-                  href="/admin/dashboard?tab=create-product" 
-                  icon={Package} 
-                  label="Create Product" 
-                  adminTab="create-product" 
-                  condition={isAdminOrSoftwareOrPurchaseTeam || isPreSales || isProductManager || isVoltAmpele} 
+                <SidebarNavItem
+                  id="create_product"
+                  href="/admin/dashboard?tab=create-product"
+                  icon={Package}
+                  label="Create Product"
+                  adminTab="create-product"
+                  condition={isAdminOrSoftwareOrPurchaseTeam || isPreSales || isProductManager || isVoltAmpele}
                 />
-                <SidebarNavItem 
-                  id="create_project" 
-                  href="/create-project" 
-                  icon={Building2} 
-                  label="Create Project" 
-                  condition={canCreateBOQAndProject && !isProductManager && !isVoltAmpele} 
+                <SidebarNavItem
+                  id="create_project"
+                  href="/create-project"
+                  icon={Building2}
+                  label="Create Project"
+                  condition={canCreateBOQAndProject && !isProductManager && !isVoltAmpele}
                 />
-                <SidebarNavItem 
-                  id="create_vendor_category" 
-                  href="/admin/vendor-categories" 
-                  icon={Tags} 
-                  label="Create Vendor Category" 
-                  condition={isAdminOrSoftwareOrPurchaseTeam && !isPreSales && !isContractor && !isProductManager} 
+                <SidebarNavItem
+                  id="create_vendor_category"
+                  href="/admin/vendor-categories"
+                  icon={Tags}
+                  label="Create Vendor Category"
+                  condition={isAdminOrSoftwareOrPurchaseTeam && !isPreSales && !isContractor && !isProductManager}
                 />
-                <SidebarNavItem 
-                  id="sketch_plan" 
-                  href="/sketch-plans" 
-                  icon={Hammer} 
-                  label="Sketch a Plan" 
-                  condition={canCreateBOQAndProject} 
+                <SidebarNavItem
+                  id="sketch_plan"
+                  href="/sketch-plans"
+                  icon={Hammer}
+                  label="Sketch a Plan"
+                  condition={canCreateBOQAndProject}
                 />
               </>
             )}
@@ -624,40 +625,40 @@ export function Sidebar({ isOpen, setIsOpen }: SidebarProps) {
                 <div className="px-3 mb-2 mt-4 text-xs font-semibold text-muted-foreground uppercase tracking-wider">
                   Management
                 </div>
-                <SidebarNavItem 
-                  id="manage_product" 
-                  href="/admin/manage-product" 
-                  icon={Package} 
-                  label="Manage Product" 
+                <SidebarNavItem
+                  id="manage_product"
+                  href="/admin/manage-product"
+                  icon={Package}
+                  label="Manage Product"
                 />
-                <SidebarNavItem 
-                  id="manage_materials" 
-                  href="/admin/manage-materials" 
-                  icon={Package} 
-                  label="Manage Materials" 
-                  condition={!isVoltAmpele && isAdminOrSoftwareOrPurchaseTeam && !isPreSales && !isContractor && !isProductManager} 
+                <SidebarNavItem
+                  id="manage_materials"
+                  href="/admin/manage-materials"
+                  icon={Package}
+                  label="Manage Materials"
+                  condition={!isVoltAmpele && isAdminOrSoftwareOrPurchaseTeam && !isPreSales && !isContractor && !isProductManager}
                 />
-                <SidebarNavItem 
-                  id="manage_shops" 
-                  href="/admin/dashboard?tab=shops" 
-                  icon={Building2} 
-                  label="Manage Shops" 
-                  adminTab="shops" 
-                  condition={!isVoltAmpele && isAdminOrSoftwareOrPurchaseTeam && !isPreSales && !isContractor && !isProductManager} 
+                <SidebarNavItem
+                  id="manage_shops"
+                  href="/admin/dashboard?tab=shops"
+                  icon={Building2}
+                  label="Manage Shops"
+                  adminTab="shops"
+                  condition={!isVoltAmpele && isAdminOrSoftwareOrPurchaseTeam && !isPreSales && !isContractor && !isProductManager}
                 />
-                <SidebarNavItem 
-                  id="manage_categories" 
-                  href="/admin/manage-categories" 
-                  icon={Tags} 
-                  label="Manage Categories" 
-                  condition={!isVoltAmpele && isAdminOrSoftwareOrPurchaseTeam && !isPreSales && !isContractor && !isProductManager} 
+                <SidebarNavItem
+                  id="manage_categories"
+                  href="/admin/manage-categories"
+                  icon={Tags}
+                  label="Manage Categories"
+                  condition={!isVoltAmpele && isAdminOrSoftwareOrPurchaseTeam && !isPreSales && !isContractor && !isProductManager}
                 />
-                <SidebarNavItem 
-                  id="bulk_upload" 
-                  href="/admin/bulk-material-upload" 
-                  icon={Package} 
-                  label="Bulk Upload" 
-                  condition={!isVoltAmpele && isAdminOrSoftwareOrPurchaseTeam && !isPreSales && !isContractor && !isProductManager} 
+                <SidebarNavItem
+                  id="bulk_upload"
+                  href="/admin/bulk-material-upload"
+                  icon={Package}
+                  label="Bulk Upload"
+                  condition={!isVoltAmpele && isAdminOrSoftwareOrPurchaseTeam && !isPreSales && !isContractor && !isProductManager}
                 />
               </>
             )}
@@ -670,26 +671,26 @@ export function Sidebar({ isOpen, setIsOpen }: SidebarProps) {
                 <div className="px-3 mb-2 mt-4 text-xs font-semibold text-muted-foreground uppercase tracking-wider">
                   BOQ / Projects
                 </div>
-                <SidebarNavItem 
-                  id="generate_bom" 
-                  href="/create-bom" 
-                  icon={ShoppingCart} 
-                  label="Generate BOM" 
-                  condition={isAdminOrSoftware || isPreSales || isProductManager || isPurchaseTeam} 
+                <SidebarNavItem
+                  id="generate_bom"
+                  href="/create-bom"
+                  icon={ShoppingCart}
+                  label="Generate BOM"
+                  condition={isAdminOrSoftware || isPreSales || isProductManager || isPurchaseTeam}
                 />
-                <SidebarNavItem 
-                  id="generate_po" 
-                  href="/generate-po" 
-                  icon={FileText} 
-                  label="Generate PO" 
-                  condition={(isAdminOrSoftware || isPreSales || isProductManager || isPurchaseTeam) && !isProductManager} 
+                <SidebarNavItem
+                  id="generate_po"
+                  href="/generate-po"
+                  icon={FileText}
+                  label="Generate PO"
+                  condition={(isAdminOrSoftware || isPreSales || isProductManager || isPurchaseTeam) && !isProductManager}
                 />
-                <SidebarNavItem 
-                  id="finalize_boq" 
-                  href="/finalize-bom" 
-                  icon={CheckCircle2} 
-                  label="Finalize BOQ" 
-                  condition={isAdminOrSoftware} 
+                <SidebarNavItem
+                  id="finalize_boq"
+                  href="/finalize-bom"
+                  icon={CheckCircle2}
+                  label="Finalize BOQ"
+                  condition={isAdminOrSoftware}
                 />
               </>
             )}
@@ -701,19 +702,19 @@ export function Sidebar({ isOpen, setIsOpen }: SidebarProps) {
                 <div className="px-3 mb-2 mt-4 text-xs font-semibold text-muted-foreground uppercase tracking-wider">
                   Procurement
                 </div>
-                <SidebarNavItem 
-                  id="purchase_orders" 
-                  href="/purchase-orders" 
-                  icon={FileText} 
-                  label="Purchase Orders" 
-                  condition={isAdminOrSoftware || isPurchaseTeam} 
+                <SidebarNavItem
+                  id="purchase_orders"
+                  href="/purchase-orders"
+                  icon={FileText}
+                  label="Purchase Orders"
+                  condition={isAdminOrSoftware || isPurchaseTeam}
                 />
-                <SidebarNavItem 
-                  id="po_approvals" 
-                  href="/po-approvals" 
-                  icon={ClipboardCheck} 
-                  label="PO Approvals" 
-                  condition={isAdminOrSoftware} 
+                <SidebarNavItem
+                  id="po_approvals"
+                  href="/po-approvals"
+                  icon={ClipboardCheck}
+                  label="PO Approvals"
+                  condition={isAdminOrSoftware}
                 />
               </>
             )}
@@ -727,21 +728,21 @@ export function Sidebar({ isOpen, setIsOpen }: SidebarProps) {
                 <div className="px-3 mb-2 mt-4 text-xs font-semibold text-muted-foreground uppercase tracking-wider">
                   PO Requests
                 </div>
-                <SidebarNavItem 
-                  id="raise_po_request" 
-                  href="/raise-po-request" 
-                  icon={FileText} 
-                  label="Raise PO Request" 
+                <SidebarNavItem
+                  id="raise_po_request"
+                  href="/raise-po-request"
+                  icon={FileText}
+                  label="Raise PO Request"
                   badge={<Badge variant="outline" className="ml-auto text-[9px] px-1 py-0 h-3.5 border-amber-200 bg-amber-50 text-amber-700 font-medium tracking-wide">Under Const.</Badge>}
-                  condition={!isVoltAmpele && !isContractor && user?.role !== "supplier"} 
+                  condition={!isVoltAmpele && !isContractor && user?.role !== "supplier"}
                 />
-                <SidebarNavItem 
-                  id="my_po_requests" 
-                  href="/my-po-requests" 
-                  icon={ClipboardCheck} 
-                  label="My Requests" 
+                <SidebarNavItem
+                  id="my_po_requests"
+                  href="/my-po-requests"
+                  icon={ClipboardCheck}
+                  label="My Requests"
                   badge={<Badge variant="outline" className="ml-auto text-[9px] px-1 py-0 h-3.5 border-amber-200 bg-amber-50 text-amber-700 font-medium tracking-wide">Under Const.</Badge>}
-                  condition={!isVoltAmpele && !isContractor && user?.role !== "supplier"} 
+                  condition={!isVoltAmpele && !isContractor && user?.role !== "supplier"}
                 />
               </>
             )}
@@ -756,46 +757,46 @@ export function Sidebar({ isOpen, setIsOpen }: SidebarProps) {
                 <div className="px-3 mb-2 mt-4 text-xs font-semibold text-muted-foreground uppercase tracking-wider">
                   Approvals
                 </div>
-                <SidebarNavItem 
-                  id="shop_approvals" 
-                  href="/admin/dashboard?tab=approvals" 
-                  icon={ShieldAlert} 
-                  label="Shop Approvals" 
-                  count={pendingShopCount} 
-                  adminTab="approvals" 
-                  condition={!isProductManager} 
+                <SidebarNavItem
+                  id="shop_approvals"
+                  href="/admin/dashboard?tab=approvals"
+                  icon={ShieldAlert}
+                  label="Shop Approvals"
+                  count={pendingShopCount}
+                  adminTab="approvals"
+                  condition={!isProductManager}
                 />
-                <SidebarNavItem 
-                  id="material_approvals" 
-                  href="/admin/dashboard?tab=material-approvals" 
-                  icon={CheckCircle2} 
-                  label="Material Approvals" 
-                  count={pendingMaterialCount} 
-                  adminTab="material-approvals" 
-                  condition={!isProductManager} 
+                <SidebarNavItem
+                  id="material_approvals"
+                  href="/admin/dashboard?tab=material-approvals"
+                  icon={CheckCircle2}
+                  label="Material Approvals"
+                  count={pendingMaterialCount}
+                  adminTab="material-approvals"
+                  condition={!isProductManager}
                 />
-                <SidebarNavItem 
-                  id="supplier_approvals" 
-                  href="/admin/suppliers" 
-                  icon={Users} 
-                  label="Supplier Approvals" 
-                  condition={isAdminOnly} 
+                <SidebarNavItem
+                  id="supplier_approvals"
+                  href="/admin/suppliers"
+                  icon={Users}
+                  label="Supplier Approvals"
+                  condition={isAdminOnly}
                 />
-                <SidebarNavItem 
-                  id="product_approvals" 
-                  href="/admin/product-approvals" 
-                  icon={FolderKanban} 
-                  label="Product Approvals" 
-                  count={pendingProductCount} 
-                  condition={isAdminOrSoftware || isProductManager} 
+                <SidebarNavItem
+                  id="product_approvals"
+                  href="/admin/product-approvals"
+                  icon={FolderKanban}
+                  label="Product Approvals"
+                  count={pendingProductCount}
+                  condition={isAdminOrSoftware || isProductManager}
                 />
-                <SidebarNavItem 
-                  id="bom_approvals" 
-                  href="/admin/bom-approvals" 
-                  icon={CheckCircle2} 
-                  label="BOM Approvals" 
-                  count={pendingBomCount} 
-                  condition={isAdminOrSoftware} 
+                <SidebarNavItem
+                  id="bom_approvals"
+                  href="/admin/bom-approvals"
+                  icon={CheckCircle2}
+                  label="BOM Approvals"
+                  count={pendingBomCount}
+                  condition={isAdminOrSoftware}
                 />
               </>
             )}
@@ -806,17 +807,17 @@ export function Sidebar({ isOpen, setIsOpen }: SidebarProps) {
               <div className="px-3 mb-2 mt-4 text-xs font-semibold text-muted-foreground uppercase tracking-wider">
                 Storage
               </div>
-              <SidebarNavItem 
-                id="archive" 
-                href="/admin/archive" 
-                icon={Archive} 
-                label="Archive" 
+              <SidebarNavItem
+                id="archive"
+                href="/admin/archive"
+                icon={Archive}
+                label="Archive"
               />
-              <SidebarNavItem 
-                id="trash" 
-                href="/admin/trash" 
-                icon={Trash2} 
-                label="Trash" 
+              <SidebarNavItem
+                id="trash"
+                href="/admin/trash"
+                icon={Trash2}
+                label="Trash"
               />
             </>
           )}
@@ -827,14 +828,14 @@ export function Sidebar({ isOpen, setIsOpen }: SidebarProps) {
               <div className="px-3 mb-2 mt-4 text-xs font-semibold text-muted-foreground uppercase tracking-wider">
                 Communication
               </div>
-              <SidebarNavItem 
-                id="support_chat" 
-                href="/admin/dashboard?tab=messages" 
-                icon={MessageSquare} 
-                label="Messages" 
-                count={messageCount} 
-                adminTab="messages" 
-                condition={!isVoltAmpele && isAdminOrSoftwareOrPurchaseTeam && !isPreSales && !isContractor && !isProductManager} 
+              <SidebarNavItem
+                id="support_chat"
+                href="/admin/dashboard?tab=messages"
+                icon={MessageSquare}
+                label="Messages"
+                count={messageCount}
+                adminTab="messages"
+                condition={!isVoltAmpele && isAdminOrSoftwareOrPurchaseTeam && !isPreSales && !isContractor && !isProductManager}
               />
             </>
           )}
@@ -845,17 +846,17 @@ export function Sidebar({ isOpen, setIsOpen }: SidebarProps) {
               <div className="px-3 mb-2 mt-4 text-xs font-semibold text-muted-foreground uppercase tracking-wider">
                 Supplier
               </div>
-              <SidebarNavItem 
-                id="supplier_add_shop" 
-                href="/supplier/shops" 
-                icon={Building2} 
-                label="Add Shop" 
+              <SidebarNavItem
+                id="supplier_add_shop"
+                href="/supplier/shops"
+                icon={Building2}
+                label="Add Shop"
               />
-              <SidebarNavItem 
-                id="supplier_manage_materials" 
-                href="/supplier/materials" 
-                icon={Package} 
-                label="Manage Materials" 
+              <SidebarNavItem
+                id="supplier_manage_materials"
+                href="/supplier/materials"
+                icon={Package}
+                label="Manage Materials"
               />
             </>
           )}
@@ -863,26 +864,26 @@ export function Sidebar({ isOpen, setIsOpen }: SidebarProps) {
           {/* Other Resources Section */}
           {(isVisible('subscription', !isVoltAmpele && !isPreSales && !isContractor) ||
             isVisible('user_manual', !isVoltAmpele && !isPreSales && !isContractor)) && (
-            <>
-              <div className="mt-6 px-3 mb-2 text-xs font-semibold text-muted-foreground uppercase tracking-wider">
-                Resources
-              </div>
-              <SidebarNavItem 
-                id="subscription" 
-                href="/subscription" 
-                icon={Package} 
-                label="Subscription" 
-                condition={!isVoltAmpele && !isPreSales && !isContractor} 
-              />
-              <SidebarNavItem 
-                id="user_manual" 
-                href="/user-manual" 
-                icon={BookOpen} 
-                label="User Manual" 
-                condition={!isVoltAmpele && !isPreSales && !isContractor} 
-              />
-            </>
-          )}
+              <>
+                <div className="mt-6 px-3 mb-2 text-xs font-semibold text-muted-foreground uppercase tracking-wider">
+                  Resources
+                </div>
+                <SidebarNavItem
+                  id="subscription"
+                  href="/subscription"
+                  icon={Package}
+                  label="Subscription"
+                  condition={!isVoltAmpele && !isPreSales && !isContractor}
+                />
+                <SidebarNavItem
+                  id="user_manual"
+                  href="/user-manual"
+                  icon={BookOpen}
+                  label="User Manual"
+                  condition={!isVoltAmpele && !isPreSales && !isContractor}
+                />
+              </>
+            )}
 
         </nav>
 

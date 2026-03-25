@@ -14,6 +14,7 @@ import { Textarea } from "@/components/ui/textarea";
 import apiFetch from "@/lib/api";
 import { useToast } from "@/hooks/use-toast";
 import { Layout } from "@/components/layout/Layout";
+import { useLocation } from "wouter";
 import { computeBoq, UnitType } from "@/lib/boqCalc";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { fuzzySearch } from "@/lib/utils";
@@ -53,6 +54,7 @@ const parseImages = (imageField: string | null | undefined): string[] => {
 };
 
 export default function ManageProduct() {
+    const [location] = useLocation();
     const [step, setStep] = useState(1);
     const [selectedProduct, setSelectedProduct] = useState<Product | null>(null);
     const [configName, setConfigName] = useState("");
@@ -83,6 +85,10 @@ export default function ManageProduct() {
     const [isUpdatingRates, setIsUpdatingRates] = useState(false);
     const [genericDelete, setGenericDelete] = useState<{ isOpen: boolean, id: number, name: string } | null>(null);
     const { toast } = useToast();
+
+    const searchParams = useMemo(() => new URLSearchParams(location.split('?')[1] || ""), [location]);
+    const approvalIdParam = searchParams.get("approvalId");
+    const productIdParam = searchParams.get("productId");
 
     const resetSelection = () => {
         setConfigName(""); setSelectedCategory(""); setSelectedSubcategory("");
@@ -124,6 +130,19 @@ export default function ManageProduct() {
             return ((d.products || []) as Product[]).sort((a, b) => (a.name || "").localeCompare(b.name || ""));
         },
     });
+
+    useEffect(() => {
+        if (approvalIdParam && productIdParam && productsData && !selectedProduct) {
+            const product = (productsData as Product[]).find((p: any) => p.id === productIdParam);
+            if (product) {
+                setSelectedProduct(product);
+                loadApprovalConfig({ id: approvalIdParam, config_name: "Loading..." }, "Pending");
+                setStep(3);
+                // Clear the URL to avoid reloading on every re-render
+                window.history.replaceState({}, '', '/admin/manage-product');
+            }
+        }
+    }, [approvalIdParam, productIdParam, productsData, selectedProduct]);
 
     const { data: allApprovals } = useQuery({
         queryKey: ["/api/product-approvals-all"],

@@ -5156,6 +5156,34 @@ export async function registerRoutes(
     },
   );
 
+  // PUT /api/boq-items/:id - Update BOM item data
+  app.put(
+    "/api/boq-items/:id",
+    authMiddleware,
+    requireRole("admin", "software_team", "purchase_team", "product_manager", "pre_sales"),
+    async (req: Request, res: Response) => {
+      try {
+        const { id } = req.params;
+        const { table_data } = req.body;
+
+        if (!table_data) {
+          res.status(400).json({ message: "table_data is required" });
+          return;
+        }
+
+        await query(
+          "UPDATE boq_items SET table_data = $1, created_at = NOW() WHERE id = $2",
+          [JSON.stringify(table_data), id]
+        );
+
+        res.json({ message: "BOM item updated successfully" });
+      } catch (err) {
+        console.error("PUT /api/boq-items/:id error:", err);
+        res.status(500).json({ message: "Failed to update BOM item" });
+      }
+    }
+  );
+
   // POST /api/boq-items/reorder - Persist new sort order for BOM items
   app.post(
     "/api/boq-items/reorder",
@@ -6660,6 +6688,70 @@ export async function registerRoutes(
       } catch (err) {
         console.error("GET /api/product-approvals/:id error:", err);
         res.status(500).json({ message: "Failed to load approval details" });
+      }
+    }
+  );
+
+  // PUT /api/product-approvals/:id - Update details and items
+  app.put(
+    "/api/product-approvals/:id",
+    authMiddleware,
+    requireRole("admin", "software_team", "purchase_team", "product_manager", "pre_sales"),
+    async (req: Request, res: Response) => {
+      try {
+        const { id } = req.params;
+        const {
+          configName, totalCost, items, requiredUnitType, baseRequiredQty,
+          wastagePctDefault, dimA, dimB, dimC, description
+        } = req.body;
+
+        await query("BEGIN");
+        try {
+          // Update the approval metadata
+          await query(
+            `UPDATE product_approvals SET
+              config_name = $1, total_cost = $2, required_unit_type = $3,
+              base_required_qty = $4, wastage_pct_default = $5,
+              dim_a = $6, dim_b = $7, dim_c = $8, description = $9,
+              updated_at = NOW()
+             WHERE id = $10`,
+            [
+              configName, totalCost, requiredUnitType, baseRequiredQty,
+              wastagePctDefault, dimA || null, dimB || null, dimC || null,
+              description || null, id
+            ]
+          );
+
+          // Delete existing items and re-insert updated ones
+          await query("DELETE FROM product_approval_items WHERE approval_id = $1", [id]);
+
+          if (items && Array.isArray(items)) {
+            for (const item of items) {
+              await query(
+                `INSERT INTO product_approval_items
+                 (approval_id, material_id, material_name, unit, qty, rate, supply_rate, install_rate, location, amount, base_qty, wastage_pct, apply_wastage, shop_name)
+                 VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)`,
+                [
+                  id, item.material_id || item.materialId, item.material_name || item.materialName,
+                  item.unit, item.qty, item.rate, item.supply_rate || item.supplyRate,
+                  item.install_rate || item.installRate, item.location, item.amount,
+                  item.base_qty || item.baseQty, item.wastage_pct || item.wastagePct,
+                  item.apply_wastage !== undefined ? item.apply_wastage : (item.applyWastage !== undefined ? item.applyWastage : true),
+                  item.shop_name || item.shopName || null
+                ]
+              );
+            }
+          }
+
+          await query("COMMIT");
+          res.json({ message: "Product configuration updated successfully" });
+        } catch (err) {
+          await query("ROLLBACK");
+          throw err;
+        }
+      } catch (err) {
+        console.error("PUT /api/product-approvals/:id error:", err);
+        res.status(500).json({ message: "Failed to update configuration" });
       }
     }
   );
