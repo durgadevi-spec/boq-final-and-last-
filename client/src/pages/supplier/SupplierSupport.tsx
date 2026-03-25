@@ -20,6 +20,7 @@ import {
   AlertCircle,
 } from "lucide-react";
 import { SupplierLayout } from "@/components/layout/SupplierLayout";
+import { DeleteConfirmationDialog } from "@/components/ui/DeleteConfirmationDialog";
 
 interface Message {
   id: string;
@@ -44,6 +45,7 @@ export function SupplierSupport({
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [message, setMessage] = useState("");
+  const [deleteDialog, setDeleteDialog] = useState<{ isOpen: boolean; id: string; name: string } | null>(null);
 
   useEffect(() => {
     loadMessages();
@@ -116,16 +118,25 @@ export function SupplierSupport({
   };
 
   const handleDeleteMessage = async (id: string) => {
-    if (!confirm("Are you sure you want to delete this message?")) {
-      return;
-    }
+    const msg = messages.find(m => m.id === id);
+    if (!msg) return;
+    setDeleteDialog({
+      isOpen: true,
+      id: id,
+      name: "Support Message"
+    });
+  };
 
+  const confirmDeleteMessage = async (action: 'archive' | 'trash') => {
+    if (!deleteDialog) return;
+    const { id } = deleteDialog;
+    
     try {
       await deleteMessage?.(id);
       setMessages(messages.filter((m) => m.id !== id));
       toast({
         title: "Success",
-        description: "Message deleted",
+        description: action === 'trash' ? "Message moved to trash" : "Message archived",
       });
     } catch (error) {
       toast({
@@ -133,6 +144,8 @@ export function SupplierSupport({
         description: "Failed to delete message",
         variant: "destructive",
       });
+    } finally {
+      setDeleteDialog(null);
     }
   };
 
@@ -314,6 +327,16 @@ export function SupplierSupport({
           </CardContent>
         </Card>
       </div>
+
+      {deleteDialog && (
+        <DeleteConfirmationDialog
+          isOpen={deleteDialog.isOpen}
+          onOpenChange={(open) => !open && setDeleteDialog(null)}
+          onConfirm={confirmDeleteMessage}
+          itemName={deleteDialog.name}
+          title="Delete Support Message?"
+        />
+      )}
     </SupplierLayout>
   );
 }

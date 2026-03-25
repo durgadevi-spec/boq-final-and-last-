@@ -51,6 +51,8 @@ export async function registerRoutes(
         await query("DELETE FROM vendor_categories WHERE id = $1", [item.originId]);
       } else if (item.module === 'subcategories') {
         await query("DELETE FROM vendor_subcategories WHERE id = $1", [item.originId]);
+      } else if (item.module === 'sketch_plans') {
+        await query("DELETE FROM sketch_plans WHERE id = $1", [item.originId]);
       } // add others as needed
 
       res.json({ success: true, message: "Permanently deleted" });
@@ -892,7 +894,19 @@ export async function registerRoutes(
     await query(
       `ALTER TABLE material_templates ADD COLUMN IF NOT EXISTS image TEXT`
     );
-    console.log("[db] material_templates tax/vendor/techspec/hsn/sac/image columns ensured");
+    await query(
+      `ALTER TABLE material_templates ADD COLUMN IF NOT EXISTS metaltype VARCHAR(255)`
+    );
+    await query(
+      `ALTER TABLE material_templates ADD COLUMN IF NOT EXISTS brandname VARCHAR(255)`
+    );
+    await query(
+      `ALTER TABLE material_templates ADD COLUMN IF NOT EXISTS dimensions VARCHAR(255)`
+    );
+    await query(
+      `ALTER TABLE material_templates ADD COLUMN IF NOT EXISTS finishtype VARCHAR(255)`
+    );
+    console.log("[db] material_templates tax/vendor/techspec/hsn/sac/image/metaltype/brandname/dimensions/finishtype columns ensured");
   } catch (err: unknown) {
     console.warn(
       "[db] Could not ensure material_templates columns:",
@@ -1587,7 +1601,12 @@ export async function registerRoutes(
       const result = await query(
         "SELECT * FROM shops WHERE approved IS TRUE ORDER BY created_at DESC",
       );
-      res.json({ shops: result.rows });
+
+      const archivedIds = archiveService.getArchivedItemIds('shops');
+      const trashedIds = archiveService.getTrashedItemIds('shops');
+      const filtered = result.rows.filter(r => !archivedIds.includes(r.id) && !trashedIds.includes(r.id));
+
+      res.json({ shops: filtered });
     } catch (err) {
       // eslint-disable-next-line no-console
       console.error("/api/shops error", err);
@@ -1988,8 +2007,17 @@ export async function registerRoutes(
     async (req, res) => {
       try {
         const id = req.params.id;
-        await query("DELETE FROM materials WHERE shop_id = $1", [id]);
-        await query("DELETE FROM shops WHERE id = $1", [id]);
+        // Fetch shop data before archiving
+        const shopRes = await query("SELECT * FROM shops WHERE id = $1", [id]);
+        if (shopRes.rows.length === 0) {
+          return res.status(404).json({ message: "Shop not found" });
+        }
+        
+        const archived = archiveService.archiveItem('shops', id, shopRes.rows[0]);
+        if (req.query.action === 'trash' && archived) {
+          archiveService.trashArchiveItem(archived.id);
+        }
+
         res.json({ message: "deleted" });
       } catch (err: unknown) {
         console.error(err as any);
@@ -2153,7 +2181,10 @@ export async function registerRoutes(
         }
 
         // Archive the material instead of deleting
-        archiveService.archiveItem(id, 'materials', mat);
+        const archived = archiveService.archiveItem('materials', id, mat);
+        if (req.query.action === 'trash' && archived) {
+          archiveService.trashArchiveItem(archived.id);
+        }
 
         res.json({ message: "deleted" });
       } catch (err) {
@@ -2395,7 +2426,7 @@ export async function registerRoutes(
     requireRole("admin", "software_team", "purchase_team"),
     async (req: Request, res: Response) => {
       try {
-        const { name, code, category, subcategory, vendorCategory, taxCodeType, taxCodeValue, hsnCode, sacCode, hsn_code, sac_code, technicalspecification, technicalSpecification, image } = req.body;
+        const { name, code, category, subcategory, vendorCategory, taxCodeType, taxCodeValue, hsnCode, sacCode, hsn_code, sac_code, technicalspecification, technicalSpecification, image, metaltype, metalType, brandname, brandName, dimensions, Dimensions, finishtype, finishType } = req.body;
 
         if (!name || !name.trim()) {
           res.status(400).json({ message: "Template name is required" });
@@ -2409,10 +2440,10 @@ export async function registerRoutes(
 
         const id = randomUUID();
         const result = await query(
-          `INSERT INTO material_templates (id, name, code, category, subcategory, vendor_category, tax_code_type, tax_code_value, hsn_code, sac_code, technicalspecification, image, created_at, updated_at) 
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, NOW(), NOW()) 
+          `INSERT INTO material_templates (id, name, code, category, subcategory, vendor_category, tax_code_type, tax_code_value, hsn_code, sac_code, technicalspecification, image, metaltype, brandname, dimensions, finishtype, created_at, updated_at) 
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, NOW(), NOW()) 
          RETURNING *`,
-          [id, name.trim(), code.trim(), category || null, subcategory || null, vendorCategory || null, taxCodeType || null, taxCodeValue || null, hsnCode || hsn_code || null, sacCode || sac_code || null, technicalSpecification || technicalspecification || null, image || null],
+          [id, name.trim(), code.trim(), category || null, subcategory || null, vendorCategory || null, taxCodeType || null, taxCodeValue || null, hsnCode || hsn_code || null, sacCode || sac_code || null, technicalSpecification || technicalspecification || null, image || null, metalType || metaltype || null, brandName || brandname || null, Dimensions || dimensions || null, finishType || finishtype || null],
         );
 
         res.status(201).json({ template: result.rows[0] });
@@ -2434,7 +2465,7 @@ export async function registerRoutes(
         console.log('[PUT /api/material-templates/:id] user:', (req as any).user);
         console.log('[PUT /api/material-templates/:id] params.id:', req.params.id);
         console.log('[PUT /api/material-templates/:id] body:', { ...req.body, image: req.body.image ? "present" : "absent" });
-        const { name, code, category, subcategory, vendorCategory, taxCodeType, taxCodeValue, hsnCode, sacCode, hsn_code, sac_code, technicalspecification, technicalSpecification, vendor_category, tax_code_type, tax_code_value, image } = req.body;
+        const { name, code, category, subcategory, vendorCategory, taxCodeType, taxCodeValue, hsnCode, sacCode, hsn_code, sac_code, technicalspecification, technicalSpecification, vendor_category, tax_code_type, tax_code_value, image, metaltype, metalType, brandname, brandName, dimensions, Dimensions, finishtype, finishType } = req.body;
 
         // Only update fields that are provided
         const fields: string[] = [];
@@ -2484,6 +2515,22 @@ export async function registerRoutes(
         if (image !== undefined) {
           fields.push(`image = $${idx++}`);
           vals.push(image || null);
+        }
+        if (metaltype !== undefined || metalType !== undefined) {
+          fields.push(`metaltype = $${idx++}`);
+          vals.push((metalType !== undefined ? metalType : metaltype) || null);
+        }
+        if (brandname !== undefined || brandName !== undefined) {
+          fields.push(`brandname = $${idx++}`);
+          vals.push((brandName !== undefined ? brandName : brandname) || null);
+        }
+        if (dimensions !== undefined || Dimensions !== undefined) {
+          fields.push(`dimensions = $${idx++}`);
+          vals.push((Dimensions !== undefined ? Dimensions : dimensions) || null);
+        }
+        if (finishtype !== undefined || finishType !== undefined) {
+          fields.push(`finishtype = $${idx++}`);
+          vals.push((finishType !== undefined ? finishType : finishtype) || null);
         }
 
         if (fields.length === 0) {
@@ -3326,7 +3373,10 @@ export async function registerRoutes(
           return res.status(404).json({ message: "Subcategory not found" });
         }
 
-        archiveService.archiveItem(id, 'subcategories', subResult.rows[0]);
+        const archived = archiveService.archiveItem('subcategories', id, subResult.rows[0]);
+        if (req.query.action === 'trash' && archived) {
+          archiveService.trashArchiveItem(archived.id);
+        }
 
         res.json({ message: "Subcategory archived", subcategory: subResult.rows[0] });
       } catch (err: any) {
@@ -3379,7 +3429,10 @@ export async function registerRoutes(
           return res.status(404).json({ message: "Category not found" });
         }
 
-        archiveService.archiveItem(name, 'categories', getCat.rows[0]);
+        const archived = archiveService.archiveItem('categories', name, getCat.rows[0]);
+        if (req.query.action === 'trash' && archived) {
+          archiveService.trashArchiveItem(archived.id);
+        }
 
         res.json({ message: "Category archived", category: getCat.rows[0] });
       } catch (err) {
@@ -3606,7 +3659,10 @@ export async function registerRoutes(
           return;
         }
 
-        archiveService.archiveItem(id, 'products', result.rows[0]);
+        const archived = archiveService.archiveItem('products', id, result.rows[0]);
+        if (req.query.action === 'trash' && archived) {
+          archiveService.trashArchiveItem(archived.id);
+        }
 
         res.json({ message: "Product archived", product: result.rows[0] });
       } catch (err) {
@@ -4846,7 +4902,10 @@ export async function registerRoutes(
         const projectId = versionData.project_id;
 
         // Archive the version instead of deleting
-        archiveService.archiveItem(versionId, 'boq_versions', versionData);
+        const archived = archiveService.archiveItem('boq_versions', versionId, versionData);
+        if (req.query.action === 'trash' && archived) {
+          archiveService.trashArchiveItem(archived.id);
+        }
 
         if (projectId) {
           await recalculateProjectValue(projectId);
@@ -5213,18 +5272,27 @@ export async function registerRoutes(
       try {
         const { itemId } = req.params;
 
-        // Get project_id before deleting the item
-        const itemRes = await query(`SELECT project_id FROM boq_items WHERE id = $1`, [itemId]);
-        const projectId = itemRes.rows.length > 0 ? itemRes.rows[0].project_id : null;
+        // Get item data before archiving
+        const itemRes = await query(`SELECT * FROM boq_items WHERE id = $1`, [itemId]);
+        if (itemRes.rows.length === 0) {
+          return res.status(404).json({ message: "BOQ item not found" });
+        }
+        
+        const itemData = itemRes.rows[0];
+        const projectId = itemData.project_id;
 
-        await query(`DELETE FROM boq_items WHERE id = $1`, [itemId]);
+        // Archive instead of hard delete
+        const archived = archiveService.archiveItem('boq_items', itemId, itemData);
+        if (req.query.action === 'trash' && archived) {
+          archiveService.trashArchiveItem(archived.id);
+        }
 
         // Recalculate project value
         if (projectId) {
           await recalculateProjectValue(projectId);
         }
 
-        res.json({ message: "BOQ item deleted successfully" });
+        res.json({ message: "BOQ item archived" });
       } catch (err) {
         console.error("DELETE /api/boq-items/:itemId error", err);
         res.status(500).json({ message: "Failed to delete BOQ item" });
@@ -5277,7 +5345,10 @@ export async function registerRoutes(
       const getTpl = await query("SELECT * FROM boq_templates WHERE id = $1", [id]);
       if (getTpl.rows.length === 0) return res.status(404).json({ message: "Template not found" });
       
-      archiveService.archiveItem(id, 'boq_templates', getTpl.rows[0]);
+      const archived = archiveService.archiveItem('boq_templates', id, getTpl.rows[0]);
+      if (req.query.action === 'trash' && archived) {
+        archiveService.trashArchiveItem(archived.id);
+      }
       res.json({ message: "Template archived" });
     } catch (err) {
       console.error("DELETE /api/boq-templates error", err);
@@ -5332,7 +5403,10 @@ export async function registerRoutes(
       const getTpl = await query("SELECT * FROM bom_templates WHERE id = $1", [id]);
       if (getTpl.rows.length === 0) return res.status(404).json({ message: "Template not found" });
       
-      archiveService.archiveItem(id, 'bom_templates', getTpl.rows[0]);
+      const archived = archiveService.archiveItem('bom_templates', id, getTpl.rows[0]);
+      if (req.query.action === 'trash' && archived) {
+        archiveService.trashArchiveItem(archived.id);
+      }
       res.json({ message: "BOM Template archived" });
     } catch (err) {
       console.error("DELETE /api/bom-templates error", err);
@@ -7097,9 +7171,9 @@ export async function registerRoutes(
       for (const item of items) {
         await query(
           `INSERT INTO po_request_items 
-           (po_request_id, material_id, item, category, subcategory, unit, qty, remarks) 
-           VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
-          [poRequest.id, item.material_id || item.id || null, item.item, item.category, item.subcategory, item.unit, item.qty, item.remarks]
+           (po_request_id, material_id, item, category, subcategory, unit, qty, rate, remarks) 
+           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
+          [poRequest.id, item.material_id || item.id || null, item.item, item.category, item.subcategory, item.unit, item.qty, item.rate || null, item.remarks]
         );
       }
 
@@ -8041,7 +8115,10 @@ ${list.rows.map((row: any) => `- ${row.name}`).join('\n')}`;
          LEFT JOIN sketch_plan_locks spl ON sp.id = spl.plan_id
          ORDER BY sp.created_at DESC`
       );
-      res.json({ plans: result.rows || [] });
+      const archivedIds = archiveService.getArchivedItemIds('sketch_plans');
+      const trashedIds = archiveService.getTrashedItemIds('sketch_plans');
+      const filtered = (result.rows || []).filter((r: any) => !archivedIds.includes(r.id) && !trashedIds.includes(r.id));
+      res.json({ plans: filtered });
     } catch (err) {
       console.error("GET /api/sketch-plans error", err);
       res.status(500).json({ message: "Failed to fetch sketch plans" });
@@ -8063,7 +8140,16 @@ ${list.rows.map((row: any) => `- ${row.name}`).join('\n')}`;
         return res.status(404).json({ message: "Plan not found" });
       }
 
-      const itemsRes = await query("SELECT * FROM sketch_plan_items WHERE plan_id = $1 ORDER BY created_at ASC", [id]);
+      const itemsRes = await query(`
+        SELECT spi.*, 
+               COALESCE(m.category, p.subcategory) AS category
+        FROM sketch_plan_items spi
+        LEFT JOIN materials m ON spi.material_id::text = m.id::text
+        LEFT JOIN products p ON spi.material_id::text = p.id::text
+        WHERE spi.plan_id = $1 
+        ORDER BY spi.created_at ASC, spi.id ASC`, 
+        [id]
+      );
       const imagesRes = await query(
         "SELECT id, item_id, image_url, image_name FROM sketch_plan_images WHERE plan_id = $1",
         [id]
@@ -8102,8 +8188,9 @@ ${list.rows.map((row: any) => `- ${row.name}`).join('\n')}`;
         );
 
         if (items && Array.isArray(items)) {
-          for (const item of items) {
-            const itemId = `ski-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+          for (let i = 0; i < items.length; i++) {
+            const item = items[i];
+            const itemId = `ski-${`${Date.now()}`.padStart(15, '0')}-${String(i).padStart(4, '0')}-${Math.random().toString(36).substr(2, 5)}`;
             await query(
               `INSERT INTO sketch_plan_items (id, plan_id, item_name, description, length, width, height, qty, unit, remarks, material_id, dimension_unit) 
                VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)`,
@@ -8193,8 +8280,9 @@ ${list.rows.map((row: any) => `- ${row.name}`).join('\n')}`;
         await query("DELETE FROM sketch_plan_images WHERE plan_id = $1", [id]);
 
         if (items && Array.isArray(items)) {
-          for (const item of items) {
-            const itemId = `ski-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+          for (let i = 0; i < items.length; i++) {
+            const item = items[i];
+            const itemId = `ski-${`${Date.now()}`.padStart(15, '0')}-${String(i).padStart(4, '0')}-${Math.random().toString(36).substr(2, 5)}`;
             await query(
               `INSERT INTO sketch_plan_items (id, plan_id, item_name, description, length, width, height, qty, unit, remarks, material_id, dimension_unit) 
                VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)`,
@@ -8267,11 +8355,17 @@ ${list.rows.map((row: any) => `- ${row.name}`).join('\n')}`;
   });
 
   // DELETE /api/sketch-plans/:id - Delete sketch plan
-  app.delete("/api/sketch-plans/:id", authMiddleware, async (req: Request, res: Response) => {
-    try {
-      const { id } = req.params;
-      await query("DELETE FROM sketch_plans WHERE id = $1", [id]);
-      res.json({ message: "Sketch plan deleted successfully" });
+    app.delete("/api/sketch-plans/:id", authMiddleware, async (req: Request, res: Response) => {
+      try {
+        const { id } = req.params;
+        const planRes = await query("SELECT * FROM sketch_plans WHERE id = $1", [id]);
+        if (planRes.rows.length === 0) return res.status(404).json({ message: "Plan not found" });
+        
+        const archived = archiveService.archiveItem('sketch_plans', id, planRes.rows[0]);
+        if (req.query.action === 'trash' && archived) {
+          archiveService.trashArchiveItem(archived.id);
+        }
+        res.json({ message: "Sketch plan deleted successfully" });
     } catch (err) {
       console.error("DELETE /api/sketch-plans/:id error", err);
       res.status(500).json({ message: "Failed to delete sketch plan" });

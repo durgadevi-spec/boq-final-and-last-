@@ -25,6 +25,7 @@ interface Material {
     subcategoryId?: string;
     unit?: string;
     shop_id?: string;
+    rate?: number | string;
 }
 
 interface Shop {
@@ -162,7 +163,7 @@ export default function RaisePORequest() {
             category: mat.categoryId || "",
             subcategory: mat.subcategoryId || "",
             unit: mat.unit || "",
-            shop_id: mat.shop_id || "",
+            rate: (mat.rate !== undefined && mat.rate !== null && mat.rate !== "") ? Number(mat.rate) : "",
         };
         setItems(newItems);
         setPickerOpenForIndex(null);

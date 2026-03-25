@@ -7,7 +7,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
-import { Plus, Trash2, Save, ArrowLeft, Camera, Pencil, Layers, X, GripVertical, FileText, Search, MessageSquare, Image as ImageIcon, Move, Lock, Unlock, ShieldAlert, Cloud, Check, AlertTriangle, FileUp, FileSpreadsheet, Download, Paperclip } from "lucide-react";
+import { Plus, Trash2, Save, ArrowLeft, Camera, Pencil, Layers, X, GripVertical, FileText, Search, MessageSquare, Image as ImageIcon, Move, Lock, Unlock, ShieldAlert, Cloud, Check, AlertTriangle, FileUp, FileSpreadsheet, Download, Paperclip, ArrowUp, ArrowDown, ArrowUpToLine, ArrowDownToLine } from "lucide-react";
 import { Reorder, useDragControls } from "framer-motion";
 import { SketchPad } from "@/components/SketchPad";
 import apiFetch from "@/lib/api";
@@ -50,6 +50,7 @@ interface PlanItem {
   preImages: PlanImage[]; // PRE-work images
   postImages: PlanImage[]; // POST-work images
   images?: PlanImage[]; // Legacy field for compatibility
+  category?: string; // NEW
 }
  
 const parseImages = (imageField: any): string[] => {
@@ -158,7 +159,7 @@ const PhotoColumn = ({
 
 // Row Component for Drag and Drop
 const SketchPlanRow = ({ 
-  item, idx, updateItem, removeItem, selectMaterial, 
+  item, idx, itemsLength, updateItem, removeItem, moveItemToPosition, selectMaterial, 
   searchResults, searching, loadMaterials, setMaterialSearch,
   openPopoverIdx, setOpenPopoverIdx, renameRowImage, removeRowImage,
   handleRowImageUpload, isLocked, isCompact, setPreviewImage,
@@ -181,7 +182,18 @@ const SketchPlanRow = ({
           onPointerDown={(e) => dragControls.start(e)}
         />
       </td>
-      <td className={cn("px-1 text-slate-400 font-medium text-[10px]", isCompact ? "py-0" : "py-2")}>{idx + 1}</td>
+      <td className={cn("px-1", isCompact ? "py-0" : "py-2")}>
+         <Select value={String(idx + 1)} onValueChange={(val) => moveItemToPosition(idx, parseInt(val) - 1)} disabled={isLocked || itemsLength <= 1}>
+            <SelectTrigger className="w-12 h-6 text-[10px] p-1 border-slate-200">
+               <SelectValue />
+            </SelectTrigger>
+            <SelectContent className="min-w-[3rem] max-h-40">
+               {Array.from({ length: itemsLength }).map((_, i) => (
+                  <SelectItem key={i + 1} value={String(i + 1)} className="text-[10px] px-1">{i + 1}</SelectItem>
+               ))}
+            </SelectContent>
+         </Select>
+      </td>
       <td className={cn("px-1", isCompact ? "py-0 w-[130px] min-w-[130px]" : "py-2 w-[220px] min-w-[220px] max-w-[220px]")}>
          <Dialog>
             <TooltipProvider>
@@ -376,10 +388,8 @@ const SketchPlanRow = ({
             setSketchDialogOpen={setSketchDialogOpen}
          />
       </td>
-      <td className={cn("px-1 text-center", isCompact ? "py-0" : "py-2")}>
-        <Button variant="ghost" size="icon" onClick={() => removeItem(idx)} className={cn("text-slate-300 hover:text-red-500 hover:bg-red-50 transition-colors", isCompact ? "h-5 w-5" : "h-7 w-7")} disabled={isLocked}>
-          <Trash2 className={isCompact ? "w-3 h-3" : "w-3.5 h-3.5"} />
-        </Button>
+      <td className={cn("px-1 text-center border-l", isCompact ? "py-0" : "py-2")}>
+        <Button variant="ghost" size="icon" onClick={() => removeItem(idx)} className={cn("text-slate-400 hover:text-red-500 hover:bg-red-50 transition-colors bg-slate-50 border border-transparent hover:border-red-200", isCompact ? "h-5 w-5" : "h-6 w-6")} disabled={isLocked} title="Remove Item"><Trash2 className={isCompact ? "w-3 h-3" : "w-3.5 h-3.5"} /></Button>
       </td>
     </Reorder.Item>
   );
@@ -415,6 +425,7 @@ export default function CreateSketchPlan() {
   const [recipientEmail, setRecipientEmail] = useState("");
   const [sendingEmail, setSendingEmail] = useState(false);
   const [searchTerm, setSearchTerm] = useState("");
+  const [categoryFilter, setCategoryFilter] = useState("all");
   const [isCompact, setIsCompact] = useState(false);
 
   const [materialSearch, setMaterialSearch] = useState("");
@@ -684,6 +695,14 @@ export default function CreateSketchPlan() {
     setItems(newItems);
   };
 
+  const moveItemToPosition = (fromIdx: number, toIdx: number) => {
+    if (fromIdx === toIdx || items.length <= 1) return;
+    const newItems = [...items];
+    const item = newItems.splice(fromIdx, 1)[0];
+    newItems.splice(toIdx, 0, item);
+    setItems(newItems);
+  };
+
   const updateItem = (idx: number, field: keyof PlanItem, value: any) => {
     const newItems = [...items];
     newItems[idx] = { ...newItems[idx], [field]: value };
@@ -795,6 +814,7 @@ export default function CreateSketchPlan() {
      const newItems = [...items];
      newItems[idx].material_id = material.id;
      newItems[idx].item_name = material.name;
+     if (material.category) newItems[idx].category = material.category;
      if (material.unit) newItems[idx].unit = material.unit;
 
      // Automatically load material image into PRE option if available
@@ -1397,14 +1417,27 @@ export default function CreateSketchPlan() {
         {/* Enhanced Items Section */}
         {/* Project Items - Main Workspace */}
         <div className="flex flex-col md:flex-row justify-between items-center gap-4 mb-2">
-            <div className="relative w-full md:w-80">
-                <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
-                <Input 
-                  value={searchTerm} 
-                  onChange={(e) => setSearchTerm(e.target.value)} 
-                  placeholder="Search item name or notes..." 
-                  className="pl-9 h-10 border-slate-200 shadow-sm focus:ring-indigo-500"
-                />
+            <div className="flex items-center gap-2 w-full md:w-auto flex-1">
+              <div className="relative w-full max-w-sm">
+                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+                  <Input 
+                    value={searchTerm} 
+                    onChange={(e) => setSearchTerm(e.target.value)} 
+                    placeholder="Search item name or notes..." 
+                    className="pl-9 h-10 border-slate-200 shadow-sm focus:ring-indigo-500"
+                  />
+              </div>
+              <Select value={categoryFilter} onValueChange={setCategoryFilter}>
+                <SelectTrigger className="w-[180px] h-10 bg-white">
+                  <SelectValue placeholder="All Categories" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All Categories</SelectItem>
+                  {Array.from(new Set(items.map(it => it.category).filter(Boolean))).map(cat => (
+                    <SelectItem key={cat as string} value={cat as string}>{cat as string}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
             </div>
             <div className="flex items-center gap-3 bg-white p-2 rounded-lg border border-slate-200 shadow-sm">
                 <Label htmlFor="compact-mode" className="text-xs font-bold text-slate-600 cursor-pointer">Compact View</Label>
@@ -1451,18 +1484,21 @@ export default function CreateSketchPlan() {
                 </thead>
                 <Reorder.Group as="tbody" axis="y" values={items} onReorder={setItems}>
                   {items.filter(it => 
-                    it.item_name.toLowerCase().includes(searchTerm.toLowerCase()) || 
-                    it.description.toLowerCase().includes(searchTerm.toLowerCase())
+                    (it.item_name.toLowerCase().includes(searchTerm.toLowerCase()) || 
+                     it.description.toLowerCase().includes(searchTerm.toLowerCase())) &&
+                    (categoryFilter === "all" || it.category === categoryFilter)
                   ).map((item, idx) => (
                     <SketchPlanRow 
                       key={item.id}
                       item={item}
                       idx={items.indexOf(item)}
+                      itemsLength={items.length}
                       isLocked={isLocked}
                       isCompact={isCompact}
                       updateItem={updateItem}
                       addItem={addItem}
                       removeItem={removeItem}
+                      moveItemToPosition={moveItemToPosition}
                       selectMaterial={selectMaterial}
                       searchResults={searchResults}
                       searching={searching}

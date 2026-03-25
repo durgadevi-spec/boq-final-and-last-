@@ -40,6 +40,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
+import { DeleteConfirmationDialog } from "@/components/ui/DeleteConfirmationDialog";
 import { cn } from "@/lib/utils";
 import { useData, Material, Shop } from "@/lib/store";
 import {
@@ -310,7 +311,6 @@ export default function AdminDashboard() {
 
   const [showAddProductDialog, setShowAddProductDialog] = useState(false);
 
-  // DELETE CONFIRMATION STATE
   const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
   const [deleteData, setDeleteData] = useState<{
     type: 'category' | 'subcategory';
@@ -319,6 +319,37 @@ export default function AdminDashboard() {
     impact: { subcategories?: string[], products?: string[], templates?: string[], materials?: string[] };
   } | null>(null);
   const [reassignToSubcategory, setReassignToSubcategory] = useState<string>("none");
+
+  // GENERIC DELETE CONFIRMATION STATE (for simpler items)
+  const [genericDelete, setGenericDelete] = useState<{
+    isOpen: boolean;
+    id: string;
+    name: string;
+    type: 'shop' | 'material' | 'product';
+  } | null>(null);
+
+  const confirmGenericDelete = async (action: 'archive' | 'trash') => {
+    if (!genericDelete) return;
+    const { id, type, name } = genericDelete;
+    try {
+      if (type === 'shop') {
+        await deleteShop(id, action);
+        setLocalShops((prev: any[]) => prev.filter((p: any) => p.id !== id));
+        toast({ title: action === 'trash' ? 'Trashed' : 'Archived', description: `${name} has been moved to ${action}` });
+      } else if (type === 'material') {
+        await deleteMaterial(id, action);
+        setLocalMaterials((prev: any[]) => prev.filter((p: any) => p.id !== id));
+        toast({ title: action === 'trash' ? 'Trashed' : 'Archived', description: `${name} has been moved to ${action}` });
+      } else if (type === 'product') {
+        await apiFetch(`/products/${id}?action=${action}`, { method: 'DELETE' });
+        setProducts((prev: any[]) => prev.filter((p: any) => p.id !== id));
+        toast({ title: action === 'trash' ? 'Trashed' : 'Archived', description: `${name} has been moved to ${action}` });
+      }
+    } catch (err) {
+      toast({ title: 'Error', description: `Failed to delete ${name}`, variant: 'destructive' });
+    }
+    setGenericDelete(null);
+  };
 
   const requestDeleteCategory = async (cat: string) => {
     try {
@@ -361,16 +392,16 @@ export default function AdminDashboard() {
     }
   };
 
-  const confirmDeleteAction = async () => {
+  const confirmDeleteAction = async (action: 'archive' | 'trash') => {
     if (!deleteData) return;
 
     try {
       if (deleteData.type === 'category') {
         const cat = deleteData.name;
-        await apiFetch(`/categories/${encodeURIComponent(cat)}`, { method: 'DELETE' });
+        await apiFetch(`/categories/${encodeURIComponent(cat)}?action=${action}`, { method: 'DELETE' });
         setCategories(prev => prev.filter(c => c !== cat));
         setSubCategories(prev => prev.filter(s => s.category !== cat));
-        toast({ title: 'Deleted', description: `Category ${cat} removed` });
+        toast({ title: 'Deleted', description: `Category ${cat} safely removed` });
       } else {
         const id = deleteData.id!;
 
@@ -388,10 +419,10 @@ export default function AdminDashboard() {
           }
         }
 
-        const res = await apiFetch(`/subcategories/${id}`, { method: 'DELETE' });
+        const res = await apiFetch(`/subcategories/${id}?action=${action}`, { method: 'DELETE' });
         if (res.ok) {
           setSubCategories(prev => prev.filter(s => s.id !== id));
-          toast({ title: 'Deleted', description: `Subcategory ${deleteData.name} removed` });
+          toast({ title: 'Deleted', description: `Subcategory ${deleteData.name} safely removed` });
         } else {
           toast({ title: 'Error', description: 'Failed to delete subcategory', variant: 'destructive' });
         }
@@ -622,25 +653,15 @@ export default function AdminDashboard() {
   };
 
   // Handle Delete Product
-  const handleDeleteProduct = async (productId: string) => {
-    if (!window.confirm('Delete this product? This cannot be undone.')) return;
-
-    try {
-      await apiFetch(`/products/${productId}`, { method: 'DELETE' });
-
-      setProducts((prev: any[]) => prev.filter((p: any) => p.id !== productId));
-      toast({
-        title: "Success",
-        description: 'Product deleted',
-      });
-    } catch (err: any) {
-      console.error('delete product error', err);
-      toast({
-        title: "Error",
-        description: err?.message || 'Failed to delete product',
-        variant: "destructive",
-      });
-    }
+  const handleDeleteProduct = (productId: string) => {
+    const product = products.find((p: any) => p.id === productId);
+    if (!product) return;
+    setGenericDelete({
+      isOpen: true,
+      id: productId,
+      name: product.name,
+      type: 'product'
+    });
   };
 
   // ==== MASTER MATERIALS STATE (created by Admin/Software Team with just name + code) ====
@@ -1068,7 +1089,7 @@ export default function AdminDashboard() {
       modelNumber: mat.modelnumber || mat.model_number || mat.modelNumber || "",
       technicalSpecification: mat.technicalspecification || mat.technical_specification || mat.technicalSpecification || "",
       dimensions: mat.dimensions || "",
-      finish: mat.finish || mat.finishtype || "",
+      finish: mat.finishtype || mat.finish || "",
       metalType: mat.metaltype || mat.metal_type || mat.metalType || "",
       // Ensure shopId is a string for the Select component
       shopId: mat.shop_id ? mat.shop_id.toString() : (mat.shopId ? mat.shopId.toString() : ""),
@@ -1098,6 +1119,9 @@ export default function AdminDashboard() {
         if (newMaterial.subCategory !== undefined) payload.subcategory = newMaterial.subCategory;
         if (newMaterial.product !== undefined) payload.product = newMaterial.product;
         if (newMaterial.technicalSpecification !== undefined) payload.technicalspecification = newMaterial.technicalSpecification;
+        if (newMaterial.dimensions !== undefined) payload.dimensions = newMaterial.dimensions;
+        if (newMaterial.finish !== undefined) payload.finishtype = newMaterial.finish;
+        if (newMaterial.metalType !== undefined) payload.metaltype = newMaterial.metalType;
         if (newMaterial.image !== undefined) payload.image = newMaterial.image;
         if (newMaterial.attributes !== undefined) payload.attributes = newMaterial.attributes;
 
@@ -1114,6 +1138,9 @@ export default function AdminDashboard() {
             modelNumber: updatedRaw.modelnumber || updatedRaw.modelNumber || "",
             subCategory: updatedRaw.subcategory || updatedRaw.subCategory || "",
             technicalSpecification: updatedRaw.technicalspecification || updatedRaw.technicalSpecification || "",
+            dimensions: updatedRaw.dimensions || "",
+            finish: updatedRaw.finishtype || updatedRaw.finish || "",
+            metalType: updatedRaw.metaltype || updatedRaw.metalType || "",
             vendorCategory: updatedRaw.vendor_category || updatedRaw.vendorCategory || "",
             taxCodeType: updatedRaw.tax_code_type || updatedRaw.taxCodeType || null,
             taxCodeValue: updatedRaw.tax_code_value || updatedRaw.taxCodeValue || "",
@@ -1726,15 +1753,9 @@ export default function AdminDashboard() {
                                             variant="ghost"
                                             size="icon"
                                             className="text-destructive"
-                                            onClick={() => {
-                                              if (!window.confirm(`Delete shop "${shop.name}"? This cannot be undone.`)) return;
-                                              deleteShop(shop.id).then(() => {
-                                                setLocalShops((prev: any[]) => prev.filter((p: any) => p.id !== shop.id));
-                                                toast({ title: 'Deleted', description: `${shop.name} removed` });
-                                              }).catch((err) => {
-                                                toast({ title: 'Error', description: `Failed to delete ${shop.name}`, variant: 'destructive' });
-                                              });
-                                            }}
+                                              onClick={() => {
+                                                setGenericDelete({ isOpen: true, id: shop.id, name: shop.name, type: 'shop' });
+                                              }}
                                           >
                                             <Trash2 className="h-4 w-4" />
                                           </Button>
@@ -1751,9 +1772,14 @@ export default function AdminDashboard() {
                                         localMaterials
                                           .filter((m: any) => String(m.shopId) === String(shop.id))
                                           .map((mat: any) => (
-                                            <div key={mat.id} className="flex items-center justify-between py-1">
-                                              <div className="text-sm font-medium">{mat.name} <span className="text-xs text-muted-foreground ml-2">{mat.code || ''}</span></div>
-                                              <div className="text-sm">₹{Number(mat.rate || 0).toLocaleString()}</div>
+                                            <div key={mat.id} className="py-1">
+                                              <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-1">
+                                                <div className="text-sm font-medium">{mat.name}</div>
+                                                <div className="text-sm">₹{Number(mat.rate || 0).toLocaleString()}</div>
+                                              </div>
+                                              <div className="text-xs text-blue-600">
+                                                {mat.code || 'No code'} • brand: {mat.brandName || '-'} • model: {mat.modelNumber || '-'}
+                                              </div>
                                             </div>
                                           ))
                                       )}
@@ -1906,6 +1932,18 @@ export default function AdminDashboard() {
                                       <Input value={newMaterial.modelNumber || ''} onChange={(e) => setNewMaterial({ ...newMaterial, modelNumber: e.target.value })} />
                                     </div>
                                     <div>
+                                      <Label>Dimensions</Label>
+                                      <Input value={newMaterial.dimensions || ''} onChange={(e) => setNewMaterial({ ...newMaterial, dimensions: e.target.value })} placeholder="L x W x H" />
+                                    </div>
+                                    <div>
+                                      <Label>Finish</Label>
+                                      <Input value={newMaterial.finish || ''} onChange={(e) => setNewMaterial({ ...newMaterial, finish: e.target.value })} placeholder="Matte/Glossy" />
+                                    </div>
+                                    <div>
+                                      <Label>Material Type</Label>
+                                      <Input value={newMaterial.metalType || ''} onChange={(e) => setNewMaterial({ ...newMaterial, metalType: e.target.value })} placeholder="e.g. Steel, Wood" />
+                                    </div>
+                                    <div>
                                       <Label>Assigned Shop</Label>
                                       <Select value={newMaterial.shopId || ''} onValueChange={(v) => setNewMaterial({ ...newMaterial, shopId: v })}>
                                         <SelectTrigger>
@@ -1932,7 +1970,9 @@ export default function AdminDashboard() {
                                 <div className="flex items-center justify-between">
                                   <div>
                                     <div className="font-bold text-base text-foreground">{mat.name}</div>
-                                    <div className="text-xs text-muted-foreground">{mat.code} • ₹{mat.rate}/{mat.unit}</div>
+                                    <div className="text-xs text-blue-600">
+                                      {mat.code || 'No code'} • brand: {mat.brandName || '-'} • model: {mat.modelNumber || '-'} • ₹{mat.rate}/{mat.unit}
+                                    </div>
                                     <div className="text-[10px] text-muted-foreground italic">
                                       Shop: {localShops.find(s => s.id === (mat.shopId || mat.shop_id))?.name || 'Unassigned'}
                                     </div>
@@ -1965,15 +2005,9 @@ export default function AdminDashboard() {
                                         variant="ghost"
                                         size="icon"
                                         className="text-destructive"
-                                        onClick={() => {
-                                          if (!window.confirm(`Delete material "${mat.name}"? This cannot be undone.`)) return;
-                                          deleteMaterial(mat.id).then(() => {
-                                            setLocalMaterials((prev: any[]) => prev.filter((p: any) => p.id !== mat.id));
-                                            toast({ title: 'Deleted', description: `${mat.name} removed` });
-                                          }).catch((err) => {
-                                            toast({ title: 'Error', description: `Failed to delete ${mat.name}`, variant: 'destructive' });
-                                          });
-                                        }}
+                                          onClick={() => {
+                                            setGenericDelete({ isOpen: true, id: mat.id, name: mat.name, type: 'material' });
+                                          }}
                                       >
                                         <Trash2 className="h-4 w-4" />
                                       </Button>
@@ -2606,7 +2640,6 @@ export default function AdminDashboard() {
                                   const existing = parseImages(newProduct.image);
                                   setNewProduct({ ...newProduct, image: JSON.stringify([...existing, ...newImages]) });
                                 })}
-                                onPreview={(url) => setSelectedPreviewImage(url)}
                               />
                               <ImageGallery 
                                 images={newProduct.image} 
@@ -2829,10 +2862,9 @@ export default function AdminDashboard() {
                             multiple
                             onChange={(e) => handleImageUpload(e, (newImagesJson) => {
                               const newImages = JSON.parse(newImagesJson);
-                              const existing = parseImages(editingProduct.image);
+                              const existing = parseImages(editingProduct ? editingProduct.image : "");
                               setEditingProduct((prev: any) => ({ ...prev, image: JSON.stringify([...existing, ...newImages]) }));
                             })}
-                            onPreview={(url) => setSelectedPreviewImage(url)}
                           />
                           <ImageGallery 
                             images={editingProduct.image} 
@@ -3004,7 +3036,6 @@ export default function AdminDashboard() {
                           const existing = parseImages(newMasterMaterial.image);
                           setNewMasterMaterial({ ...newMasterMaterial, image: JSON.stringify([...existing, ...newImages]) });
                         })}
-                        onPreview={(url) => setSelectedPreviewImage(url)}
                       />
                       <ImageGallery 
                         images={newMasterMaterial.image} 
@@ -3181,7 +3212,6 @@ export default function AdminDashboard() {
                                           const existing = parseImages(newMaterial.image);
                                           setNewMaterial({ ...newMaterial, image: JSON.stringify([...existing, ...newImages]) });
                                         })}
-                                        onPreview={(url) => setSelectedPreviewImage(url)}
                                       />
                                       <ImageGallery 
                                         images={newMaterial.image} 
@@ -3205,10 +3235,15 @@ export default function AdminDashboard() {
                                         const updateData: any = {
                                           name: newMaterial.name,
                                           code: template.code,
+                                          category: newMaterial.category || null,
+                                          subcategory: newMaterial.subCategory || null,
                                           vendor_category: newMaterial.vendorCategory || null,
                                           hsn_code: newMaterial.hsnCode || null,
                                           sac_code: newMaterial.sacCode || null,
                                           technicalSpecification: newMaterial.technicalSpecification || null,
+                                          dimensions: newMaterial.dimensions || null,
+                                          finishtype: newMaterial.finish || null,
+                                          metaltype: newMaterial.metalType || null,
                                           image: newMaterial.image || null
                                         };
 
@@ -3227,9 +3262,14 @@ export default function AdminDashboard() {
                                           ...m,
                                           name: newMaterial.name,
                                           vendor_category: newMaterial.vendorCategory,
+                                          category: newMaterial.category,
+                                          subcategory: newMaterial.subCategory,
                                           hsn_code: newMaterial.hsnCode,
                                           sac_code: newMaterial.sacCode,
                                           technicalspecification: newMaterial.technicalSpecification,
+                                          dimensions: newMaterial.dimensions,
+                                          finishtype: newMaterial.finish,
+                                          metaltype: newMaterial.metalType,
                                           ...(data?.template || {})
                                         } : m));
                                         setEditingMaterialId(null);
@@ -3291,10 +3331,15 @@ export default function AdminDashboard() {
                                   setNewMaterial({
                                     ...newMaterial,
                                     name: template.name,
+                                    category: template.category || '',
+                                    subCategory: template.subcategory || template.sub_category || template.subCategory || '',
                                     vendorCategory: template.vendor_category || '',
                                     hsnCode: template.hsn_code || template.hsnCode || '',
                                     sacCode: template.sac_code || template.sacCode || '',
                                     technicalSpecification: template.technicalspecification || template.technicalSpecification || '',
+                                    dimensions: template.dimensions || '',
+                                    finish: template.finishtype || template.finish || '',
+                                    metalType: template.metaltype || template.metalType || '',
                                     image: template.image || null
                                   });
                                 }}>Edit</Button>
@@ -4050,6 +4095,18 @@ export default function AdminDashboard() {
           </TabsContent>
 
         </Tabs>
+
+        {/* GENERIC DELETE DIALOG */}
+        {genericDelete && (
+          <DeleteConfirmationDialog
+            isOpen={genericDelete.isOpen}
+            onOpenChange={(open) => !open && setGenericDelete(null)}
+            onConfirm={confirmGenericDelete}
+            itemName={genericDelete.name}
+            title={`Remove ${genericDelete.type.charAt(0).toUpperCase() + genericDelete.type.slice(1)} "${genericDelete.name}"?`}
+          />
+        )}
+
         {/* DELETE CONFIRMATION MODAL */}
         <AlertDialog open={deleteConfirmOpen} onOpenChange={setDeleteConfirmOpen}>
           <AlertDialogContent className="max-w-3xl max-h-[95vh] flex flex-col border-none shadow-2xl p-0 overflow-hidden">
@@ -4254,12 +4311,20 @@ export default function AdminDashboard() {
               >
                 Go Back
               </AlertDialogCancel>
-              <AlertDialogAction
-                onClick={confirmDeleteAction}
-                className="bg-destructive hover:bg-destructive/90 text-white shadow-lg shadow-destructive/20 rounded-lg h-10 px-8 font-bold transition-all transform hover:scale-[1.02]"
+              <Button
+                variant="secondary"
+                onClick={() => confirmDeleteAction('archive')}
+                className="shadow-md rounded-lg h-10 px-8 font-bold transition-all"
               >
-                Yes, Delete {deleteData?.type}
-              </AlertDialogAction>
+                Archive
+              </Button>
+              <Button
+                variant="destructive"
+                onClick={() => confirmDeleteAction('trash')}
+                className="shadow-lg shadow-destructive/20 rounded-lg h-10 px-8 font-bold transition-all transform hover:scale-[1.02]"
+              >
+                Trash {deleteData?.type}
+              </Button>
             </AlertDialogFooter>
           </AlertDialogContent>
         </AlertDialog>

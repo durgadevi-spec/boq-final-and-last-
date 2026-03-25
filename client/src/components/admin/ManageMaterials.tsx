@@ -224,15 +224,15 @@ export default function ManageMaterials() {
     setFormData({
       rate: "",
       unit: "",
-      brandname: "",
+      brandname: (template as any).brandname || (template as any).brandName || "",
       modelnumber: "",
       category: template.category || "",
       subcategory: (template as any).subcategory || (template as any).subCategory || "",
       product: "",
-      technicalspecification: (template as any).technicalspecification || "",
-      dimensions: "",
-      finishtype: "",
-      materialtype: "",
+      technicalspecification: (template as any).technicalspecification || (template as any).technicalSpecification || "",
+      dimensions: (template as any).dimensions || (template as any).Dimensions || "",
+      finishtype: (template as any).finishtype || (template as any).finishType || "",
+      materialtype: (template as any).metaltype || (template as any).metalType || (template as any).materialtype || "",
     });
     // Always reset shop and date when switching templates so stale data doesn't carry over
     setSelectedShop("");
@@ -363,15 +363,15 @@ export default function ManageMaterials() {
             ...prev,
             rate: data.material.rate != null ? String(data.material.rate) : "",
             unit: data.material.unit || prev.unit || "",
-            brandname: data.material.brandname || "",
-            modelnumber: data.material.modelnumber || "",
+            brandname: data.material.brandname || prev.brandname || "",
+            modelnumber: data.material.modelnumber || prev.modelnumber || "",
             category: data.material.category || prev.category || "",
-            subcategory: data.material.subcategory || data.material.subCategory || "",
-            product: data.material.product || "",
-            technicalspecification: data.material.technicalspecification || "",
-            dimensions: data.material.dimensions || "",
-            finishtype: data.material.finishtype || "",
-            materialtype: data.material.materialtype || data.material.metaltype || "",
+            subcategory: data.material.subcategory || data.material.subCategory || prev.subcategory || "",
+            product: data.material.product || prev.product || "",
+            technicalspecification: data.material.technicalspecification || prev.technicalspecification || "",
+            dimensions: data.material.dimensions || prev.dimensions || "",
+            finishtype: data.material.finishtype || prev.finishtype || "",
+            materialtype: data.material.materialtype || data.material.metaltype || prev.materialtype || "",
           }));
           setRateDate(data.material.created_at || null);
 
@@ -391,15 +391,7 @@ export default function ManageMaterials() {
           setFormData((prev) => ({
             ...prev,
             rate: "",
-            unit: "",
-            brandname: "",
-            modelnumber: "",
-            subcategory: "",
-            product: "",
-            technicalspecification: "",
-            dimensions: "",
-            finishtype: "",
-            materialtype: "",
+            // Don't clear unit/brand/etc. if they already have values from template
           }));
 
           setRateMessage({

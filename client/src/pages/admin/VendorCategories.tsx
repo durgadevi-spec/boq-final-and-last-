@@ -8,6 +8,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { useToast } from "@/hooks/use-toast";
 import apiFetch from "@/lib/api";
 import { Pencil, Trash2, Plus, Search } from "lucide-react";
+import { DeleteConfirmationDialog } from "@/components/ui/DeleteConfirmationDialog";
 
 type VendorCategory = {
   id: string;
@@ -24,6 +25,7 @@ export default function VendorCategories() {
   const [searchTerm, setSearchTerm] = useState("");
   const [editingId, setEditingId] = useState<string | null>(null);
   const [formData, setFormData] = useState({ name: "", description: "" });
+  const [genericDelete, setGenericDelete] = useState<{ isOpen: boolean, id: string, name: string } | null>(null);
 
   const loadCategories = async () => {
     try {
@@ -74,12 +76,17 @@ export default function VendorCategories() {
     window.scrollTo({ top: 0, behavior: "smooth" });
   };
 
-  const handleDelete = async (id: string, name: string) => {
-    if (!window.confirm(`Are you sure you want to delete "${name}"?`)) return;
+  const requestDelete = (id: string, name: string) => {
+    setGenericDelete({ isOpen: true, id, name });
+  };
+
+  const confirmDelete = async (action: 'archive' | 'trash') => {
+    if (!genericDelete) return;
+    const { id, name } = genericDelete;
     try {
-      const res = await apiFetch(`/api/vendor-categories/${id}`, { method: "DELETE" });
+      const res = await apiFetch(`/api/vendor-categories/${id}?action=${action}`, { method: "DELETE" });
       if (res.ok) {
-        toast({ title: "Success", description: "Vendor category deleted successfully" });
+        toast({ title: "Success", description: `Vendor category moved to ${action}` });
         loadCategories();
       } else {
         const data = await res.json();
@@ -88,6 +95,7 @@ export default function VendorCategories() {
     } catch {
       toast({ title: "Error", description: "Failed to delete vendor category", variant: "destructive" });
     }
+    setGenericDelete(null);
   };
 
   const filteredCategories = categories.filter(c =>
@@ -101,6 +109,16 @@ export default function VendorCategories() {
           <h2 className="text-3xl font-bold tracking-tight font-heading">Vendor Categories</h2>
           <p className="text-muted-foreground">Manage vendor categories for shops and materials</p>
         </div>
+
+        {genericDelete && (
+          <DeleteConfirmationDialog 
+            isOpen={genericDelete.isOpen}
+            onOpenChange={(open) => !open && setGenericDelete(null)}
+            onConfirm={confirmDelete}
+            itemName={genericDelete.name}
+            title={`Remove Vendor Category "${genericDelete.name}"?`}
+          />
+        )}
 
         <Card>
           <CardHeader>
@@ -183,7 +201,7 @@ export default function VendorCategories() {
                       <Button size="sm" variant="outline" onClick={() => handleEdit(category)}>
                         <Pencil className="h-4 w-4" />
                       </Button>
-                      <Button size="sm" variant="ghost" className="text-destructive hover:text-destructive" onClick={() => handleDelete(category.id, category.name)}>
+                      <Button size="sm" variant="ghost" className="text-destructive hover:text-destructive" onClick={() => requestDelete(category.id, category.name)}>
                         <Trash2 className="h-4 w-4" />
                       </Button>
                     </div>

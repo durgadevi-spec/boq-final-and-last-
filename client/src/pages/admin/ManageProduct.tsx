@@ -19,9 +19,10 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from 
 import { fuzzySearch } from "@/lib/utils";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
+import { DeleteConfirmationDialog } from "@/components/ui/DeleteConfirmationDialog";
 
 type Product = { id: string; name: string; subcategory: string; created_at: string; created_by?: string; image?: string };
-type Material = { id: string; name: string; unit: string; rate: number; category: string; subcategory: string; description?: string; shop_name?: string; shop_id?: string; shopId?: string; code?: string; hsn_code?: string; sac_code?: string; technicalspecification?: string; technicalSpecification?: string; created_at?: string };
+type Material = { id: string; name: string; unit: string; rate: number; category: string; subcategory: string; description?: string; shop_name?: string; shop_id?: string; shopId?: string; code?: string; hsn_code?: string; sac_code?: string; technicalspecification?: string; technicalSpecification?: string; created_at?: string; brandName?: string; brand_name?: string; modelNumber?: string; model_number?: string };
 type SelectedMaterial = Material & { qty: number; baseQty: number; wastagePct?: number; amount: number; rate: number; supplyRate: number; installRate: number; location: string; applyWastage: boolean; applyRounding: boolean };
 
 const ALL = "__ALL__";
@@ -80,6 +81,7 @@ export default function ManageProduct() {
     const [targetProductForClone, setTargetProductForClone] = useState<Product | null>(null);
     const [ignoredMismatches, setIgnoredMismatches] = useState<Set<string>>(new Set());
     const [isUpdatingRates, setIsUpdatingRates] = useState(false);
+    const [genericDelete, setGenericDelete] = useState<{ isOpen: boolean, id: number, name: string } | null>(null);
     const { toast } = useToast();
 
     const resetSelection = () => {
@@ -402,13 +404,19 @@ export default function ManageProduct() {
         setIsCloneDialogOpen(true);
     };
 
-    const deleteConfig = async (configId: number) => {
-        if (!confirm("Delete this configuration?")) return;
+    const confirmDeleteConfig = async (action: 'archive' | 'trash') => {
+        if (!genericDelete) return;
+        const configId = genericDelete.id;
         try {
-            const res = await apiFetch(`/api/step11-products/config/${configId}`, { method: "DELETE" });
-            if (res.ok) { setPreviousConfigs(prev => prev.filter(c => c.product.id !== configId)); toast({ title: "Deleted", description: "Configuration deleted." }); }
+            const res = await apiFetch(`/api/step11-products/config/${configId}?action=${action}`, { method: "DELETE" });
+            if (res.ok) { setPreviousConfigs(prev => prev.filter(c => c.product.id !== configId)); toast({ title: "Deleted", description: `Configuration moved to ${action}.` }); }
             else throw new Error();
         } catch { toast({ title: "Error", description: "Failed to delete.", variant: "destructive" }); }
+        setGenericDelete(null);
+    };
+
+    const requestDeleteConfig = (configId: number) => {
+        setGenericDelete({ isOpen: true, id: configId, name: 'Configuration' });
     };
 
     const toggleMaterial = (m: Material) =>
@@ -541,6 +549,15 @@ export default function ManageProduct() {
                         </div>
                     </CardHeader>
                     <CardContent className="p-8">
+
+                        {genericDelete && (
+                            <DeleteConfirmationDialog 
+                                isOpen={genericDelete.isOpen}
+                                onOpenChange={(open) => !open && setGenericDelete(null)}
+                                onConfirm={confirmDeleteConfig}
+                                itemName={genericDelete.name}
+                            />
+                        )}
 
                         {/* Step 1 */}
                         {step === 1 && (
@@ -787,7 +804,7 @@ export default function ManageProduct() {
                                                                 </div>
                                                                 <div className="flex items-center gap-2">
                                                                     <Button variant="ghost" size="sm" onClick={() => loadSpecificConfig(cd)} className="h-8 text-green-700 hover:text-green-800 hover:bg-green-100 font-bold px-3"><Edit className="h-3.5 w-3.5 mr-1" /> Load</Button>
-                                                                    <Button variant="ghost" size="sm" onClick={() => deleteConfig(cd.product.id)} className="h-8 w-8 p-0 text-red-400 hover:text-red-600 hover:bg-red-50"><Trash2 className="h-4 w-4" /></Button>
+                                                                    <Button variant="ghost" size="sm" onClick={() => requestDeleteConfig(cd.product.id)} className="h-8 w-8 p-0 text-red-400 hover:text-red-600 hover:bg-red-50"><Trash2 className="h-4 w-4" /></Button>
                                                                 </div>
                                                             </div>
                                                         ))
@@ -853,7 +870,7 @@ export default function ManageProduct() {
                                                                     </div>
                                                                     <div className="flex items-center gap-2">
                                                                         <Button variant="ghost" size="sm" onClick={() => loadSpecificConfig(cd)} className="h-8 text-blue-700 hover:text-blue-800 hover:bg-blue-100 font-bold px-3">Continue</Button>
-                                                                        <Button variant="ghost" size="sm" onClick={() => deleteConfig(cd.product.id)} className="h-8 w-8 p-0 text-red-400 hover:text-red-600 hover:bg-red-50"><Trash2 className="h-4 w-4" /></Button>
+                                                                        <Button variant="ghost" size="sm" onClick={() => requestDeleteConfig(cd.product.id)} className="h-8 w-8 p-0 text-red-400 hover:text-red-600 hover:bg-red-50"><Trash2 className="h-4 w-4" /></Button>
                                                                     </div>
                                                                 </div>
                                                             ))
@@ -913,10 +930,12 @@ export default function ManageProduct() {
                                                                         <span className="font-bold text-slate-900 group-hover:text-primary transition-colors">{material.name}</span>
                                                                         {isSelected && <Check className="h-3 w-3 text-primary animate-in zoom-in" />}
                                                                     </div>
-                                                                    <div className="flex flex-wrap items-center gap-2 text-[10px] text-muted-foreground font-medium uppercase tracking-tight">
+                                                                    <div className="flex flex-wrap items-center gap-2 text-[10px] text-blue-600 font-medium uppercase tracking-tight">
                                                                         <span>{material.unit}</span><span>•</span>
                                                                         <span className="truncate max-w-[120px]">{material.shop_name || "Multiple Vendors"}</span><span>•</span>
-                                                                        <span className="text-slate-400 font-mono tracking-tighter">Code: {material.code || material.id?.slice(0, 8)}</span>
+                                                                        <span className="font-mono tracking-tighter">Code: {material.code || material.id?.slice(0, 8)}</span><span>•</span>
+                                                                        <span className="font-mono tracking-tighter">brand: {material.brandName || material.brand_name || '-'}</span><span>•</span>
+                                                                        <span className="font-mono tracking-tighter">model: {material.modelNumber || material.model_number || '-'}</span>
                                                                         {material.hsn_code && <span className="bg-amber-50 text-amber-700 px-1 rounded-sm ml-1 text-[9px]">HSN: {material.hsn_code}</span>}
                                                                         {material.sac_code && <span className="bg-blue-50 text-blue-700 px-1 rounded-sm ml-1 text-[9px]">SAC: {material.sac_code}</span>}
                                                                     </div>
@@ -968,6 +987,9 @@ export default function ManageProduct() {
                                                                 <div className="flex items-center gap-2 mt-0.5">
                                                                     <Badge variant="outline" className="text-[9px] h-4 px-1 bg-blue-50/50 text-blue-600 font-bold border-blue-100">{material.unit}</Badge>
                                                                     <span className="text-[10px] text-muted-foreground font-medium truncate">{material.shop_name}</span>
+                                                                </div>
+                                                                <div className="text-[10px] text-blue-600 font-medium">
+                                                                    {material.code || material.id?.slice(0, 8)} • brand: {material.brandName || material.brand_name || '-'} • model: {material.modelNumber || material.model_number || '-'}
                                                                 </div>
                                                                 <div className={`text-[9px] flex items-center gap-1 font-medium mt-1 ${!material.created_at ? 'text-muted-foreground' :
                                                                     differenceInDays(new Date(), new Date(material.created_at)) > 90 ? 'text-amber-600 bg-amber-50 px-1 py-0.5 rounded-sm inline-flex w-fit border border-amber-200' : 'text-green-600'

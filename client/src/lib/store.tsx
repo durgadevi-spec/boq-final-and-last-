@@ -46,8 +46,8 @@ interface DataContextType {
   submitMaterialForApproval?: (mat: Partial<Material>) => Promise<Material | null>;
   addShop: (shop: Partial<Shop>) => Promise<void>;
   addMaterial: (mat: Partial<Material>) => Promise<void>;
-  deleteShop: (id: string) => Promise<void>;
-  deleteMaterial: (id: string) => Promise<void>;
+  deleteShop: (id: string, action?: 'archive' | 'trash') => Promise<void>;
+  deleteMaterial: (id: string, action?: 'archive' | 'trash') => Promise<void>;
   approveShop?: (id: string) => Promise<any>;
   rejectShop?: (id: string, reason?: string | null) => Promise<any>;
   approveMaterial?: (id: string, source?: string) => Promise<any>;
@@ -320,10 +320,11 @@ export function DataProvider({ children }: { children: ReactNode }) {
     }
   };
 
-  const deleteShop = async (id: string) => {
+  const deleteShop = async (id: string, action?: 'archive' | 'trash') => {
     console.log('[deleteShop] attempting to delete shop', id);
     try {
-      const res = await apiFetch(`/shops/${id}`, { method: 'DELETE' });
+      const url = action ? `/shops/${id}?action=${action}` : `/shops/${id}`;
+      const res = await apiFetch(url, { method: 'DELETE' });
       console.log('[deleteShop] response status:', res.status);
       if (res.ok) {
         // successful delete on server, update local list
@@ -341,10 +342,11 @@ export function DataProvider({ children }: { children: ReactNode }) {
     try { const dd = await getJSON('/shops'); if (dd?.shops) setShops(dd.shops); } catch (e) { console.warn('refresh shops failed', e); }
   };
 
-  const deleteMaterial = async (id: string) => {
+  const deleteMaterial = async (id: string, action?: 'archive' | 'trash') => {
     console.log('[deleteMaterial] attempting to delete material', id);
     try {
-      const res = await apiFetch(`/materials/${id}`, { method: 'DELETE' });
+      const url = action ? `/materials/${id}?action=${action}` : `/materials/${id}`;
+      const res = await apiFetch(url, { method: 'DELETE' });
       console.log('[deleteMaterial] response status:', res.status);
       if (res.ok) {
         console.log('[deleteMaterial] delete successful, removing from local list');

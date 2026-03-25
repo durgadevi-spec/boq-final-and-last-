@@ -10,14 +10,17 @@ import { format } from "date-fns";
 import { useAuth } from "@/lib/auth-context";
 import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
+import { DeleteConfirmationDialog } from "@/components/ui/DeleteConfirmationDialog";
 
 export default function SketchPlans() {
   const [plans, setPlans] = useState<any[]>([]);
+  const [planSearch, setPlanSearch] = useState("");
   const [loading, setLoading] = useState(true);
   const [showRequestsDialog, setShowRequestsDialog] = useState(false);
   const { toast } = useToast();
   const [, setLocation] = useLocation();
   const { user } = useAuth();
+  const [deleteConfirm, setDeleteConfirm] = useState<{ isOpen: boolean; id: string; name: string } | null>(null);
 
   const loadPlans = async () => {
     try {
@@ -39,16 +42,28 @@ export default function SketchPlans() {
     loadPlans();
   }, []);
 
-  const deletePlan = async (id: string) => {
-    if (!confirm("Are you sure you want to delete this plan?")) return;
+  const deletePlan = (id: string) => {
+    const plan = plans.find(p => p.id === id);
+    if (!plan) return;
+    setDeleteConfirm({
+      isOpen: true,
+      id: id,
+      name: plan.name || "Sketch Plan"
+    });
+  };
+
+  const confirmDelete = async (action: 'archive' | 'trash') => {
+    if (!deleteConfirm) return;
     try {
-      const res = await apiFetch(`/api/sketch-plans/${id}`, { method: "DELETE" });
+      const res = await apiFetch(`/api/sketch-plans/${deleteConfirm.id}?action=${action}`, { method: "DELETE" });
       if (res.ok) {
-        toast({ title: "Success", description: "Plan deleted" });
+        toast({ title: action === 'trash' ? "Plan moved to trash" : "Plan archived" });
         loadPlans();
       }
     } catch (err) {
       toast({ title: "Error", description: "Failed to delete plan", variant: "destructive" });
+    } finally {
+      setDeleteConfirm(null);
     }
   };
 
@@ -78,95 +93,81 @@ export default function SketchPlans() {
   const pendingRequests = plans.filter(p => p.is_locked && p.request_status === 'pending');
   const isAdmin = user?.role === 'admin';
 
+  const filteredPlans = plans.filter((p) => {
+    const search = planSearch.trim().toLowerCase();
+    if (!search) return true;
+    return [
+      p.name,
+      p.location,
+      p.project_name,
+      p.plan_date,
+      p.id
+    ].some((value) => String(value || "").toLowerCase().includes(search));
+  });
+
   return (
     <Layout>
       <div className="space-y-6">
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            <span className="text-3xl">📐</span>
-            <div>
-              <h1 className="text-2xl font-bold tracking-tight">Sketch a Plan</h1>
-              <p className="text-muted-foreground">Capture and manage site requirements and sketches</p>
+        <div className="flex flex-col gap-4">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <span className="text-3xl">📐</span>
+              <div>
+                <h1 className="text-2xl font-bold tracking-tight">Sketch a Plan</h1>
+                <p className="text-muted-foreground">Capture and manage site requirements and sketches</p>
+              </div>
+            </div>
+            <div className="flex gap-2">
+              {isAdmin && pendingRequests.length > 0 && (
+                <Button variant="outline" className="relative flex items-center gap-2 border-amber-500 text-amber-600 hover:bg-amber-50" onClick={() => setShowRequestsDialog(true)}>
+                  <AlertCircle className="w-4 h-4" /> Edit Requests
+                  <Badge variant="secondary" className="bg-amber-100 text-amber-700 ml-1">{pendingRequests.length}</Badge>
+                </Button>
+              )}
+              <Button variant="outline" onClick={() => setLocation("/sketch-templates")} className="flex items-center gap-2">
+                <Layers className="w-4 h-4" /> Manage Templates
+              </Button>
+              <Button onClick={() => setLocation("/create-sketch-plan")} className="flex items-center gap-2 bg-indigo-600 hover:bg-indigo-700 text-white">
+                <Plus className="w-4 h-4" /> Create New Plan
+              </Button>
             </div>
           </div>
-          <div className="flex gap-2">
-            {isAdmin && pendingRequests.length > 0 && (
-              <Button variant="outline" className="relative flex items-center gap-2 border-amber-500 text-amber-600 hover:bg-amber-50" onClick={() => setShowRequestsDialog(true)}>
-                <AlertCircle className="w-4 h-4" /> Edit Requests
-                <Badge variant="secondary" className="bg-amber-100 text-amber-700 ml-1">{pendingRequests.length}</Badge>
-              </Button>
-            )}
-            <Button variant="outline" onClick={() => setLocation("/sketch-templates")} className="flex items-center gap-2">
-              <Layers className="w-4 h-4" /> Manage Templates
-            </Button>
-            <Button onClick={() => setLocation("/create-sketch-plan")} className="flex items-center gap-2 bg-indigo-600 hover:bg-indigo-700 text-white">
-              <Plus className="w-4 h-4" /> Create New Plan
-            </Button>
+          <div className="flex items-center gap-2">
+            <input
+              type="text"
+              value={planSearch}
+              onChange={(e) => setPlanSearch(e.target.value)}
+              placeholder="Search plans by name, location, project, or ID..."
+              className="w-full md:w-80 h-10 px-3 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-400"
+            />
           </div>
         </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+        <div className="space-y-3">
           {loading ? (
-            <div className="col-span-full py-20 text-center text-muted-foreground italic">Loading plans...</div>
-          ) : plans.length === 0 ? (
-            <Card className="col-span-full py-20 border-dashed">
-              <CardContent className="flex flex-col items-center justify-center text-center space-y-4">
-                <div className="w-16 h-16 rounded-full bg-slate-100 flex items-center justify-center text-slate-400">
-                  <FileText className="w-8 h-8" />
-                </div>
-                <div>
-                  <h3 className="text-lg font-semibold">No Sketch Plans Yet</h3>
-                  <p className="text-sm text-muted-foreground">Start by creating your first site visit report or requirement plan.</p>
-                </div>
-                <Button onClick={() => setLocation("/create-sketch-plan")} className="bg-indigo-600 hover:bg-indigo-700 text-white">
-                  Get Started
-                </Button>
-              </CardContent>
-            </Card>
+            <div className="py-20 text-center text-muted-foreground italic">Loading plans...</div>
+          ) : filteredPlans.length === 0 ? (
+            <div className="py-20 border border-dashed rounded-xl text-center text-muted-foreground">No matching plans found.</div>
           ) : (
-            plans.map((p) => (
-              <Card key={p.id} className="hover:shadow-md transition-shadow group overflow-hidden border-slate-200">
-                <CardHeader className="bg-slate-50/50 pb-3 border-b border-slate-100">
-                  <div className="flex justify-between items-start">
-                    <CardTitle className="text-lg font-bold group-hover:text-indigo-600 transition-colors flex items-center gap-2">
-                      {p.is_locked && <Lock className="w-3.5 h-3.5 text-amber-500" />}
-                      {p.name}
-                    </CardTitle>
-                    <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                      <Button variant="ghost" size="icon" className="h-8 w-8 text-slate-500 hover:text-indigo-600" onClick={() => setLocation(`/edit-sketch-plan/${p.id}`)}>
-                        <Edit2 className="w-4 h-4" />
-                      </Button>
-                      <Button variant="ghost" size="icon" className="h-8 w-8 text-slate-500 hover:text-red-500" onClick={() => deletePlan(p.id)}>
-                        <Trash2 className="w-4 h-4" />
-                      </Button>
-                    </div>
+            filteredPlans.map((p) => (
+              <div key={p.id} className="p-3 border rounded-lg shadow-sm hover:shadow-md transition-shadow bg-white">
+                <div className="flex items-start justify-between gap-3">
+                  <div className="min-w-0">
+                    <p className="text-base font-bold text-slate-900 truncate">{p.name}</p>
+                    <p className="text-[12px] text-blue-600 mt-0.5 font-semibold">Plan ID: {p.id.split('-')[1]}</p>
                   </div>
-                </CardHeader>
-                <CardContent className="pt-4 space-y-3">
-                  <div className="flex items-center gap-2 text-sm text-slate-600">
-                    <Calendar className="w-4 h-4 text-slate-400" />
-                    <span>{p.plan_date ? format(new Date(p.plan_date), "PPP") : "No date"}</span>
+                  <div className="flex items-center gap-2">
+                    <Button variant="outline" size="sm" className="h-7" onClick={() => setLocation(`/edit-sketch-plan/${p.id}`)}>Open</Button>
+                    <Button variant="ghost" size="sm" className="h-7 text-red-500" onClick={() => deletePlan(p.id)}>Delete</Button>
                   </div>
-                  {p.location && (
-                    <div className="flex items-center gap-2 text-sm text-slate-600">
-                      <MapPin className="w-4 h-4 text-slate-400" />
-                      <span>{p.location}</span>
-                    </div>
-                  )}
-                  {p.project_name && (
-                    <div className="flex items-center gap-2 text-sm text-indigo-700 font-medium bg-indigo-50 px-2 py-1 rounded">
-                      <Layers className="w-4 h-4" />
-                      <span className="truncate">{p.project_name}</span>
-                    </div>
-                  )}
-                  <div className="pt-2 border-t mt-2 flex justify-between items-center">
-                     <span className="text-[10px] text-muted-foreground uppercase tracking-widest font-bold">Plan ID: {p.id.split('-')[1]}</span>
-                     <Button variant="ghost" size="sm" className="text-xs h-7 gap-1 text-slate-600" onClick={() => setLocation(`/edit-sketch-plan/${p.id}`)}>
-                        View Details →
-                     </Button>
-                  </div>
-                </CardContent>
-              </Card>
+                </div>
+                <div className="mt-2 text-[12px] text-slate-600 flex flex-wrap gap-2">
+                  <span className="font-medium text-indigo-600">{p.project_name || 'No project'}</span>
+                  <span className="px-1 py-0.5 bg-blue-100 text-blue-700 rounded">{p.location || 'No location'}</span>
+                  <span className="px-1 py-0.5 bg-cyan-100 text-cyan-700 rounded">{p.plan_date ? format(new Date(p.plan_date), 'dd/MM/yyyy') : 'No date'}</span>
+                  {p.is_locked && <span className="px-1 py-0.5 bg-amber-100 text-amber-700 rounded">Locked</span>}
+                </div>
+              </div>
             ))
           )}
         </div>
@@ -207,6 +208,16 @@ export default function SketchPlans() {
           </div>
         </DialogContent>
       </Dialog>
+
+      {deleteConfirm && (
+        <DeleteConfirmationDialog
+          isOpen={!!deleteConfirm}
+          onOpenChange={(open) => !open && setDeleteConfirm(null)}
+          onConfirm={confirmDelete}
+          itemName={deleteConfirm.name}
+          title="Delete Sketch Plan?"
+        />
+      )}
     </Layout>
   );
 }
