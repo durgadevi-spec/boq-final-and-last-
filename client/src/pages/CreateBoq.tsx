@@ -579,7 +579,23 @@ function BoqItemCard({ boqItem, boqIdx, isVersionSubmitted, expandedProductIds, 
               <Button variant="destructive" size="sm" className="h-6 text-[10px] px-2" disabled={isVersionSubmitted}
                 onClick={async () => {
                   if (!confirm("Delete this product and all its items?")) return;
-                  try { await apiFetch(`/api/boq-items/${boqItem.id}`, { method: "DELETE" }); loadBoqItemsAndEdits(); } catch { /* handled */ }
+                  try {
+                    // Use action=trash so it shows in the Trash bin
+                    const res = await apiFetch(`/api/boq-items/${boqItem.id}?action=trash`, { method: "DELETE" });
+
+                    if (res.ok) {
+                      setBoqItems(prev => prev.filter(i => i.id !== boqItem.id));
+                      toast({ title: "Product Deleted", description: "The product has been moved to Trash." });
+
+                      // Finalize state update to ensure and recalculate
+                      loadBoqItemsAndEdits();
+                    } else {
+                      throw new Error("Failed to delete product");
+                    }
+                  } catch (err) {
+                    console.error("Failed to delete product", err);
+                    toast({ title: "Error", description: "Failed to delete product.", variant: "destructive" });
+                  }
                 }}>Delete Product</Button>
             </div>
           )}

@@ -12,3 +12,6 @@ node_modules/
 # env files
 .env
 .env.local
+
+# runtime data
+server/archive_data.json
