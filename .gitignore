@@ -1,38 +1,58 @@
+# -----------------------------
 # Logs
+# -----------------------------
 *.log
 server-dev.log
+server_api_log.txt
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
 
+# -----------------------------
 # Temp files
+# -----------------------------
 server/tmp_*
 data/
 tmp/
 temp/
 
-# Runtime / generated files (IMPORTANT)
+# -----------------------------
+# Runtime / generated files
+# -----------------------------
 server/archive_data.json
+server_api_log.txt
 
+# -----------------------------
 # Node
+# -----------------------------
 node_modules/
 
+# -----------------------------
 # Build output
+# -----------------------------
 dist/
 build/
 
-# Env files (DO NOT COMMIT)
+# -----------------------------
+# Environment files (DO NOT COMMIT)
+# -----------------------------
 .env
 .env.local
 .env.production
 
+# -----------------------------
 # OS files
+# -----------------------------
 .DS_Store
 Thumbs.db
 
+# -----------------------------
 # PM2 logs
+# -----------------------------
 .pm2/logs
 
+# -----------------------------
 # Misc
+# -----------------------------
 *.pid
 *.seed
