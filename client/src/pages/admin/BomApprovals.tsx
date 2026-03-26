@@ -11,11 +11,12 @@ import {
     TableHeader,
     TableRow,
 } from "@/components/ui/table";
-import { Loader2, CheckCircle2, XCircle, ChevronDown, ChevronUp } from "lucide-react";
+import { Loader2, CheckCircle2, XCircle, ChevronDown, ChevronUp, Edit, Save, RotateCcw } from "lucide-react";
 import apiFetch from "@/lib/api";
 import { useToast } from "@/hooks/use-toast";
 import { computeBoq } from "@/lib/boqCalc";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Input } from "@/components/ui/input";
 
 type BOMApproval = {
     id: string;
@@ -42,6 +43,8 @@ export default function BomApprovals() {
     const [loadingItems, setLoadingItems] = useState(false);
     const [actionLoading, setActionLoading] = useState<string | null>(null);
     const [selectedIds, setSelectedIds] = useState<string[]>([]);
+    const [isEditingBOM, setIsEditingBOM] = useState<string | null>(null);
+    const [editBOMItems, setEditBOMItems] = useState<BOMItem[]>([]);
     const { toast } = useToast();
 
     const fetchApprovals = async () => {
@@ -67,7 +70,7 @@ export default function BomApprovals() {
         if (expandedId === id) {
             setExpandedId(null);
             setExpandedItems([]);
-            return;
+            return [];
         }
         setExpandedId(id);
         setLoadingItems(true);
@@ -75,13 +78,16 @@ export default function BomApprovals() {
             const res = await apiFetch(`/api/boq-items/version/${id}`);
             if (res.ok) {
                 const data = await res.json();
-                setExpandedItems(data.items || []);
+                const items = data.items || [];
+                setExpandedItems(items);
+                return items;
             }
         } catch (err) {
             console.error("Failed to load BOM items:", err);
         } finally {
             setLoadingItems(false);
         }
+        return [];
     };
 
     const handleApprove = async (id: string, isEditRequest = false) => {
@@ -144,6 +150,104 @@ export default function BomApprovals() {
             }
         } catch (err) {
             toast({ title: "Error", description: "Failed to clear record", variant: "destructive" });
+        } finally {
+            setActionLoading(null);
+        }
+    };
+
+    const handleStartEditBOM = (versionId: string, items?: BOMItem[]) => {
+        setIsEditingBOM(versionId);
+        const baseItems = items || expandedItems;
+        setEditBOMItems(JSON.parse(JSON.stringify(baseItems)));
+    };
+
+    const handleCancelEditBOM = () => {
+        setIsEditingBOM(null);
+        setEditBOMItems([]);
+    };
+
+    const handleItemDataChange = (
+        itemIdx: number,
+        field: string,
+        value: any,
+        lineIdx?: number,
+        lineField?: string,
+        sourceType?: string
+    ) => {
+        const newItems = [...editBOMItems];
+        const item = newItems[itemIdx];
+        if (!item) return;
+
+        const td = typeof item.table_data === 'string' ? JSON.parse(item.table_data) : item.table_data;
+
+        if (lineIdx !== undefined && lineField !== undefined) {
+            const actualSource = sourceType || (td.step11_items && td.step11_items.length > 0 ? "step11_items" : "materialLines");
+
+            if (actualSource === 'materialLines') {
+                if (td.materialLines && td.materialLines[lineIdx]) {
+                    if (lineField === "qtyPerSqf") {
+                        td.materialLines[lineIdx].baseQty = value * (td.baseRequiredQty || 1);
+                    } else if (lineField === "rateSqft") {
+                        td.materialLines[lineIdx].supplyRate = value;
+                        td.materialLines[lineIdx].installRate = 0;
+                    } else if (lineField === "title") {
+                        td.materialLines[lineIdx].name = value;
+                    } else {
+                        td.materialLines[lineIdx][lineField] = value;
+                    }
+                }
+            } else {
+                // Default to step11_items
+                if (!td.step11_items) td.step11_items = [];
+                if (td.step11_items[lineIdx]) {
+                    if (lineField === "rateSqft") {
+                        td.step11_items[lineIdx].rate = value;
+                        td.step11_items[lineIdx].supply_rate = value;
+                        td.step11_items[lineIdx].install_rate = 0;
+                    } else if (lineField === "qtyPerSqf") {
+                        td.step11_items[lineIdx].qtyPerSqf = value;
+                        td.step11_items[lineIdx].qty = value;
+                        td.step11_items[lineIdx].requiredQty = value;
+                    } else if (lineField === "title") {
+                        td.step11_items[lineIdx].title = value;
+                        td.step11_items[lineIdx].item_name = value;
+                    } else {
+                        td.step11_items[lineIdx][lineField] = value;
+                    }
+                }
+            }
+        } else {
+            td[field] = value;
+        }
+
+        item.table_data = td;
+        setEditBOMItems(newItems);
+    };
+
+    const handleSaveBOM = async () => {
+        if (!isEditingBOM) return;
+        setActionLoading(isEditingBOM);
+        try {
+            for (const item of editBOMItems) {
+                const res = await apiFetch(`/api/boq-items/${item.id}`, {
+                    method: "PUT",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ table_data: item.table_data }),
+                });
+                if (!res.ok) {
+                    const data = await res.json();
+                    throw new Error(data.message || "Failed to update item " + item.id);
+                }
+            }
+            toast({ title: "Success", description: "BOM items updated successfully." });
+            setIsEditingBOM(null);
+            const res = await apiFetch(`/api/boq-items/version/${isEditingBOM}`);
+            if (res.ok) {
+                const data = await res.json();
+                setExpandedItems(data.items || []);
+            }
+        } catch (err: any) {
+            toast({ title: "Error", description: err.message || "Failed to save changes", variant: "destructive" });
         } finally {
             setActionLoading(null);
         }
@@ -345,8 +449,24 @@ export default function BomApprovals() {
                                                     <>
                                                         <Button
                                                             size="sm"
+                                                            variant="outline"
+                                                            className="border-primary text-primary hover:bg-primary/10"
+                                                            onClick={(e) => {
+                                                                e.stopPropagation();
+                                                                if (expandedId !== approval.id) {
+                                                                    toggleExpand(approval.id).then((items) => handleStartEditBOM(approval.id, items));
+                                                                } else {
+                                                                    handleStartEditBOM(approval.id);
+                                                                }
+                                                            }}
+                                                            disabled={isEditingBOM === approval.id}
+                                                        >
+                                                            <Edit className="h-3.5 w-3.5 mr-1" /> Edit BOM
+                                                        </Button>
+                                                        <Button
+                                                            size="sm"
                                                             onClick={() => handleApprove(approval.id, approval.status === 'edit_requested')}
-                                                            disabled={actionLoading === approval.id}
+                                                            disabled={actionLoading === approval.id || isEditingBOM === approval.id}
                                                             className="bg-green-600 hover:bg-green-700"
                                                         >
                                                             Approve
@@ -355,7 +475,7 @@ export default function BomApprovals() {
                                                             size="sm"
                                                             variant="destructive"
                                                             onClick={() => handleReject(approval.id, approval.status === 'edit_requested')}
-                                                            disabled={actionLoading === approval.id}
+                                                            disabled={actionLoading === approval.id || isEditingBOM === approval.id}
                                                         >
                                                             Reject
                                                         </Button>
@@ -367,14 +487,26 @@ export default function BomApprovals() {
                                 </TableRow>
                                 {expandedId === approval.id && (
                                     <TableRow>
-                                        <TableCell colSpan={selectedIds.length > 0 ? 8 : 7} className="bg-muted/20">
+                                        <TableCell colSpan={10} className="bg-muted/20">
                                             <div className="p-4">
-                                                <h4 className="font-bold mb-4">BOM Items Preview</h4>
+                                                <div className="flex justify-between items-center mb-4">
+                                                    <h4 className="font-bold">BOM Items Preview</h4>
+                                                    {isEditingBOM === approval.id && (
+                                                        <div className="flex gap-2">
+                                                            <Button size="sm" className="bg-blue-600 hover:bg-blue-700 h-8" onClick={handleSaveBOM} disabled={actionLoading === approval.id}>
+                                                                <Save className="h-3.5 w-3.5 mr-1.5" /> Save Changes
+                                                            </Button>
+                                                            <Button size="sm" variant="outline" className="h-8" onClick={handleCancelEditBOM}>
+                                                                <RotateCcw className="h-3.5 w-3.5 mr-1.5" /> Cancel
+                                                            </Button>
+                                                        </div>
+                                                    )}
+                                                </div>
                                                 {loadingItems ? (
                                                     <Loader2 className="h-6 w-6 animate-spin mx-auto" />
                                                 ) : (
                                                     <div className="space-y-4">
-                                                        {expandedItems.map((item) => {
+                                                        {(isEditingBOM === approval.id ? editBOMItems : expandedItems).map((item, itemIdx) => {
                                                             const td = typeof item.table_data === 'string' ? JSON.parse(item.table_data) : item.table_data;
 
                                                             let displayLines = [];
@@ -384,55 +516,67 @@ export default function BomApprovals() {
                                                                 try {
                                                                     const res = computeBoq(td.configBasis, td.materialLines, td.targetRequiredQty);
                                                                     // Map computed lines
-                                                                    const computedLines = res.computed.map((line: any) => ({
-                                                                        title: line.name,
-                                                                        description: line.name,
-                                                                        unit: line.unit,
-                                                                        shop_name: line.shop_name,
-                                                                        qtyPerSqf: line.perUnitQty,
-                                                                        requiredQty: line.scaledQty,
-                                                                        roundOff: line.roundOffQty,
-                                                                        rateSqft: line.supplyRate + line.installRate,
-                                                                        amount: line.lineTotal,
-                                                                        manual: false,
-                                                                    }));
+                                                                    const computedLines = res.computed.map((line: any, lIdx: number) => {
+                                                                        const materialRow = td.materialLines[lIdx];
+                                                                        return {
+                                                                            title: line.name,
+                                                                            description: line.name,
+                                                                            unit: line.unit,
+                                                                            shop_name: line.shop_name,
+                                                                            qtyPerSqf: line.perUnitQty,
+                                                                            requiredQty: line.scaledQty,
+                                                                            roundOff: materialRow?.roundOff !== undefined ? materialRow.roundOff : line.roundOffQty,
+                                                                            rateSqft: line.supplyRate + line.installRate,
+                                                                            amount: (materialRow?.roundOff !== undefined ? materialRow.roundOff : line.roundOffQty) * (line.supplyRate + line.installRate),
+                                                                            manual: false,
+                                                                            originalIdx: lIdx,
+                                                                            sourceType: 'materialLines'
+                                                                        };
+                                                                    });
 
                                                                     // Include manual additions
-                                                                    const manualStep11 = step11Items.filter((it: any) => it && it.manual).map((it: any) => {
+                                                                    const manualStep11 = step11Items.map((it, lIdx) => ({ ...it, lIdx })).filter((it: any) => it && it.manual).map((it: any) => {
                                                                         const qty = Number(it.qty ?? it.requiredQty ?? it.qtyPerSqf ?? 0) || 0;
                                                                         const sRate = Number(it.supply_rate ?? it.supplyRate ?? 0) || 0;
                                                                         const iRate = Number(it.install_rate ?? it.installRate ?? 0) || 0;
                                                                         const rateVal = Number(it.rate ?? (sRate + iRate)) || (sRate + iRate);
+                                                                        const finalRoundOff = it.roundOff !== undefined ? it.roundOff : Math.ceil(qty);
                                                                         return {
                                                                             ...it,
                                                                             manual: true,
                                                                             qtyPerSqf: it.qtyPerSqf ?? 0,
                                                                             requiredQty: qty,
+                                                                            roundOff: finalRoundOff,
                                                                             supply_rate: sRate,
                                                                             install_rate: iRate,
                                                                             rateSqft: rateVal,
-                                                                            amount: Number((qty * rateVal).toFixed(2)),
+                                                                            amount: Number((finalRoundOff * rateVal).toFixed(2)),
+                                                                            originalIdx: it.lIdx,
+                                                                            sourceType: 'step11_items'
                                                                         };
                                                                     });
 
                                                                     displayLines = [...computedLines, ...manualStep11];
                                                                 } catch (e) {
                                                                     console.error("Failed to compute BOQ breakdown", e);
-                                                                    displayLines = step11Items;
                                                                 }
                                                             } else {
                                                                 // Manual product or engine product without materialLines
-                                                                displayLines = step11Items.map((it: any) => {
+                                                                displayLines = step11Items.map((it: any, lIdx: number) => {
                                                                     const qty = Number(it.qty ?? it.requiredQty ?? it.qtyPerSqf ?? 0) || 0;
                                                                     const sRate = Number(it.supply_rate ?? it.supplyRate ?? 0) || 0;
                                                                     const iRate = Number(it.install_rate ?? it.installRate ?? 0) || 0;
                                                                     const rateVal = Number(it.rate ?? (sRate + iRate)) || (sRate + iRate);
+                                                                    const finalRoundOff = it.roundOff !== undefined ? it.roundOff : Math.ceil(qty);
                                                                     return {
                                                                         ...it,
                                                                         qtyPerSqf: it.qtyPerSqf ?? 0,
                                                                         requiredQty: qty,
+                                                                        roundOff: finalRoundOff,
                                                                         rateSqft: rateVal,
-                                                                        amount: Number((qty * rateVal).toFixed(2)),
+                                                                        amount: Number((finalRoundOff * rateVal).toFixed(2)),
+                                                                        originalIdx: lIdx,
+                                                                        sourceType: 'step11_items'
                                                                     };
                                                                 });
                                                             }
@@ -440,23 +584,54 @@ export default function BomApprovals() {
                                                             return (
                                                                 <div key={item.id} className="border p-3 rounded bg-white">
                                                                     <div className="font-bold flex justify-between items-start">
-                                                                        <div className="flex flex-col">
-                                                                            <span>{td.product_name}</span>
+                                                                        <div className="flex flex-col flex-1">
+                                                                            {isEditingBOM === approval.id ? (
+                                                                                <Input
+                                                                                    value={td.product_name || ""}
+                                                                                    onChange={(e) => handleItemDataChange(itemIdx, "product_name", e.target.value)}
+                                                                                    className="h-8 text-sm font-bold w-full mb-2"
+                                                                                    placeholder="Product Name"
+                                                                                />
+                                                                            ) : (
+                                                                                <span>{td.product_name}</span>
+                                                                            )}
                                                                             <div className="flex flex-wrap items-center gap-2 mt-1">
-                                                                                {(td.hsn_code || td.hsn_sac_type === 'hsn') && (
+                                                                                {(td.hsn_code || td.hsn_sac_type === 'hsn' || isEditingBOM === approval.id) && (
                                                                                     <div className="flex items-center gap-1">
                                                                                         <span className="text-[10px] font-bold text-gray-500 uppercase">HSN:</span>
-                                                                                        <span className="text-[11px] font-semibold text-gray-700 bg-gray-100 px-2 py-0.5 rounded border border-gray-200 min-w-[60px]">
-                                                                                            {td.hsn_code || (td.hsn_sac_type === 'hsn' ? td.hsn_sac_code : "") || "—"}
-                                                                                        </span>
+                                                                                        {isEditingBOM === approval.id ? (
+                                                                                            <Input
+                                                                                                value={td.hsn_sac_code || td.hsn_code || ""}
+                                                                                                onChange={(e) => {
+                                                                                                    handleItemDataChange(itemIdx, "hsn_sac_code", e.target.value);
+                                                                                                    handleItemDataChange(itemIdx, "hsn_sac_type", "hsn");
+                                                                                                }}
+                                                                                                className="h-6 text-[10px] w-24 px-1"
+                                                                                            />
+                                                                                        ) : (
+                                                                                            <span className="text-[11px] font-semibold text-gray-700 bg-gray-100 px-2 py-0.5 rounded border border-gray-200 min-w-[60px]">
+                                                                                                {td.hsn_code || (td.hsn_sac_type === 'hsn' ? td.hsn_sac_code : "") || "—"}
+                                                                                            </span>
+                                                                                        )}
                                                                                     </div>
                                                                                 )}
-                                                                                {(td.sac_code || td.hsn_sac_type === 'sac') && (
+                                                                                {(td.sac_code || td.hsn_sac_type === 'sac' || (isEditingBOM === approval.id && !td.hsn_sac_type)) && (
                                                                                     <div className="flex items-center gap-1">
                                                                                         <span className="text-[10px] font-bold text-gray-500 uppercase">SAC:</span>
-                                                                                        <span className="text-[11px] font-semibold text-gray-700 bg-gray-100 px-2 py-0.5 rounded border border-gray-200 min-w-[60px]">
-                                                                                            {td.sac_code || (td.hsn_sac_type === 'sac' ? td.hsn_sac_code : "") || "—"}
-                                                                                        </span>
+                                                                                        {isEditingBOM === approval.id ? (
+                                                                                            <Input
+                                                                                                value={td.sac_code || (td.hsn_sac_type === 'sac' ? td.hsn_sac_code : "") || ""}
+                                                                                                onChange={(e) => {
+                                                                                                    handleItemDataChange(itemIdx, "hsn_sac_code", e.target.value);
+                                                                                                    handleItemDataChange(itemIdx, "hsn_sac_type", "sac");
+                                                                                                }}
+                                                                                                className="h-6 text-[10px] w-24 px-1"
+                                                                                            />
+                                                                                        ) : (
+                                                                                            <span className="text-[11px] font-semibold text-gray-700 bg-gray-100 px-2 py-0.5 rounded border border-gray-200 min-w-[60px]">
+                                                                                                {td.sac_code || (td.hsn_sac_type === 'sac' ? td.hsn_sac_code : "") || "—"}
+                                                                                            </span>
+                                                                                        )}
                                                                                     </div>
                                                                                 )}
                                                                             </div>
@@ -495,20 +670,84 @@ export default function BomApprovals() {
                                                                                     <TableRow key={idx} className="h-8 hover:bg-blue-50/50">
                                                                                         <TableCell className="text-center">{idx + 1}</TableCell>
                                                                                         <TableCell className="font-medium">
-                                                                                            {s.title}
-                                                                                            {s.manual && (
-                                                                                                <span className="ml-2 inline-flex items-center px-1.5 py-0.5 rounded-full text-[9px] font-bold bg-amber-100 text-amber-700 border border-amber-200 uppercase tracking-tighter">
-                                                                                                    Manual
-                                                                                                </span>
+                                                                                            {isEditingBOM === approval.id ? (
+                                                                                                <Input
+                                                                                                    value={s.title || ""}
+                                                                                                    onChange={(e) => handleItemDataChange(itemIdx, "title", e.target.value, s.originalIdx, "title", s.sourceType)}
+                                                                                                    className="h-7 text-[10px]"
+                                                                                                />
+                                                                                            ) : (
+                                                                                                <>
+                                                                                                    {s.title}
+                                                                                                    {s.manual && (
+                                                                                                        <span className="ml-2 inline-flex items-center px-1.5 py-0.5 rounded-full text-[9px] font-bold bg-amber-100 text-amber-700 border border-amber-200 uppercase tracking-tighter">
+                                                                                                            Manual
+                                                                                                        </span>
+                                                                                                    )}
+                                                                                                </>
                                                                                             )}
                                                                                         </TableCell>
-                                                                                        <TableCell className="text-gray-600">{s.shop_name || "-"}</TableCell>
-                                                                                        <TableCell className="text-gray-600 truncate max-w-[200px]" title={s.description}>{s.description || "-"}</TableCell>
-                                                                                        <TableCell className="text-center">{s.unit}</TableCell>
-                                                                                        <TableCell className="text-center">{(s.qtyPerSqf ?? 0).toFixed(3)}</TableCell>
+                                                                                        <TableCell className="text-gray-600">
+                                                                                            {isEditingBOM === approval.id ? (
+                                                                                                <Input
+                                                                                                    value={s.shop_name || ""}
+                                                                                                    onChange={(e) => handleItemDataChange(itemIdx, "shop_name", e.target.value, s.originalIdx, "shop_name", s.sourceType)}
+                                                                                                    className="h-7 text-[10px]"
+                                                                                                />
+                                                                                            ) : (s.shop_name || "-")}
+                                                                                        </TableCell>
+                                                                                        <TableCell className="text-gray-600">
+                                                                                            {isEditingBOM === approval.id ? (
+                                                                                                <Input
+                                                                                                    value={s.description || ""}
+                                                                                                    onChange={(e) => handleItemDataChange(itemIdx, "description", e.target.value, s.originalIdx, "description", s.sourceType)}
+                                                                                                    className="h-7 text-[10px]"
+                                                                                                />
+                                                                                            ) : (
+                                                                                                <div className="truncate max-w-[200px]" title={s.description}>{s.description || "-"}</div>
+                                                                                            )}
+                                                                                        </TableCell>
+                                                                                        <TableCell className="text-center">
+                                                                                            {isEditingBOM === approval.id ? (
+                                                                                                <Input
+                                                                                                    value={s.unit || ""}
+                                                                                                    onChange={(e) => handleItemDataChange(itemIdx, "unit", e.target.value, s.originalIdx, "unit", s.sourceType)}
+                                                                                                    className="h-7 text-[10px] w-12 text-center"
+                                                                                                />
+                                                                                            ) : s.unit}
+                                                                                        </TableCell>
+                                                                                        <TableCell className="text-center">
+                                                                                            {isEditingBOM === approval.id ? (
+                                                                                                <Input
+                                                                                                    type="number"
+                                                                                                    step="0.001"
+                                                                                                    value={s.qtyPerSqf || 0}
+                                                                                                    onChange={(e) => handleItemDataChange(itemIdx, "qtyPerSqf", parseFloat(e.target.value), s.originalIdx, "qtyPerSqf", s.sourceType)}
+                                                                                                    className="h-7 text-[10px] w-16 text-center mx-auto"
+                                                                                                />
+                                                                                            ) : (s.qtyPerSqf ?? 0).toFixed(3)}
+                                                                                        </TableCell>
                                                                                         <TableCell className="text-center text-blue-600">{(s.requiredQty ?? 0).toFixed(2)}</TableCell>
-                                                                                        <TableCell className="text-center font-bold">{s.roundOff ?? "-"}</TableCell>
-                                                                                        <TableCell className="text-right">₹{(s.rateSqft || 0).toLocaleString()}</TableCell>
+                                                                                        <TableCell className="text-center font-bold">
+                                                                                            {isEditingBOM === approval.id ? (
+                                                                                                <Input
+                                                                                                    type="number"
+                                                                                                    value={s.roundOff || 0}
+                                                                                                    onChange={(e) => handleItemDataChange(itemIdx, "roundOff", parseFloat(e.target.value), s.originalIdx, "roundOff", s.sourceType)}
+                                                                                                    className="h-7 text-[10px] w-14 text-center mx-auto font-bold"
+                                                                                                />
+                                                                                            ) : s.roundOff ?? "-"}
+                                                                                        </TableCell>
+                                                                                        <TableCell className="text-right">
+                                                                                            {isEditingBOM === approval.id ? (
+                                                                                                <Input
+                                                                                                    type="number"
+                                                                                                    value={s.rateSqft || 0}
+                                                                                                    onChange={(e) => handleItemDataChange(itemIdx, "rateSqft", parseFloat(e.target.value), s.originalIdx, "rateSqft", s.sourceType)}
+                                                                                                    className="h-7 text-[10px] w-20 text-right ml-auto"
+                                                                                                />
+                                                                                            ) : `₹${(s.rateSqft || 0).toLocaleString()}`}
+                                                                                        </TableCell>
                                                                                         <TableCell className="text-right font-bold bg-green-50/30">₹{(s.amount || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</TableCell>
                                                                                     </TableRow>
                                                                                 ))

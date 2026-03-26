@@ -21,6 +21,7 @@ import Step11Preview from "@/components/Step11Preview";
 import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
 import * as XLSX from 'xlsx';
+import { DeleteConfirmationDialog } from "@/components/ui/DeleteConfirmationDialog";
 
 // ─── Types ─────────────────────────────────────────────────────────────────────
 
@@ -886,6 +887,7 @@ export default function CreateBom() {
   const [templateToSave, setTemplateToSave] = useState<BOMItem | null>(null);
   const [newTemplateName, setNewTemplateName] = useState("");
   const [templateSearch, setTemplateSearch] = useState("");
+  const [deleteConfirm, setDeleteConfirm] = useState<{ isOpen: boolean; type: 'template' | 'version'; id: string; name: string } | null>(null);
 
   const loadBomTemplates = useCallback(async () => {
     try {
@@ -955,15 +957,46 @@ export default function CreateBom() {
   };
 
   const handleDeleteTemplate = async (id: string) => {
-    if (!confirm("Are you sure you want to delete this template?")) return;
+    const tpl = bomTemplates.find(t => t.id === id);
+    if (!tpl) return;
+    setDeleteConfirm({
+      isOpen: true,
+      type: 'template',
+      id: id,
+      name: tpl.name || "BOM Template"
+    });
+  };
+
+  const confirmDelete = async (action: 'archive' | 'trash') => {
+    if (!deleteConfirm) return;
+    const { type, id } = deleteConfirm;
+
     try {
-      const resp = await apiFetch(`/api/bom-templates/${id}`, { method: "DELETE" });
-      if (resp.ok) {
-        toast({ title: "Template Deleted" });
-        loadBomTemplates();
+      if (type === 'template') {
+        const resp = await apiFetch(`/api/bom-templates/${id}?action=${action}`, { method: "DELETE" });
+        if (resp.ok) {
+          toast({ title: action === 'trash' ? "Template moved to trash" : "Template archived" });
+          loadBomTemplates();
+        }
+      } else if (type === 'version') {
+        const res = await apiFetch(`/api/boq-versions/${encodeURIComponent(id)}?action=${action}`, { method: "DELETE" });
+        if (res.ok) {
+          const r = await apiFetch(`/api/boq-versions/${encodeURIComponent(selectedProjectId!)}`, { headers: {} });
+          if (r.ok) {
+            const d = await r.json(); const list = d.versions || [];
+            setVersions(list);
+            const draft = list.find((v: BOMVersion) => v.status === "draft");
+            setSelectedVersionId(draft?.id ?? list[0]?.id ?? null);
+            setBoqItems([]);
+            toast({ title: action === 'trash' ? "Version moved to trash" : "Version archived" });
+          }
+        }
       }
     } catch (e) {
-      console.error("Delete template error:", e);
+      console.error("Delete error:", e);
+      toast({ title: "Error", description: "Failed to delete", variant: "destructive" });
+    } finally {
+      setDeleteConfirm(null);
     }
   };
   // Budget warning/modals removed for Generate BOM page per request
@@ -1602,20 +1635,13 @@ export default function CreateBom() {
   };
 
   const handleDeleteVersion = async () => {
-    if (!selectedVersionId || !confirm("Delete this version and all its BOQ items? This cannot be undone.")) return;
-    try {
-      const res = await apiFetch(`/api/boq-versions/${encodeURIComponent(selectedVersionId)}`, { method: "DELETE" });
-      if (!res.ok) throw new Error(await res.text());
-      const r = await apiFetch(`/api/boq-versions/${encodeURIComponent(selectedProjectId!)}`, { headers: {} });
-      if (r.ok) {
-        const d = await r.json(); const list = d.versions || [];
-        setVersions(list);
-        const draft = list.find((v: BOMVersion) => v.status === "draft");
-        setSelectedVersionId(draft?.id ?? list[0]?.id ?? null);
-        setBoqItems([]);
-        toast({ title: "Deleted", description: "Version removed" });
-      }
-    } catch { toast({ title: "Error", description: "Failed to delete version", variant: "destructive" }); }
+    if (!selectedVersionId) return;
+    setDeleteConfirm({
+      isOpen: true,
+      type: 'version',
+      id: selectedVersionId,
+      name: `Version ${selectedVersion?.version_number || ""}`
+    });
   };
 
   const buildDisplayLines = (boqItem: BOMItem) => {
@@ -2619,6 +2645,16 @@ export default function CreateBom() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {deleteConfirm && (
+        <DeleteConfirmationDialog
+          isOpen={deleteConfirm.isOpen}
+          onOpenChange={(open) => !open && setDeleteConfirm(null)}
+          onConfirm={confirmDelete}
+          itemName={deleteConfirm.name}
+          title={deleteConfirm.type === 'template' ? "Delete BOM Template?" : "Delete BOQ Version?"}
+        />
+      )}
     </>
   );
 }

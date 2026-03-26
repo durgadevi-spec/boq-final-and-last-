@@ -36,7 +36,38 @@ import { computeBoq } from "@/lib/boqCalc";
 
 import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
-import { Trash2, Copy, GripVertical, GripHorizontal, Eye, EyeOff, Edit2, ChevronDown, Briefcase, MapPin, IndianRupee, Lock, LayoutTemplate, Edit3, CheckCircle2, Clock, Search } from "lucide-react";
+import { DeleteConfirmationDialog } from "@/components/ui/DeleteConfirmationDialog";
+import {
+  Trash2,
+  Copy,
+  GripVertical,
+  GripHorizontal,
+  Eye,
+  EyeOff,
+  Edit2,
+  ChevronDown,
+  Briefcase,
+  MapPin,
+  IndianRupee,
+  Lock,
+  LayoutTemplate,
+  Edit3,
+  CheckCircle2,
+  Clock,
+  Search,
+  Plus,
+  X,
+  Maximize2,
+  Minimize2,
+  Settings2,
+  Share2,
+  Users,
+  Unlock,
+  Type,
+  Mail,
+  Download,
+  Save
+} from "lucide-react";
 
 /** Helper to generate Excel-style column names (A, B, C... Z, AA, AB...) */
 const getExcelColumnName = (n: number) => {
@@ -171,7 +202,7 @@ type Step11Item = {
   [key: string]: any;
 };
 
-type DraggableHeaderColProps = { col: any; idx: number; isVersionSubmitted: boolean; allCols: any[]; getExcelColumnName: (n: number) => string; handleGlobalCalculation: any; globalColSettings: any; handleHideColumn: any; boqItems: any[]; customColumns: any; customColumnValues: any; saveItemLayout: any; toast: any; setCustomColumns: any; setCustomColumnValues: any; };
+type DraggableHeaderColProps = { col: any; idx: number; isVersionSubmitted: boolean; allCols: any[]; getExcelColumnName: (n: number) => string; handleGlobalCalculation: any; globalColSettings: any; handleHideColumn: any; boqItems: any[]; customColumns: any; customColumnValues: any; saveItemLayout: any; toast: any; setCustomColumns: any; setCustomColumnValues: any; openDeleteConfirm: (title: string, itemName: string, onConfirm: (action: "archive" | "trash") => void) => void; };
 
 const DraggableHeaderCol = ({
   col,
@@ -189,7 +220,8 @@ const DraggableHeaderCol = ({
   toast,
   setCustomColumns,
   setCustomColumnValues,
-  setGlobalColSettings
+  setGlobalColSettings,
+  openDeleteConfirm
 }: DraggableHeaderColProps & { setGlobalColSettings: any }) => {
   const controls = useDragControls();
 
@@ -298,22 +330,24 @@ const DraggableHeaderCol = ({
               </button>
               <button onClick={() => handleHideColumn(col.name, true)} className="text-gray-400 hover:text-orange-500"><EyeOff size={10} /></button>
               <button
-                onClick={async () => {
-                  if (!confirm(`Delete "${col.name}"?`)) return;
-                  const updates = boqItems.map(item => {
-                    const nextCols = (customColumns[item.id] || []).filter((c: any) => c.name !== col.name);
-                    const itemValues = { ...(customColumnValues[item.id] || {}) };
-                    Object.keys(itemValues).forEach(r => {
-                      const ri = parseInt(r);
-                      const rowVals = { ...itemValues[ri] };
-                      delete rowVals[col.name];
-                      itemValues[ri] = rowVals;
+                onClick={() => {
+                  openDeleteConfirm(`Delete Column "${col.name}"?`, col.name, async (action: "archive" | "trash") => {
+                    const updates = boqItems.map(item => {
+                      const nextCols = (customColumns[item.id] || []).filter((c: any) => c.name !== col.name);
+                      const itemValues = { ...(customColumnValues[item.id] || {}) };
+                      Object.keys(itemValues).forEach(r => {
+                        const ri = parseInt(r);
+                        const rowVals = { ...itemValues[ri] };
+                        delete rowVals[col.name];
+                        itemValues[ri] = rowVals;
+                      });
+                      setCustomColumns((prev: any) => ({ ...prev, [item.id]: nextCols }));
+                      setCustomColumnValues((prev: any) => ({ ...prev, [item.id]: itemValues }));
+                      return saveItemLayout(item.id, nextCols, itemValues);
                     });
-                    setCustomColumns((prev: any) => ({ ...prev, [item.id]: nextCols }));
-                    setCustomColumnValues((prev: any) => ({ ...prev, [item.id]: itemValues }));
-                    return saveItemLayout(item.id, nextCols, itemValues);
+                    await Promise.all(updates);
+                    toast({ title: action === 'trash' ? "Moved to Trash" : "Archived", description: `Column "${col.name}" removed.` });
                   });
-                  await Promise.all(updates);
                 }}
                 className="text-gray-400 hover:text-red-500"
               ><Trash2 size={10} /></button>
@@ -404,6 +438,19 @@ export default function FinalizeBoq() {
   const [templates, setTemplates] = useState<BOQTemplate[]>([]);
   const [isSaveTemplateDialogOpen, setIsSaveTemplateDialogOpen] = useState(false);
   const [newTemplateName, setNewTemplateName] = useState("");
+
+  // Delete Confirmation Dialog State
+  const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
+  const [deleteConfirmCallback, setDeleteConfirmCallback] = useState<(action: "archive" | "trash") => void>(() => () => { });
+  const [deleteConfirmTitle, setDeleteConfirmTitle] = useState("");
+  const [deleteConfirmItem, setDeleteConfirmItem] = useState("");
+
+  const openDeleteConfirm = (title: string, itemName: string, onConfirm: (action: "archive" | "trash") => void) => {
+    setDeleteConfirmTitle(title);
+    setDeleteConfirmItem(itemName);
+    setDeleteConfirmCallback(() => (action: "archive" | "trash") => onConfirm(action));
+    setDeleteConfirmOpen(true);
+  };
   const [selectedTemplateId, setSelectedTemplateId] = useState<string>("");
 
   const [customColumns, setCustomColumns] = useState<{ [id: string]: any[] }>({});
@@ -1224,24 +1271,24 @@ export default function FinalizeBoq() {
 
   const handleDeleteColumn = async (boqItemId: string, colIdx: number) => {
     const colName = customColumns[boqItemId][colIdx].name;
-    if (!confirm(`Are you sure you want to delete the column "${colName}"?`)) return;
+    openDeleteConfirm(`Delete Column "${colName}"?`, colName, async (action) => {
+      const nextCols = [...(customColumns[boqItemId] || [])];
+      nextCols.splice(colIdx, 1);
 
-    const nextCols = [...(customColumns[boqItemId] || [])];
-    nextCols.splice(colIdx, 1);
+      const itemValues = { ...(customColumnValues[boqItemId] || {}) };
+      Object.keys(itemValues).forEach((rowIdxStr) => {
+        const rowIdx = parseInt(rowIdxStr);
+        const rowVals = { ...itemValues[rowIdx] };
+        delete rowVals[colName];
+        itemValues[rowIdx] = rowVals;
+      });
 
-    const itemValues = { ...(customColumnValues[boqItemId] || {}) };
-    Object.keys(itemValues).forEach((rowIdxStr) => {
-      const rowIdx = parseInt(rowIdxStr);
-      const rowVals = { ...itemValues[rowIdx] };
-      delete rowVals[colName];
-      itemValues[rowIdx] = rowVals;
+      setCustomColumns((prev) => ({ ...prev, [boqItemId]: nextCols }));
+      setCustomColumnValues((prev) => ({ ...prev, [boqItemId]: itemValues }));
+
+      await saveItemLayout(boqItemId, nextCols, itemValues);
+      toast({ title: action === 'trash' ? "Moved to Trash" : "Archived", description: `Column "${colName}" removed and saved.` });
     });
-
-    setCustomColumns((prev) => ({ ...prev, [boqItemId]: nextCols }));
-    setCustomColumnValues((prev) => ({ ...prev, [boqItemId]: itemValues }));
-
-    await saveItemLayout(boqItemId, nextCols, itemValues);
-    toast({ title: "Column Deleted", description: `Column "${colName}" removed and saved.` });
   };
 
   const handleCloneColumn = async (boqItemId: string, colIdx: number) => {
@@ -1620,36 +1667,34 @@ export default function FinalizeBoq() {
     const templateToDelete = templates.find((t) => t.id === templateId);
     if (!templateToDelete) return;
 
-    if (!confirm(`Are you sure you want to delete the template "${templateToDelete.name}"?`)) {
-      return;
-    }
-
-    try {
-      const resp = await apiFetch(`/api/boq-templates/${templateId}`, {
-        method: "DELETE",
-      });
-
-      if (resp.ok) {
-        setTemplates((prev) => prev.filter((t) => t.id !== templateId));
-        if (selectedTemplateId === templateId) {
-          setSelectedTemplateId("");
-        }
-        toast({
-          title: "Template Deleted",
-          description: `Template "${templateToDelete.name}" has been removed.`,
+    openDeleteConfirm(`Delete Template "${templateToDelete.name}"?`, templateToDelete.name, async (action) => {
+      try {
+        const resp = await apiFetch(`/api/boq-templates/${templateId}?action=${action}`, {
+          method: "DELETE",
         });
-      } else {
-        const errorData = await resp.json().catch(() => ({}));
-        throw new Error(errorData.message || "Failed to delete template");
+
+        if (resp.ok) {
+          setTemplates((prev) => prev.filter((t) => t.id !== templateId));
+          if (selectedTemplateId === templateId) {
+            setSelectedTemplateId("");
+          }
+          toast({
+            title: action === 'trash' ? "Moved to Trash" : "Archived",
+            description: `Template "${templateToDelete.name}" removed.`,
+          });
+        } else {
+          const errorData = await resp.json().catch(() => ({}));
+          throw new Error(errorData.message || "Failed to delete template");
+        }
+      } catch (error: any) {
+        console.error("Failed to delete template:", error);
+        toast({
+          title: "Error",
+          description: error.message || "Failed to delete template",
+          variant: "destructive",
+        });
       }
-    } catch (error: any) {
-      console.error("Failed to delete template:", error);
-      toast({
-        title: "Error",
-        description: error.message || "Failed to delete template",
-        variant: "destructive",
-      });
-    }
+    });
   };
 
   const handleApplyTemplate = async (templateId: string) => {
@@ -2589,27 +2634,28 @@ export default function FinalizeBoq() {
                       variant="ghost"
                       size="icon"
                       className="h-9 w-9 text-slate-400 hover:text-red-600 hover:bg-red-50"
-                      onClick={async () => {
+                      onClick={() => {
                         if (!selectedBomVersionId) return;
-                        if (!confirm("Delete this BOM version?")) return;
-                        try {
-                          const resp = await apiFetch(`/api/boq-versions/${encodeURIComponent(selectedBomVersionId)}`, { method: "DELETE" });
-                          if (resp.ok) {
-                            toast({ title: "Deleted", description: "BOM Version removed" });
-                            // Re-load versions
-                            const bomResp = await apiFetch(`/api/boq-versions/${encodeURIComponent(selectedProjectId)}?type=bom`);
-                            if (bomResp.ok) {
-                              const bomData = await bomResp.json();
-                              const bomList = bomData.versions || [];
-                              setBomVersions(bomList);
-                              if (bomList.length > 0) setSelectedBomVersionId(bomList[0].id);
-                              else setSelectedBomVersionId(null);
+                        openDeleteConfirm("Delete this BOM version?", "BOM Version", async (action) => {
+                          try {
+                            const resp = await apiFetch(`/api/boq-versions/${encodeURIComponent(selectedBomVersionId)}?action=${action}`, { method: "DELETE" });
+                            if (resp.ok) {
+                              toast({ title: action === 'trash' ? "Moved to Trash" : "Archived", description: "BOM Version removed" });
+                              // Re-load versions
+                              const bomResp = await apiFetch(`/api/boq-versions/${encodeURIComponent(selectedProjectId)}?type=bom`);
+                              if (bomResp.ok) {
+                                const bomData = await bomResp.json();
+                                const bomList = bomData.versions || [];
+                                setBomVersions(bomList);
+                                if (bomList.length > 0) setSelectedBomVersionId(bomList[0].id);
+                                else setSelectedBomVersionId(null);
+                              }
                             }
+                          } catch (e) {
+                            console.error(e);
+                            toast({ title: "Error", description: "Failed to delete", variant: "destructive" });
                           }
-                        } catch (e) {
-                          console.error(e);
-                          toast({ title: "Error", description: "Failed to delete", variant: "destructive" });
-                        }
+                        });
                       }}
                     >
                       <Trash2 className="h-4 w-4" />
@@ -2690,26 +2736,27 @@ export default function FinalizeBoq() {
                       variant="ghost"
                       size="icon"
                       className="h-9 w-9 text-slate-400 hover:text-red-600 hover:bg-red-50"
-                      onClick={async () => {
+                      onClick={() => {
                         if (!selectedBoqVersionId) return;
-                        if (!confirm("Delete this BOQ version?")) return;
-                        try {
-                          const resp = await apiFetch(`/api/boq-versions/${encodeURIComponent(selectedBoqVersionId)}`, { method: "DELETE" });
-                          if (resp.ok) {
-                            toast({ title: "Deleted", description: "BOQ Version removed" });
-                            const boqResp = await apiFetch(`/api/boq-versions/${encodeURIComponent(selectedProjectId)}?type=boq`);
-                            if (boqResp.ok) {
-                              const boqData = await boqResp.json();
-                              const boqList = boqData.versions || [];
-                              setBoqVersions(boqList);
-                              if (boqList.length > 0) setSelectedBoqVersionId(boqList[0].id);
-                              else setSelectedBoqVersionId(null);
+                        openDeleteConfirm("Delete this BOQ version?", "BOQ Version", async (action) => {
+                          try {
+                            const resp = await apiFetch(`/api/boq-versions/${encodeURIComponent(selectedBoqVersionId)}?action=${action}`, { method: "DELETE" });
+                            if (resp.ok) {
+                              toast({ title: action === 'trash' ? "Moved to Trash" : "Archived", description: "BOQ Version removed" });
+                              const boqResp = await apiFetch(`/api/boq-versions/${encodeURIComponent(selectedProjectId)}?type=boq`);
+                              if (boqResp.ok) {
+                                const boqData = await boqResp.json();
+                                const boqList = boqData.versions || [];
+                                setBoqVersions(boqList);
+                                if (boqList.length > 0) setSelectedBoqVersionId(boqList[0].id);
+                                else setSelectedBoqVersionId(null);
+                              }
                             }
+                          } catch (e) {
+                            console.error(e);
+                            toast({ title: "Error", description: "Failed to delete", variant: "destructive" });
                           }
-                        } catch (e) {
-                          console.error(e);
-                          toast({ title: "Error", description: "Failed to delete", variant: "destructive" });
-                        }
+                        });
                       }}
                     >
                       <Trash2 className="h-4 w-4" />
@@ -3064,18 +3111,19 @@ export default function FinalizeBoq() {
                   variant="destructive"
                   size="sm"
                   disabled={isVersionSubmitted}
-                  onClick={async () => {
-                    if (!confirm(`Delete ${selectedProductIds.size} selected product(s)?`)) return;
-                    try {
-                      await Promise.all(
-                        Array.from(selectedProductIds).map(id => apiFetch(`/api/boq-items/${id}`, { method: "DELETE" }))
-                      );
-                      setBoqItems(prev => prev.filter(i => !selectedProductIds.has(i.id)));
-                      setSelectedProductIds(new Set());
-                      toast({ title: "Deleted", description: `${selectedProductIds.size} product(s) removed` });
-                    } catch {
-                      toast({ title: "Error", description: "Failed to delete selected products", variant: "destructive" });
-                    }
+                  onClick={() => {
+                    openDeleteConfirm(`Delete ${selectedProductIds.size} selected product(s)?`, `${selectedProductIds.size} products`, async (action) => {
+                      try {
+                        await Promise.all(
+                          Array.from(selectedProductIds).map(id => apiFetch(`/api/boq-items/${id}?action=${action}`, { method: "DELETE" }))
+                        );
+                        setBoqItems(prev => prev.filter(i => !selectedProductIds.has(i.id)));
+                        setSelectedProductIds(new Set());
+                        toast({ title: action === 'trash' ? "Moved to Trash" : "Archived", description: `${selectedProductIds.size} product(s) removed` });
+                      } catch {
+                        toast({ title: "Error", description: "Failed to delete selected products", variant: "destructive" });
+                      }
+                    });
                   }}
                 >
                   🗑 Delete Selected ({selectedProductIds.size})
@@ -3233,17 +3281,18 @@ export default function FinalizeBoq() {
                       size="sm"
                       className="h-9 px-4 text-[12px] font-bold uppercase border-red-300 text-red-600 hover:bg-red-50 hover:border-red-400 transition-all shadow-sm"
                       disabled={selectedProductIds.size === 0}
-                      onClick={async () => {
-                        if (!confirm(`Delete ${selectedProductIds.size} selected products from this BOM?`)) return;
-                        try {
-                          const ids = Array.from(selectedProductIds);
-                          await Promise.all(ids.map(id => apiFetch(`/api/boq-items/${id}`, { method: "DELETE" })));
-                          setBoqItems(prev => prev.filter(item => !selectedProductIds.has(item.id)));
-                          setSelectedProductIds(new Set());
-                          toast({ title: "Deleted", description: `${ids.length} products removed successfully.` });
-                        } catch {
-                          toast({ title: "Error", description: "Failed to delete some products", variant: "destructive" });
-                        }
+                      onClick={() => {
+                        openDeleteConfirm(`Delete ${selectedProductIds.size} selected products from this BOM?`, `${selectedProductIds.size} products`, async (action) => {
+                          try {
+                            const ids = Array.from(selectedProductIds);
+                            await Promise.all(ids.map(id => apiFetch(`/api/boq-items/${id}?action=${action}`, { method: "DELETE" })));
+                            setBoqItems(prev => prev.filter(item => !selectedProductIds.has(item.id)));
+                            setSelectedProductIds(new Set());
+                            toast({ title: action === 'trash' ? "Moved to Trash" : "Archived", description: `${ids.length} products removed successfully.` });
+                          } catch {
+                            toast({ title: "Error", description: "Failed to delete some products", variant: "destructive" });
+                          }
+                        });
                       }}
                     >
                       🗑 Delete Selected
@@ -4136,6 +4185,14 @@ export default function FinalizeBoq() {
             </DialogFooter>
           </DialogContent>
         </Dialog>
+
+        <DeleteConfirmationDialog
+          isOpen={deleteConfirmOpen}
+          onOpenChange={setDeleteConfirmOpen}
+          onConfirm={deleteConfirmCallback}
+          title={deleteConfirmTitle}
+          itemName={deleteConfirmItem}
+        />
       </div>
     </Layout>
   );
