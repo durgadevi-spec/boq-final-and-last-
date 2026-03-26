@@ -80,7 +80,21 @@ export default function Trash() {
 
   const getItemName = (item: ArchiveItem) => {
     if (!item.data) return "Unknown Item";
-    return item.data.name || item.data.title || item.data.code || item.originId;
+    // Check various common name/title fields
+    const name = item.data.name || item.data.title || item.data.code;
+    if (name) return name;
+
+    // Specific logic for boq_items
+    if (item.module === 'boq_items') {
+      const td = typeof item.data.table_data === 'string' 
+        ? JSON.parse(item.data.table_data) 
+        : item.data.table_data;
+      return td?.product_name || item.data.estimator || "Unnamed BOM Product";
+    }
+
+    if (item.module === 'boq_projects') return item.data.name || "Unnamed Project";
+
+    return item.originId;
   };
 
   const getDaysLeft = (trashedAt: string | null) => {

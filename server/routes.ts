@@ -45,6 +45,13 @@ export async function registerRoutes(
         await query("DELETE FROM materials WHERE id = $1", [item.originId]);
       } else if (item.module === 'products') {
         await query("DELETE FROM products WHERE id = $1", [item.originId]);
+      } else if (item.module === 'boq_items') {
+        await query("DELETE FROM boq_items WHERE id = $1", [item.originId]);
+      } else if (item.module === 'boq_projects') {
+        await query("DELETE FROM boq_projects WHERE id = $1", [item.originId]);
+        // Also cleanup dependent items/versions if needed, but usually cascading or manual delete handles it
+        await query("DELETE FROM boq_versions WHERE project_id = $1", [item.originId]);
+        await query("DELETE FROM boq_items WHERE project_id = $1", [item.originId]);
       } else if (item.module === 'templates') {
         await query("DELETE FROM material_templates WHERE id = $1", [item.originId]);
       } else if (item.module === 'categories') {
@@ -4106,7 +4113,13 @@ export async function registerRoutes(
           `SELECT id, name, client, budget, location, client_address, gst_no, project_value, project_status, status, created_at, updated_at FROM boq_projects ORDER BY created_at DESC`,
         );
 
-        res.json({ projects: result.rows || [] });
+        const archivedIds = archiveService.getArchivedItemIds('boq_projects');
+        const trashedIds = archiveService.getTrashedItemIds('boq_projects');
+        const filtered = (result.rows || []).filter(
+          (r: any) => !archivedIds.includes(r.id) && !trashedIds.includes(r.id)
+        );
+
+        res.json({ projects: filtered || [] });
       } catch (err) {
         console.error("GET /api/boq-projects error", err);
         res.status(500).json({ message: "Failed to fetch projects" });
@@ -4944,12 +4957,18 @@ export async function registerRoutes(
 
       // Fetch all items for this version
       const itemsResult = await query(
-        `SELECT table_data FROM boq_items WHERE version_id = $1`,
+        `SELECT id, table_data FROM boq_items WHERE version_id = $1`,
         [latestVersionId],
       );
 
+      const archivedIds = archiveService.getArchivedItemIds('boq_items');
+      const trashedIds = archiveService.getTrashedItemIds('boq_items');
+
       let totalValue = 0;
       itemsResult.rows.forEach((row: any) => {
+        // Skip archived or trashed items
+        if (archivedIds.includes(row.id) || trashedIds.includes(row.id)) return;
+
         let tableData = row.table_data;
         if (typeof tableData === "string") {
           try { tableData = JSON.parse(tableData); } catch (e) { return; }
@@ -5129,24 +5148,22 @@ export async function registerRoutes(
           [versionId],
         );
 
-        try {
-          const ids = result.rows.map((r: any) => r.id).slice(0, 20);
-          console.log(`GET /api/boq-items/version/${versionId} -> ${result.rows.length} items. ids(first20):`, ids);
-        } catch (e) {
-          // ignore logging errors
-        }
+        const archivedIds = archiveService.getArchivedItemIds('boq_items');
+        const trashedIds = archiveService.getTrashedItemIds('boq_items');
 
-        const items = result.rows.map((row: any) => ({
-          id: row.id,
-          project_id: row.project_id,
-          version_id: row.version_id,
-          estimator: row.estimator,
-          table_data:
-            typeof row.table_data === "string"
-              ? JSON.parse(row.table_data)
-              : row.table_data,
-          created_at: row.created_at,
-        }));
+        const items = result.rows
+          .filter((row: any) => !archivedIds.includes(row.id) && !trashedIds.includes(row.id))
+          .map((row: any) => ({
+            id: row.id,
+            project_id: row.project_id,
+            version_id: row.version_id,
+            estimator: row.estimator,
+            table_data:
+              typeof row.table_data === "string"
+                ? JSON.parse(row.table_data)
+                : row.table_data,
+            created_at: row.created_at,
+          }));
 
         res.json({ items });
       } catch (err) {

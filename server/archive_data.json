@@ -144,5 +144,395 @@
     "status": "trashed",
     "archivedAt": "2026-03-25T10:05:18.418Z",
     "trashedAt": "2026-03-25T10:05:18.422Z"
+  },
+  {
+    "id": "9ad7a17c-5708-4b71-8c37-3728a72b4dd5",
+    "module": "boq_items",
+    "originId": "item-1774504583152-p6x6xan8z",
+    "data": {
+      "id": "item-1774504583152-p6x6xan8z",
+      "project_id": "proj-1771305708831-8y772i430",
+      "estimator": "material_1c736c88-7a19-4139-8271-2fe78bc524f0",
+      "table_data": {
+        "hsn_sac_code": "",
+        "hsn_sac_type": null,
+        "product_name": "Toner Cartridge  TN-2365 For Brother",
+        "step11_items": [
+          {
+            "id": "1c736c88-7a19-4139-8271-2fe78bc524f0",
+            "qty": 1,
+            "s_no": 2,
+            "unit": "nos",
+            "title": "Toner Cartridge  TN-2365 For Brother",
+            "location": "Main Area",
+            "shop_name": "UTTAM MARKETING",
+            "description": "Toner TN-2365 For Brother Printer",
+            "supply_rate": 2650,
+            "install_rate": 0
+          }
+        ],
+        "finalize_description": "Toner TN-2365 For Brother Printer"
+      },
+      "created_at": "2026-03-26T00:26:46.703Z",
+      "user_added": true,
+      "version_id": "ver-1773985379412-0umcjjfo8",
+      "sort_order": 3
+    },
+    "status": "archived",
+    "archivedAt": "2026-03-26T06:07:10.189Z",
+    "trashedAt": null
+  },
+  {
+    "id": "152cd680-6881-471f-92f0-0c822ecc3db3",
+    "module": "boq_items",
+    "originId": "item-1773985424269-2w2sbe8s3",
+    "data": {
+      "id": "item-1773985424269-2w2sbe8s3",
+      "project_id": "proj-1771305708831-8y772i430",
+      "estimator": "acpcladding",
+      "table_data": {
+        "hsn_code": "",
+        "sac_code": "",
+        "created_at": "2026-03-20T05:43:44.165Z",
+        "product_id": "f9c7c857-9174-4e67-89f2-fcd5b284d8cd",
+        "configBasis": {
+          "baseRequiredQty": 80,
+          "requiredUnitType": "nos",
+          "wastagePctDefault": 10
+        },
+        "subcategory": "ACP Cladding",
+        "hsn_sac_code": "",
+        "hsn_sac_type": null,
+        "product_name": "demo test",
+        "step11_items": [
+          {
+            "id": "CONSOLIDATED_f9c7c857-9174-4e67-89f2-fcd5b284d8cd_6d524bff-e418-4035-87d1-b536a6f0a90b",
+            "qty": 1,
+            "unit": "nos",
+            "title": "demo test",
+            "bill_no": "PRODUCT_f9c7c857-9174-4e67-89f2-fcd5b284d8cd",
+            "group_id": "f9c7c857-9174-4e67-89f2-fcd5b284d8cd",
+            "config_id": "6d524bff-e418-4035-87d1-b536a6f0a90b",
+            "estimator": "acpcladding",
+            "description": "Providing and fixing end termination for 4 Core x 35 Sq.mm Copper Armoured Cable (1.1 kV grade) including double compression brass gland, 35 Sq.mm copper crimping lugs (pin/ring type), insulation tape, ferrules and all necessary accessories, complete in all respects as required.",
+            "supply_rate": 1172899,
+            "install_rate": 0,
+            "step11_items": [
+              {
+                "id": "6d524bff-e418-4035-87d1-b536a6f0a90b_0",
+                "qty": 11,
+                "unit": "nos",
+                "title": "xyz item -testing",
+                "bill_no": "TEMPLATE_f9c7c857-9174-4e67-89f2-fcd5b284d8cd_Version_1_0",
+                "group_id": "f9c7c857-9174-4e67-89f2-fcd5b284d8cd",
+                "config_id": "6d524bff-e418-4035-87d1-b536a6f0a90b",
+                "estimator": "acpcladding",
+                "shop_name": "abc electricals ",
+                "description": "demo test - xyz item -testing",
+                "material_id": "13f1d069-d3fb-411f-8bae-f8f3ec49f073",
+                "supply_rate": 2345,
+                "install_rate": 0
+              },
+              {
+                "id": "6d524bff-e418-4035-87d1-b536a6f0a90b_1",
+                "qty": 18,
+                "unit": "nos",
+                "title": "testing demo",
+                "bill_no": "TEMPLATE_f9c7c857-9174-4e67-89f2-fcd5b284d8cd_Version_1_1",
+                "group_id": "f9c7c857-9174-4e67-89f2-fcd5b284d8cd",
+                "config_id": "6d524bff-e418-4035-87d1-b536a6f0a90b",
+                "estimator": "acpcladding",
+                "shop_name": "abc electricals ",
+                "description": "demo test - testing demo",
+                "material_id": "191a1ea3-3f8d-4c1e-8a4c-fc07075e5dee",
+                "supply_rate": 63728,
+                "install_rate": 0
+              }
+            ]
+          }
+        ],
+        "materialLines": [
+          {
+            "id": "13f1d069-d3fb-411f-8bae-f8f3ec49f073",
+            "name": "xyz item -testing",
+            "unit": "pcs",
+            "baseQty": 10,
+            "shop_name": "abc electricals ",
+            "supplyRate": 2345,
+            "installRate": 0
+          },
+          {
+            "id": "191a1ea3-3f8d-4c1e-8a4c-fc07075e5dee",
+            "name": "testing demo",
+            "unit": "set",
+            "baseQty": 16,
+            "shop_name": "abc electricals ",
+            "supplyRate": 63728,
+            "installRate": 0
+          }
+        ],
+        "targetRequiredQty": 1001,
+        "finalize_description": "Providing and fixing end termination for 4 Core x 35 Sq.mm Copper Armoured Cable (1.1 kV grade) including double compression brass gland, 35 Sq.mm copper crimping lugs (pin/ring type), insulation tape, ferrules and all necessary accessories, complete in all respects as required."
+      },
+      "created_at": "2026-03-20T00:15:47.711Z",
+      "user_added": true,
+      "version_id": "ver-1773985379412-0umcjjfo8",
+      "sort_order": 1
+    },
+    "status": "archived",
+    "archivedAt": "2026-03-26T06:07:26.193Z",
+    "trashedAt": null
+  },
+  {
+    "id": "205538f2-6936-46c9-bd98-548d8d3418b0",
+    "module": "boq_items",
+    "originId": "item-1774504576129-e7kbnu0lf",
+    "data": {
+      "id": "item-1774504576129-e7kbnu0lf",
+      "project_id": "proj-1771305708831-8y772i430",
+      "estimator": "airconditioner",
+      "table_data": {
+        "image": null,
+        "hsn_code": null,
+        "sac_code": null,
+        "created_at": "2026-03-26T05:56:16.021Z",
+        "product_id": "e0c67eb4-35e9-4bd2-a0a7-5a57c5e3e279",
+        "configBasis": {
+          "baseRequiredQty": 50,
+          "requiredUnitType": "RMT",
+          "wastagePctDefault": 5
+        },
+        "subcategory": "Air-conditioner",
+        "hsn_sac_code": null,
+        "hsn_sac_type": null,
+        "product_name": " Structural Accessories CASSETTEE 2TR UNIT  BLUESTAR Supply and Fixing ",
+        "step11_items": [
+          {
+            "id": "CONSOLIDATED_e0c67eb4-35e9-4bd2-a0a7-5a57c5e3e279_5290",
+            "qty": 1,
+            "unit": "RMT",
+            "title": " Structural Accessories CASSETTEE 2TR UNIT  BLUESTAR Supply and Fixing ",
+            "bill_no": "PRODUCT_e0c67eb4-35e9-4bd2-a0a7-5a57c5e3e279",
+            "group_id": "e0c67eb4-35e9-4bd2-a0a7-5a57c5e3e279",
+            "config_id": 5290,
+            "estimator": "airconditioner",
+            "description": "Accessories for a Blue Star 2 TR (2 Ton) Cassette Air Conditioner include control interfaces, protection hardware, and essential plumbing components required for a complete Bill of Materials ",
+            "supply_rate": 75000,
+            "install_rate": 0,
+            "step11_items": [
+              {
+                "id": "5290_0",
+                "qty": 50,
+                "unit": "RMT",
+                "title": "Copper Pipe For AC",
+                "bill_no": "TEMPLATE_e0c67eb4-35e9-4bd2-a0a7-5a57c5e3e279_Latest Draft_0",
+                "group_id": "e0c67eb4-35e9-4bd2-a0a7-5a57c5e3e279",
+                "config_id": 5290,
+                "estimator": "airconditioner",
+                "shop_name": "HORIZON COOLING SOLUTIONS ",
+                "description": " Structural Accessories CASSETTEE 2TR UNIT  BLUESTAR Supply and Fixing  - Copper Pipe For AC",
+                "material_id": "2fe25e8f-3ec1-4e25-83f3-958f4c040645",
+                "supply_rate": 1100,
+                "install_rate": 0
+              },
+              {
+                "id": "5290_1",
+                "qty": 50,
+                "unit": "RMT",
+                "title": "Drain Pipe PVC For AC",
+                "bill_no": "TEMPLATE_e0c67eb4-35e9-4bd2-a0a7-5a57c5e3e279_Latest Draft_1",
+                "group_id": "e0c67eb4-35e9-4bd2-a0a7-5a57c5e3e279",
+                "config_id": 5290,
+                "estimator": "airconditioner",
+                "shop_name": "HORIZON COOLING SOLUTIONS ",
+                "description": " Structural Accessories CASSETTEE 2TR UNIT  BLUESTAR Supply and Fixing  - Drain Pipe PVC For AC",
+                "material_id": "40b7c686-3cdf-467c-b19a-57f7cb611b0d",
+                "supply_rate": 200,
+                "install_rate": 0
+              },
+              {
+                "id": "5290_2",
+                "qty": 50,
+                "unit": "RMT",
+                "title": "Communication Cable For AC",
+                "bill_no": "TEMPLATE_e0c67eb4-35e9-4bd2-a0a7-5a57c5e3e279_Latest Draft_2",
+                "group_id": "e0c67eb4-35e9-4bd2-a0a7-5a57c5e3e279",
+                "config_id": 5290,
+                "estimator": "airconditioner",
+                "shop_name": "HORIZON COOLING SOLUTIONS ",
+                "description": " Structural Accessories CASSETTEE 2TR UNIT  BLUESTAR Supply and Fixing  - Communication Cable For AC",
+                "material_id": "6d838713-aad0-4ae3-9c1d-54ae32614f76",
+                "supply_rate": 200,
+                "install_rate": 0
+              }
+            ]
+          }
+        ],
+        "materialLines": [
+          {
+            "id": "2fe25e8f-3ec1-4e25-83f3-958f4c040645",
+            "name": "Copper Pipe For AC",
+            "unit": "Running meter",
+            "baseQty": 50,
+            "shop_name": "HORIZON COOLING SOLUTIONS ",
+            "supplyRate": 1100,
+            "installRate": 0
+          },
+          {
+            "id": "40b7c686-3cdf-467c-b19a-57f7cb611b0d",
+            "name": "Drain Pipe PVC For AC",
+            "unit": "Running meter",
+            "baseQty": 50,
+            "shop_name": "HORIZON COOLING SOLUTIONS ",
+            "supplyRate": 200,
+            "installRate": 0
+          },
+          {
+            "id": "6d838713-aad0-4ae3-9c1d-54ae32614f76",
+            "name": "Communication Cable For AC",
+            "unit": "Running meter",
+            "baseQty": 50,
+            "shop_name": "HORIZON COOLING SOLUTIONS ",
+            "supplyRate": 200,
+            "installRate": 0
+          }
+        ],
+        "targetRequiredQty": 100,
+        "finalize_description": "Accessories for a Blue Star 2 TR (2 Ton) Cassette Air Conditioner include control interfaces, protection hardware, and essential plumbing components required for a complete Bill of Materials "
+      },
+      "created_at": "2026-03-26T00:26:16.536Z",
+      "user_added": true,
+      "version_id": "ver-1773985379412-0umcjjfo8",
+      "sort_order": 2
+    },
+    "status": "archived",
+    "archivedAt": "2026-03-26T06:08:02.458Z",
+    "trashedAt": null
+  },
+  {
+    "id": "ee03d2db-cf29-4aef-b763-6879be99ecca",
+    "module": "boq_items",
+    "originId": "item-1774505277619-rn6kj50ez",
+    "data": {
+      "id": "item-1774505277619-rn6kj50ez",
+      "project_id": "proj-1771305708831-8y772i430",
+      "estimator": "airconditioner",
+      "table_data": {
+        "image": null,
+        "hsn_code": null,
+        "sac_code": null,
+        "created_at": "2026-03-26T06:07:57.541Z",
+        "product_id": "e0c67eb4-35e9-4bd2-a0a7-5a57c5e3e279",
+        "configBasis": {
+          "baseRequiredQty": 50,
+          "requiredUnitType": "RMT",
+          "wastagePctDefault": 5
+        },
+        "subcategory": "Air-conditioner",
+        "hsn_sac_code": null,
+        "hsn_sac_type": null,
+        "product_name": " Structural Accessories CASSETTEE 2TR UNIT  BLUESTAR Supply and Fixing ",
+        "step11_items": [
+          {
+            "id": "CONSOLIDATED_e0c67eb4-35e9-4bd2-a0a7-5a57c5e3e279_5290",
+            "qty": 1,
+            "unit": "RMT",
+            "title": " Structural Accessories CASSETTEE 2TR UNIT  BLUESTAR Supply and Fixing ",
+            "bill_no": "PRODUCT_e0c67eb4-35e9-4bd2-a0a7-5a57c5e3e279",
+            "group_id": "e0c67eb4-35e9-4bd2-a0a7-5a57c5e3e279",
+            "config_id": 5290,
+            "estimator": "airconditioner",
+            "description": "Accessories for a Blue Star 2 TR (2 Ton) Cassette Air Conditioner include control interfaces, protection hardware, and essential plumbing components required for a complete Bill of Materials ",
+            "supply_rate": 75000,
+            "install_rate": 0,
+            "step11_items": [
+              {
+                "id": "5290_0",
+                "qty": 50,
+                "unit": "RMT",
+                "title": "Copper Pipe For AC",
+                "bill_no": "TEMPLATE_e0c67eb4-35e9-4bd2-a0a7-5a57c5e3e279_Latest Draft_0",
+                "group_id": "e0c67eb4-35e9-4bd2-a0a7-5a57c5e3e279",
+                "config_id": 5290,
+                "estimator": "airconditioner",
+                "shop_name": "HORIZON COOLING SOLUTIONS ",
+                "description": " Structural Accessories CASSETTEE 2TR UNIT  BLUESTAR Supply and Fixing  - Copper Pipe For AC",
+                "material_id": "2fe25e8f-3ec1-4e25-83f3-958f4c040645",
+                "supply_rate": 1100,
+                "install_rate": 0
+              },
+              {
+                "id": "5290_1",
+                "qty": 50,
+                "unit": "RMT",
+                "title": "Drain Pipe PVC For AC",
+                "bill_no": "TEMPLATE_e0c67eb4-35e9-4bd2-a0a7-5a57c5e3e279_Latest Draft_1",
+                "group_id": "e0c67eb4-35e9-4bd2-a0a7-5a57c5e3e279",
+                "config_id": 5290,
+                "estimator": "airconditioner",
+                "shop_name": "HORIZON COOLING SOLUTIONS ",
+                "description": " Structural Accessories CASSETTEE 2TR UNIT  BLUESTAR Supply and Fixing  - Drain Pipe PVC For AC",
+                "material_id": "40b7c686-3cdf-467c-b19a-57f7cb611b0d",
+                "supply_rate": 200,
+                "install_rate": 0
+              },
+              {
+                "id": "5290_2",
+                "qty": 50,
+                "unit": "RMT",
+                "title": "Communication Cable For AC",
+                "bill_no": "TEMPLATE_e0c67eb4-35e9-4bd2-a0a7-5a57c5e3e279_Latest Draft_2",
+                "group_id": "e0c67eb4-35e9-4bd2-a0a7-5a57c5e3e279",
+                "config_id": 5290,
+                "estimator": "airconditioner",
+                "shop_name": "HORIZON COOLING SOLUTIONS ",
+                "description": " Structural Accessories CASSETTEE 2TR UNIT  BLUESTAR Supply and Fixing  - Communication Cable For AC",
+                "material_id": "6d838713-aad0-4ae3-9c1d-54ae32614f76",
+                "supply_rate": 200,
+                "install_rate": 0
+              }
+            ]
+          }
+        ],
+        "materialLines": [
+          {
+            "id": "2fe25e8f-3ec1-4e25-83f3-958f4c040645",
+            "name": "Copper Pipe For AC",
+            "unit": "Running meter",
+            "baseQty": 50,
+            "shop_name": "HORIZON COOLING SOLUTIONS ",
+            "supplyRate": 1100,
+            "installRate": 0
+          },
+          {
+            "id": "40b7c686-3cdf-467c-b19a-57f7cb611b0d",
+            "name": "Drain Pipe PVC For AC",
+            "unit": "Running meter",
+            "baseQty": 50,
+            "shop_name": "HORIZON COOLING SOLUTIONS ",
+            "supplyRate": 200,
+            "installRate": 0
+          },
+          {
+            "id": "6d838713-aad0-4ae3-9c1d-54ae32614f76",
+            "name": "Communication Cable For AC",
+            "unit": "Running meter",
+            "baseQty": 50,
+            "shop_name": "HORIZON COOLING SOLUTIONS ",
+            "supplyRate": 200,
+            "installRate": 0
+          }
+        ],
+        "targetRequiredQty": 100,
+        "finalize_description": "Accessories for a Blue Star 2 TR (2 Ton) Cassette Air Conditioner include control interfaces, protection hardware, and essential plumbing components required for a complete Bill of Materials "
+      },
+      "created_at": "2026-03-26T00:37:58.025Z",
+      "user_added": true,
+      "version_id": "ver-1773985379412-0umcjjfo8",
+      "sort_order": 4
+    },
+    "status": "archived",
+    "archivedAt": "2026-03-26T06:08:15.409Z",
+    "trashedAt": null
   }
 ]
