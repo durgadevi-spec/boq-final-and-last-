@@ -6,7 +6,7 @@ import { comparePasswords, generateToken } from "./auth";
 import { authMiddleware, requireRole } from "./middleware";
 import { randomUUID } from "crypto";
 import { query } from "./db/client";
-import { sendSketchPlanEmail } from "./email";
+import { sendSketchPlanEmail, sendSiteReportEmail } from "./email";
 
 export async function registerRoutes(
   httpServer: Server,
@@ -1057,6 +1057,87 @@ export async function registerRoutes(
       `CREATE INDEX IF NOT EXISTS idx_budget_exceed_logs_project_id ON budget_exceed_logs(project_id)`,
     );
     console.log("[db] budget_exceed_logs table verified/created");
+
+    // --- SITE REPORT MODULE TABLES ---
+    await query(`
+      CREATE TABLE IF NOT EXISTS site_reports (
+        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        project_id TEXT NOT NULL,
+        project_name TEXT NOT NULL,
+        user_id TEXT NOT NULL,
+        report_date TIMESTAMPTZ DEFAULT NOW(),
+        summary TEXT,
+        status TEXT NOT NULL DEFAULT 'draft',
+        created_at TIMESTAMPTZ DEFAULT NOW(),
+        updated_at TIMESTAMPTZ DEFAULT NOW()
+      )
+    `);
+
+    await query(`
+      CREATE TABLE IF NOT EXISTS site_report_tasks (
+        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        site_report_id UUID NOT NULL REFERENCES site_reports(id) ON DELETE CASCADE,
+        item_type TEXT NOT NULL,
+        item_id TEXT NOT NULL,
+        item_name TEXT NOT NULL,
+        task_description TEXT,
+        completion_percentage INTEGER NOT NULL DEFAULT 0,
+        status TEXT,
+        created_at TIMESTAMPTZ DEFAULT NOW()
+      )
+    `);
+
+    await query(`
+      CREATE TABLE IF NOT EXISTS site_report_labours (
+        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        task_id UUID NOT NULL REFERENCES site_report_tasks(id) ON DELETE CASCADE,
+        labour_name TEXT,
+        count INTEGER NOT NULL DEFAULT 1,
+        in_time TEXT,
+        out_time TEXT,
+        created_at TIMESTAMPTZ DEFAULT NOW()
+      )
+    `);
+
+    await query(`
+      CREATE TABLE IF NOT EXISTS site_report_media (
+        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        task_id UUID NOT NULL REFERENCES site_report_tasks(id) ON DELETE CASCADE,
+        file_url TEXT NOT NULL,
+        file_type TEXT NOT NULL,
+        file_name TEXT,
+        created_at TIMESTAMPTZ DEFAULT NOW()
+      )
+    `);
+
+    await query(`
+      CREATE TABLE IF NOT EXISTS site_report_issues (
+        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        task_id UUID NOT NULL REFERENCES site_report_tasks(id) ON DELETE CASCADE,
+        description TEXT NOT NULL,
+        created_at TIMESTAMPTZ DEFAULT NOW()
+      )
+    `);
+
+    await query(`
+      CREATE TABLE IF NOT EXISTS email_groups (
+        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        name TEXT NOT NULL,
+        user_id TEXT NOT NULL,
+        created_at TIMESTAMPTZ DEFAULT NOW()
+      )
+    `);
+
+    await query(`
+      CREATE TABLE IF NOT EXISTS email_group_members (
+        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        group_id UUID NOT NULL REFERENCES email_groups(id) ON DELETE CASCADE,
+        email TEXT NOT NULL,
+        created_at TIMESTAMPTZ DEFAULT NOW()
+      )
+    `);
+    console.log("[db] site_report tables ensured");
+
   } catch (err: unknown) {
     console.warn(
       "[db] Could not create budget_exceed_logs table:",
@@ -3525,11 +3606,11 @@ export async function registerRoutes(
 
   // ====== PRODUCTS CRUD ======
 
-  // POST /api/products - Create a new product (Admin/Software Team/Purchase Team/Pre Sales)
+  // POST /api/products - Create a new product (Admin/Software Team/Purchase Team/Pre Sales/Product Manager/Contractor)
   app.post(
     "/api/products",
     authMiddleware,
-    requireRole("admin", "software_team", "purchase_team", "pre_sales", "product_manager"),
+    requireRole("admin", "software_team", "purchase_team", "pre_sales", "product_manager", "contractor"),
     async (req: Request, res: Response) => {
       try {
         const { name, subcategory, taxCodeType, taxCodeValue, hsn_code, sac_code, image } = req.body;
@@ -3596,7 +3677,7 @@ export async function registerRoutes(
   app.put(
     "/api/products/:id",
     authMiddleware,
-    requireRole("admin", "software_team", "purchase_team", "pre_sales", "product_manager"),
+    requireRole("admin", "software_team", "purchase_team", "pre_sales", "product_manager", "contractor"),
     async (req: Request, res: Response) => {
       try {
         const { id } = req.params;
@@ -3651,7 +3732,7 @@ export async function registerRoutes(
   app.delete(
     "/api/products/:id",
     authMiddleware,
-    requireRole("admin", "software_team", "purchase_team", "pre_sales", "product_manager"),
+    requireRole("admin", "software_team", "purchase_team", "pre_sales", "product_manager", "contractor"),
     async (req: Request, res: Response) => {
       try {
         const { id } = req.params;
@@ -4271,6 +4352,85 @@ export async function registerRoutes(
         res.status(500).json({ message: "Failed to delete project" });
       }
     },
+  );
+
+  // GET /api/boq-projects/:projectId/items - Get all items, products and materials for site report
+  app.get(
+    "/api/boq-projects/:projectId/items",
+    authMiddleware,
+    async (req: Request, res: Response) => {
+      try {
+        const { projectId } = req.params;
+        const allItems: any[] = [];
+        const isGlobal = !projectId || projectId === 'global' || projectId === 'none' || projectId === 'undefined';
+
+        console.log(`[DEBUG] Fetching items for project: ${projectId} (isGlobal: ${isGlobal})`);
+
+        // 1. Get Project BOQ Items (Only if not global)
+        if (!isGlobal) {
+          const latestVersionResult = await query(
+            `SELECT id FROM boq_versions 
+             WHERE project_id = $1 
+             ORDER BY version_number DESC LIMIT 1`,
+            [projectId]
+          );
+
+          if (latestVersionResult.rows.length > 0) {
+            const versionId = latestVersionResult.rows[0].id;
+            const itemsResult = await query(
+              `SELECT id, table_data FROM boq_items WHERE version_id = $1`,
+              [versionId]
+            );
+
+            itemsResult.rows.forEach(row => {
+              let tableData = row.table_data;
+              if (typeof tableData === 'string') {
+                try { tableData = JSON.parse(tableData); } catch (e) { return; }
+              }
+              
+              if (tableData && tableData.step11_items && Array.isArray(tableData.step11_items)) {
+                tableData.step11_items.forEach((item: any, index: number) => {
+                  allItems.push({
+                    id: `boq-${row.id}-${index}`,
+                    itemName: item.itemName || item.item || item.name || "Unnamed Item",
+                    category: "BOQ Item",
+                    type: "item"
+                  });
+                });
+              }
+            });
+          }
+        }
+
+        // 2. Get All Step11 Products
+        const productsResult = await query("SELECT id, product_name, category_id FROM step11_products");
+        productsResult.rows.forEach(p => {
+          allItems.push({
+            id: `prod-${p.id}`,
+            itemName: p.product_name,
+            category: p.category_id || "Product",
+            type: "product"
+          });
+        });
+
+        // 3. Get All Materials (from estimator_step9_cart or similar master list if exists)
+        // For now, let's pull names from estimator_step9_cart uniquely to act as a material list
+        const materialsResult = await query("SELECT DISTINCT item FROM estimator_step9_cart WHERE item IS NOT NULL AND item != ''");
+        materialsResult.rows.forEach((m, idx) => {
+          allItems.push({
+            id: `mat-${idx}`,
+            itemName: m.item,
+            category: "Material",
+            type: "material"
+          });
+        });
+
+        res.json({ items: allItems });
+      } catch (err) {
+        console.error("GET /api/boq-projects/:projectId/items error", err);
+        res.status(500).json({ message: "Failed to fetch items" });
+      }
+    }
   );
 
   // ====== BOQ VERSIONS ROUTES ======
@@ -8603,6 +8763,399 @@ ${list.rows.map((row: any) => `- ${row.name}`).join('\n')}`;
     } catch (err) {
       console.error("DELETE /api/sketch-templates/:id error", err);
       res.status(500).json({ message: "Failed to delete template" });
+    }
+  });
+
+  // ==================== SITE REPORT ROUTES ====================
+
+  // GET /api/site-reports - List all reports
+  app.get("/api/site-reports", authMiddleware, async (req: Request, res: Response) => {
+    try {
+      const result = await query("SELECT * FROM site_reports ORDER BY report_date DESC");
+      res.json({ reports: result.rows });
+    } catch (err) {
+      console.error("GET /api/site-reports error:", err);
+      res.status(500).json({ message: "Failed to fetch site reports" });
+    }
+  });
+
+  // GET /api/site-reports/:id - Get a single report with its tasks, labour, media, and issues
+  app.get("/api/site-reports/:id", authMiddleware, async (req: Request, res: Response) => {
+    try {
+      const { id } = req.params;
+      const reportRes = await query("SELECT * FROM site_reports WHERE id = $1", [id]);
+      if (reportRes.rows.length === 0) return res.status(404).json({ message: "Report not found" });
+
+      const tasksRes = await query("SELECT * FROM site_report_tasks WHERE site_report_id = $1", [id]);
+      const tasks = tasksRes.rows;
+
+      for (const task of tasks) {
+        const labourRes = await query("SELECT * FROM site_report_labours WHERE task_id = $1", [task.id]);
+        task.labour = labourRes.rows;
+
+        const mediaRes = await query("SELECT * FROM site_report_media WHERE task_id = $1", [task.id]);
+        task.media = mediaRes.rows;
+
+        const issuesRes = await query("SELECT * FROM site_report_issues WHERE task_id = $1", [task.id]);
+        task.issues = issuesRes.rows;
+      }
+
+      res.json({ report: reportRes.rows[0], tasks });
+    } catch (err) {
+      console.error("GET /api/site-reports/:id error:", err);
+      res.status(500).json({ message: "Failed to fetch site report" });
+    }
+  });
+
+  // POST /api/site-reports - Create a new report (shell)
+  app.post("/api/site-reports", authMiddleware, async (req: Request, res: Response) => {
+    try {
+      const { project_id, project_name, report_date, summary, tasks } = req.body;
+      const userId = (req as any).user?.id;
+
+      await query("BEGIN");
+
+      const reportResult = await query(
+        `INSERT INTO site_reports (project_id, project_name, user_id, report_date, summary, status)
+         VALUES ($1, $2, $3, $4, $5, 'draft')
+         RETURNING *`,
+        [project_id, project_name, userId, report_date || new Date(), summary]
+      );
+      const report = reportResult.rows[0];
+
+      if (tasks && Array.isArray(tasks)) {
+        for (const task of tasks) {
+          const taskRes = await query(
+            `INSERT INTO site_report_tasks (site_report_id, item_type, item_id, item_name, task_description, completion_percentage, status)
+             VALUES ($1, $2, $3, $4, $5, $6, $7)
+             RETURNING id`,
+            [report.id, task.item_type || 'item', task.item_id, task.item_name, task.task_description, task.completion_percentage || 0, task.status || 'In Progress']
+          );
+          const taskId = taskRes.rows[0].id;
+
+          if (task.labour && Array.isArray(task.labour)) {
+            for (const l of task.labour) {
+              await query(
+                `INSERT INTO site_report_labours (task_id, labour_name, count, in_time, out_time)
+                 VALUES ($1, $2, $3, $4, $5)`,
+                [taskId, l.labour_name, l.count || 1, l.in_time, l.out_time]
+              );
+            }
+          }
+
+          if (task.issues && Array.isArray(task.issues)) {
+            for (const issue of task.issues) {
+              await query(
+                `INSERT INTO site_report_issues (task_id, description)
+                 VALUES ($1, $2)`,
+                [taskId, issue.description]
+              );
+            }
+          }
+        }
+      }
+
+      await query("COMMIT");
+      res.status(201).json({ report });
+    } catch (err) {
+      await query("ROLLBACK");
+      console.error("POST /api/site-reports error:", err);
+      res.status(500).json({ message: "Failed to create site report" });
+    }
+  });
+
+  // GET /api/site-reports/:id - Get report details with tasks
+  app.get("/api/site-reports/:id", authMiddleware, async (req: Request, res: Response) => {
+    try {
+      const { id } = req.params;
+      console.log(`[DEBUG] Fetching report details for ID: ${id}`);
+      
+      const reportRes = await query("SELECT * FROM site_reports WHERE id = $1", [id]);
+      if (reportRes.rows.length === 0) {
+        console.log(`[DEBUG] Report ${id} not found`);
+        return res.status(404).json({ message: "Report not found" });
+      }
+      const report = reportRes.rows[0];
+
+      const tasksRes = await query("SELECT * FROM site_report_tasks WHERE site_report_id = $1", [id]);
+      const tasks = tasksRes.rows.map((t: any) => ({
+        ...t,
+        itemName: t.item_name,
+        taskDescription: t.task_description,
+        completionPercentage: t.completion_percentage
+      }));
+      console.log(`[DEBUG] Found ${tasks.length} tasks for report ${id}`);
+
+      for (const task of tasks) {
+        const labourRes = await query("SELECT * FROM site_report_labours WHERE task_id = $1", [task.id]);
+        task.labour = labourRes.rows.map((l: any) => ({
+          ...l,
+          labourName: l.labour_name,
+          inTime: l.in_time,
+          outTime: l.out_time
+        }));
+        
+        const mediaRes = await query("SELECT * FROM site_report_media WHERE task_id = $1", [task.id]);
+        task.media = mediaRes.rows.map((m: any) => ({
+          ...m,
+          fileUrl: m.file_url,
+          fileType: m.file_type,
+          fileName: m.file_name
+        }));
+
+        const issuesRes = await query("SELECT * FROM site_report_issues WHERE task_id = $1", [task.id]);
+        task.issues = issuesRes.rows;
+        console.log(`[DEBUG] Task ${task.id} has ${task.labour.length} labour entries and ${task.issues.length} issues`);
+      }
+
+      report.tasks = tasks;
+      res.json({ report });
+    } catch (err) {
+      console.error("GET /api/site-reports/:id error:", err);
+      res.status(500).json({ message: "Failed to fetch report details" });
+    }
+  });
+
+  // POST /api/site-reports/:id/tasks - Add a task to a report
+  app.post("/api/site-reports/:id/tasks", authMiddleware, async (req: Request, res: Response) => {
+    try {
+      const { id } = req.params;
+      const { item_type, item_id, item_name, task_description, completion_percentage, status } = req.body;
+
+      const result = await query(
+        `INSERT INTO site_report_tasks (site_report_id, item_type, item_id, item_name, task_description, completion_percentage, status)
+         VALUES ($1, $2, $3, $4, $5, $6, $7)
+         RETURNING *`,
+        [id, item_type, item_id, item_name, task_description, completion_percentage || 0, status || 'In Progress']
+      );
+
+      res.status(201).json({ task: result.rows[0] });
+    } catch (err) {
+      console.error("POST /api/site-reports/tasks error:", err);
+      res.status(500).json({ message: "Failed to add task to site report" });
+    }
+  });
+
+  // POST /api/site-report-tasks/:id/labour - Add labour to a task
+  app.post("/api/site-report-tasks/:id/labour", authMiddleware, async (req: Request, res: Response) => {
+    try {
+      const { id } = req.params;
+      const { labour_name, count, in_time, out_time } = req.body;
+
+      const result = await query(
+        `INSERT INTO site_report_labours (task_id, labour_name, count, in_time, out_time)
+         VALUES ($1, $2, $3, $4, $5)
+         RETURNING *`,
+        [id, labour_name, count || 1, in_time, out_time]
+      );
+
+      res.status(201).json({ labour: result.rows[0] });
+    } catch (err) {
+      console.error("POST /api/site-report-tasks/:id/labour error:", err);
+      res.status(500).json({ message: "Failed to add labour entry" });
+    }
+  });
+
+  // POST /api/site-report-tasks/:id/media - Add media to a task
+  app.post("/api/site-report-tasks/:id/media", authMiddleware, async (req: Request, res: Response) => {
+    try {
+      const { id } = req.params;
+      const { file_url, file_type, file_name } = req.body;
+
+      const result = await query(
+        `INSERT INTO site_report_media (task_id, file_url, file_type, file_name)
+         VALUES ($1, $2, $3, $4)
+         RETURNING *`,
+        [id, file_url, file_type, file_name]
+      );
+
+      res.status(201).json({ media: result.rows[0] });
+    } catch (err) {
+      console.error("POST /api/site-report-tasks/:id/media error:", err);
+      res.status(500).json({ message: "Failed to add media entry" });
+    }
+  });
+
+  // POST /api/site-report-tasks/:id/issues - Add issue to a task
+  app.post("/api/site-report-tasks/:id/issues", authMiddleware, async (req: Request, res: Response) => {
+    try {
+      const { id } = req.params;
+      const { description } = req.body;
+
+      const result = await query(
+        `INSERT INTO site_report_issues (task_id, description)
+         VALUES ($1, $2)
+         RETURNING *`,
+        [id, description]
+      );
+
+      res.status(201).json({ issue: result.rows[0] });
+    } catch (err) {
+      console.error("POST /api/site-report-tasks/:id/issues error:", err);
+      res.status(500).json({ message: "Failed to add issue entry" });
+    }
+  });
+
+  // --- EMAIL GROUP ROUTES ---
+
+  // GET /api/email-groups - List groups
+  app.get("/api/email-groups", authMiddleware, async (req: Request, res: Response) => {
+    try {
+      const userId = (req as any).user?.id;
+      const result = await query("SELECT * FROM email_groups WHERE user_id = $1", [userId]);
+      const groups = result.rows;
+
+      for (const group of groups) {
+        const membersRes = await query("SELECT * FROM email_group_members WHERE group_id = $1", [group.id]);
+        group.members = membersRes.rows;
+      }
+
+      res.json({ groups });
+    } catch (err) {
+      console.error("GET /api/email-groups error:", err);
+      res.status(500).json({ message: "Failed to fetch email groups" });
+    }
+  });
+
+  // POST /api/email-groups - Create group
+  app.post("/api/email-groups", authMiddleware, async (req: Request, res: Response) => {
+    try {
+      const { name, members } = req.body;
+      const userId = (req as any).user?.id;
+
+      await query("BEGIN");
+
+      const groupRes = await query(
+        "INSERT INTO email_groups (name, user_id) VALUES ($1, $2) RETURNING *",
+        [name, userId]
+      );
+      const group = groupRes.rows[0];
+
+      if (members && Array.isArray(members)) {
+        for (const email of members) {
+          await query("INSERT INTO email_group_members (group_id, email) VALUES ($1, $2)", [group.id, email]);
+        }
+      }
+
+      await query("COMMIT");
+      res.status(201).json({ group });
+    } catch (err) {
+      await query("ROLLBACK");
+      console.error("POST /api/email-groups error:", err);
+      res.status(500).json({ message: "Failed to create email group" });
+    }
+  });
+
+  // DELETE /api/email-groups/:id - Delete group
+  app.delete("/api/email-groups/:id", authMiddleware, async (req: Request, res: Response) => {
+    try {
+      const { id } = req.params;
+      await query("DELETE FROM email_groups WHERE id = $1", [id]);
+      res.json({ message: "Email group deleted" });
+    } catch (err) {
+      console.error("DELETE /api/email-groups error:", err);
+      res.status(500).json({ message: "Failed to delete email group" });
+    }
+  });
+
+  // PATCH /api/site-reports/:id - Update report status
+  app.patch("/api/site-reports/:id", authMiddleware, async (req: Request, res: Response) => {
+    try {
+      const { id } = req.params;
+      const { status, summary } = req.body;
+      
+      const updateFields: string[] = [];
+      const values: any[] = [];
+      let paramCount = 1;
+
+      if (status !== undefined) {
+        updateFields.push(`status = $${paramCount++}`);
+        values.push(status);
+      }
+      if (summary !== undefined) {
+        updateFields.push(`summary = $${paramCount++}`);
+        values.push(summary);
+      }
+
+      if (updateFields.length === 0) {
+        return res.status(400).json({ message: "No fields to update" });
+      }
+
+      values.push(id);
+      await query(
+        `UPDATE site_reports SET ${updateFields.join(", ")}, updated_at = NOW() WHERE id = $${paramCount}`,
+        values
+      );
+
+      res.json({ message: "Site report updated" });
+    } catch (err) {
+      console.error("PATCH /api/site-reports/:id error:", err);
+      res.status(500).json({ message: "Failed to update site report" });
+    }
+  });
+
+  // DELETE /api/site-reports/:id - Delete report
+  app.delete("/api/site-reports/:id", authMiddleware, async (req: Request, res: Response) => {
+    try {
+      const { id } = req.params;
+      // All related tasks, labour, etc. will be deleted via ON DELETE CASCADE in schema
+      await query("DELETE FROM site_reports WHERE id = $1", [id]);
+      res.json({ message: "Site report deleted" });
+    } catch (err) {
+      console.error("DELETE /api/site-reports/:id error:", err);
+      res.status(500).json({ message: "Failed to delete site report" });
+    }
+  });
+
+  // POST /api/site-reports/:id/send-email - Send report to an email group
+  app.post("/api/site-reports/:id/send-email", authMiddleware, async (req: Request, res: Response) => {
+    try {
+      const { id } = req.params;
+      const { email_group_id, additional_emails } = req.body;
+
+      // Fetch report and tasks (same logic as GET /api/site-reports/:id)
+      const reportRes = await query("SELECT * FROM site_reports WHERE id = $1", [id]);
+      if (reportRes.rows.length === 0) return res.status(404).json({ message: "Report not found" });
+      const report = reportRes.rows[0];
+
+      const tasksRes = await query("SELECT * FROM site_report_tasks WHERE site_report_id = $1", [id]);
+      const tasks = tasksRes.rows;
+
+      for (const task of tasks) {
+        const labourRes = await query("SELECT * FROM site_report_labours WHERE task_id = $1", [task.id]);
+        task.labour = labourRes.rows;
+        const mediaRes = await query("SELECT * FROM site_report_media WHERE task_id = $1", [task.id]);
+        task.media = mediaRes.rows;
+        const issuesRes = await query("SELECT * FROM site_report_issues WHERE task_id = $1", [task.id]);
+        task.issues = issuesRes.rows;
+      }
+
+      // Collect recipient emails
+      let recipients: string[] = [];
+      if (email_group_id) {
+        const membersRes = await query("SELECT email FROM email_group_members WHERE group_id = $1", [email_group_id]);
+        recipients = membersRes.rows.map(r => r.email);
+      }
+      if (additional_emails && Array.isArray(additional_emails)) {
+        recipients = [...new Set([...recipients, ...additional_emails])];
+      }
+
+      if (recipients.length === 0) {
+        return res.status(400).json({ message: "No recipients specified" });
+      }
+
+      // Send email
+      await sendSiteReportEmail(recipients, report, tasks);
+
+      // Update report status to submitted if it was draft
+      if (report.status === 'draft') {
+        await query("UPDATE site_reports SET status = 'submitted', updated_at = NOW() WHERE id = $1", [id]);
+      }
+
+      res.json({ message: "Report sent successfully", recipients });
+    } catch (err) {
+      console.error("POST /api/site-reports/:id/send-email error:", err);
+      res.status(500).json({ message: "Failed to send report email" });
     }
   });
 

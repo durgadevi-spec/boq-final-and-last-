@@ -589,7 +589,7 @@ export function Sidebar({ isOpen, setIsOpen }: SidebarProps) {
                   icon={Package}
                   label="Create Product"
                   adminTab="create-product"
-                  condition={isAdminOrSoftwareOrPurchaseTeam || isPreSales || isProductManager || isVoltAmpele}
+                  condition={isAdminOrSoftwareOrPurchaseTeam || isPreSales || isProductManager || isContractor || isVoltAmpele}
                 />
                 <SidebarNavItem
                   id="create_project"
@@ -694,6 +694,21 @@ export function Sidebar({ isOpen, setIsOpen }: SidebarProps) {
                 />
               </>
             )}
+
+          {/* Site Management Section */}
+          {(user?.role === "admin" || user?.role === "software_team" || user?.role === "site_engineer") && (
+            <>
+              <div className="px-3 mb-2 mt-4 text-xs font-semibold text-muted-foreground uppercase tracking-wider">
+                Site Management
+              </div>
+              <SidebarNavItem
+                id="site_reports"
+                href="/site-reports"
+                icon={FileText}
+                label="Site Reports"
+              />
+            </>
+          )}
 
           {/* Procurement Section */}
           {(isVisible('purchase_orders', isAdminOrSoftware || isPurchaseTeam) ||

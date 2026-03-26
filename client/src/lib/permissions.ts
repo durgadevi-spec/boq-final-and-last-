@@ -1,12 +1,13 @@
+// ─── Flat list for legacy use (sidebar visibility) ────────────────────────────
 export const ALL_SIDEBAR_MODULES = [
   { key: "dashboard", label: "Dashboard" },
   { key: "project_dashboard", label: "Project Dashboard" },
   { key: "alerts", label: "Alerts" },
   { key: "create_item", label: "Create Item" },
-  { key: "create_product", label: "Create Product" },
+  { key: "create_product", label: "Create Product (Page Access)" },
   { key: "create_project", label: "Create Project" },
   { key: "create_vendor_category", label: "Create Vendor Category" },
-  { key: "manage_product", label: "Manage Product" },
+  { key: "manage_product", label: "Manage Product (Page Access)" },
   { key: "manage_materials", label: "Manage Materials" },
   { key: "manage_shops", label: "Manage Shops" },
   { key: "manage_categories", label: "Manage Categories" },
@@ -29,6 +30,72 @@ export const ALL_SIDEBAR_MODULES = [
   { key: "subscription", label: "Subscription" },
   { key: "user_manual", label: "User Manual" },
   { key: "sketch_plan", label: "Sketch a Plan" },
+  // ── Create Product: granular sub-permissions ──────────────────────────────
+  { key: "create_product_category", label: "Create Product → Manage Categories" },
+  { key: "create_product_subcategory", label: "Create Product → Manage Subcategories" },
+  { key: "create_product_product", label: "Create Product → Manage Products" },
+  // ── Manage Product: granular sub-permissions ──────────────────────────────
+  { key: "manage_product_work", label: "Manage Product → Needs Work (Edit/Submit)" },
+  { key: "manage_product_approval", label: "Manage Product → Approve / Reject" },
+];
+
+// ─── Grouped view used by PermissionDialog ────────────────────────────────────
+export const PERMISSION_GROUPS = [
+  {
+    section: "Overview",
+    keys: ["dashboard", "project_dashboard", "alerts"],
+  },
+  {
+    section: "Create Product",
+    keys: [
+      "create_product",
+      "create_product_category",
+      "create_product_subcategory",
+      "create_product_product",
+    ],
+  },
+  {
+    section: "Manage Product",
+    keys: [
+      "manage_product",
+      "manage_product_work",
+      "manage_product_approval",
+    ],
+  },
+  {
+    section: "Creations",
+    keys: ["create_item", "create_project", "create_vendor_category", "sketch_plan"],
+  },
+  {
+    section: "Management",
+    keys: ["manage_materials", "manage_shops", "manage_categories", "bulk_upload"],
+  },
+  {
+    section: "BOQ / Projects",
+    keys: ["generate_bom", "generate_po", "finalize_boq"],
+  },
+  {
+    section: "Procurement",
+    keys: ["purchase_orders", "po_approvals"],
+  },
+  {
+    section: "PO Requests",
+    keys: ["raise_po_request", "my_po_requests", "pending_approvals", "approved_requests"],
+  },
+  {
+    section: "Approvals",
+    keys: [
+      "shop_approvals",
+      "material_approvals",
+      "supplier_approvals",
+      "product_approvals",
+      "bom_approvals",
+    ],
+  },
+  {
+    section: "Other",
+    keys: ["support_chat", "subscription", "user_manual"],
+  },
 ];
 
 export function getDefaultPermissions(role: string): string[] {
@@ -38,7 +105,7 @@ export function getDefaultPermissions(role: string): string[] {
   if (role !== 'supplier' && role !== 'pre_sales' && role !== 'contractor' && role !== 'product_manager') {
     modules.push('dashboard');
   }
-  
+
   if (role !== 'pre_sales' && role !== 'contractor') {
     modules.push('user_manual');
   }
@@ -57,8 +124,12 @@ export function getDefaultPermissions(role: string): string[] {
   }
 
   // Creations & Management (Wide access)
-  if (role === 'admin' || role === 'software_team' || role === 'purchase_team' || role === 'pre_sales' || role === 'product_manager') {
+  if (role === 'admin' || role === 'software_team' || role === 'purchase_team' || role === 'pre_sales' || role === 'product_manager' || role === 'contractor') {
     modules.push('create_product', 'manage_product');
+    // Create Product granular
+    modules.push('create_product_category', 'create_product_subcategory', 'create_product_product');
+    // Manage Product granular
+    modules.push('manage_product_work');
   }
 
   // Project Creation
@@ -76,9 +147,10 @@ export function getDefaultPermissions(role: string): string[] {
     modules.push('raise_po_request', 'my_po_requests');
   }
 
-  // Approvals (Specialized)
+  // Approvals (Specialized) — admin & software_team get full approval access
   if (role === 'admin' || role === 'software_team' || role === 'product_manager') {
-     modules.push('product_approvals');
+    modules.push('product_approvals');
+    modules.push('manage_product_approval');
   }
 
   return modules;
