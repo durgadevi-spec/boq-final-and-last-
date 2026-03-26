@@ -175,3 +175,134 @@ export async function sendSketchPlanEmail(
     throw error;
   }
 }
+
+/**
+ * Send professional Site Report email
+ */
+export async function sendSiteReportEmail(
+  to: string | string[],
+  report: any,
+  tasks: any[]
+) {
+  if (!resend) {
+    throw new Error("RESEND_API_KEY not configured");
+  }
+
+  try {
+    const reportDate = report.report_date || report.reportDate;
+    const projectName = report.project_name || report.projectName || 'General Project';
+    const reportStatus = report.status || 'SUBMITTED';
+    const reportSummary = report.summary || '';
+
+    let emailHtml = `
+      <div style="font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; max-width: 850px; margin: 0 auto; padding: 20px; color: #334155; line-height: 1.6;">
+        <div style="border-bottom: 3px solid #2563eb; padding-bottom: 15px; margin-bottom: 25px; text-align: center;">
+          <h1 style="color: #1e40af; margin: 0; font-size: 28px; text-transform: uppercase; letter-spacing: 2px;">Daily Site Report</h1>
+          <p style="color: #64748b; margin: 5px 0 0 0; font-size: 16px;">${projectName}</p>
+        </div>
+
+        <div style="background-color: #f8fafc; border-radius: 12px; padding: 20px; margin-bottom: 30px; border: 1px solid #e2e8f0; display: table; width: 100%;">
+          <div style="display: table-row;">
+            <div style="display: table-cell; padding: 5px 10px;"><strong>Report Date:</strong> ${reportDate ? new Date(reportDate).toLocaleDateString('en-IN', { day: '2-digit', month: 'long', year: 'numeric' }) : 'N/A'}</div>
+            <div style="display: table-cell; padding: 5px 10px; text-align: right;"><strong>Status:</strong> <span style="color: #2563eb; font-weight: bold;">${reportStatus.toUpperCase()}</span></div>
+          </div>
+          ${reportSummary ? `
+          <div style="display: table-row;">
+            <div style="display: table-cell; padding: 15px 10px 5px 10px;" colspan="2"><strong>General Summary:</strong><br/>${reportSummary}</div>
+          </div>` : ''}
+        </div>
+
+        <h2 style="font-size: 18px; color: #1e40af; border-left: 5px solid #2563eb; padding-left: 12px; margin-bottom: 20px;">Work Progress Details</h2>
+    `;
+
+    tasks.forEach((task, idx) => {
+      const taskItemName = task.item_name || task.itemName || `Task ${idx + 1}`;
+      const taskCompletion = task.completion_percentage !== undefined ? task.completion_percentage : (task.completionPercentage || 0);
+      const taskDesc = task.task_description || task.taskDescription || '';
+
+      emailHtml += `
+        <div style="margin-bottom: 35px; border: 1px solid #e2e8f0; border-radius: 8px; overflow: hidden;">
+          <div style="background-color: #f1f5f9; padding: 12px 15px; border-bottom: 1px solid #e2e8f0;">
+            <table style="width: 100%;">
+              <tr>
+                <td><span style="font-weight: bold; font-size: 15px; color: #0f172a;">Task ${idx + 1}: ${taskItemName}</span></td>
+                <td style="text-align: right;"><span style="background-color: #dbeafe; color: #1e40af; padding: 4px 10px; border-radius: 20px; font-size: 12px; font-weight: bold;">${taskCompletion}% Complete</span></td>
+              </tr>
+            </table>
+          </div>
+          <div style="padding: 15px;">
+            ${taskDesc ? `<p style="margin: 0 0 15px 0; font-size: 14px; color: #475569;">${taskDesc}</p>` : ''}
+            
+            ${task.labour && task.labour.length > 0 ? `
+              <div style="margin-bottom: 15px;">
+                <h4 style="margin: 0 0 8px 0; font-size: 13px; color: #64748b; text-transform: uppercase; letter-spacing: 0.5px;">Labour Allocation</h4>
+                <table style="width: 100%; border-collapse: collapse; font-size: 13px;">
+                  <tr style="background-color: #f8fafc;">
+                    <th style="text-align: left; padding: 6px; border: 1px solid #e2e8f0;">Labour/Skill</th>
+                    <th style="text-align: center; padding: 6px; border: 1px solid #e2e8f0;">Count</th>
+                    <th style="text-align: center; padding: 6px; border: 1px solid #e2e8f0;">Timing</th>
+                  </tr>
+                  ${task.labour.map((l: any) => {
+                    const lName = l.labour_name || l.labourName || 'N/A';
+                    const lIn = l.in_time || l.inTime || '-';
+                    const lOut = l.out_time || l.outTime || '-';
+                    return `
+                    <tr>
+                      <td style="padding: 6px; border: 1px solid #e2e8f0;">${lName}</td>
+                      <td style="text-align: center; padding: 6px; border: 1px solid #e2e8f0;">${l.count}</td>
+                      <td style="text-align: center; padding: 6px; border: 1px solid #e2e8f0;">${lIn} to ${lOut}</td>
+                    </tr>
+                  `}).join('')}
+                </table>
+              </div>
+            ` : ''}
+
+            ${task.issues && task.issues.length > 0 ? `
+              <div style="background-color: #fff1f2; border: 1px solid #fecdd3; border-radius: 6px; padding: 12px; margin-top: 10px;">
+                <h4 style="margin: 0 0 5px 0; font-size: 13px; color: #be123c;">Flagged Issues / Obstructions</h4>
+                <ul style="margin: 0; padding-left: 20px; font-size: 13px; color: #9f1239;">
+                  ${task.issues.map((issue: any) => `<li>${issue.description}</li>`).join('')}
+                </ul>
+              </div>
+            ` : ''}
+
+            ${task.media && task.media.length > 0 ? `
+              <div style="margin-top: 15px;">
+                <h4 style="margin: 0 0 8px 0; font-size: 13px; color: #64748b;">Media Documentation</h4>
+                <div style="display: flex; flex-wrap: wrap; gap: 10px;">
+                  ${task.media.map((m: any) => `
+                    <div style="font-size: 12px; color: #2563eb;">
+                      <a href="${m.fileUrl}" target="_blank" style="text-decoration: none; color: #2563eb; background: #eff6ff; padding: 5px 10px; border-radius: 4px; border: 1px solid #dbeafe;">
+                        View ${m.fileType === 'video' ? 'Video' : 'Photo'}
+                      </a>
+                    </div>
+                  `).join('')}
+                </div>
+              </div>
+            ` : ''}
+          </div>
+        </div>
+      `;
+    });
+
+    emailHtml += `
+        <div style="margin-top: 40px; padding-top: 25px; border-top: 2px solid #e2e8f0; font-size: 12px; color: #94a3b8; text-align: center;">
+          <p style="margin: 0;">This is a professional site report generated for <strong>${projectName}</strong>.</p>
+          <p style="margin: 5px 0 0 0;">&copy; ${new Date().getFullYear()} BOQ Management System. All rights reserved.</p>
+        </div>
+      </div>
+    `;
+
+    const response = await resend.emails.send({
+      from: fromEmail,
+      to: Array.isArray(to) ? to : [to],
+      subject: `Daily Site Report - ${projectName} - ${reportDate ? new Date(reportDate).toLocaleDateString() : ''}`,
+      html: emailHtml,
+    });
+
+    return response;
+  } catch (error) {
+    console.error("[EMAIL ERROR] sendSiteReportEmail:", error);
+    throw error;
+  }
+}
