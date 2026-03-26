@@ -1,0 +1,94 @@
+[
+  {
+    "line": 38,
+    "text": "app.delete('/api/archive/:id/permanent', authMiddleware, async (req, res) => {"
+  },
+  {
+    "line": 227,
+    "text": "app.delete('/api/alerts', authMiddleware, requireRole('admin', 'software_team'), async (_req, res) => {"
+  },
+  {
+    "line": 238,
+    "text": "app.delete('/api/alerts/:id', authMiddleware, requireRole('admin', 'software_team'), async (req: Request, res: Response) => {"
+  },
+  {
+    "line": 1996,
+    "text": "app.delete("
+  },
+  {
+    "line": 2151,
+    "text": "app.delete("
+  },
+  {
+    "line": 2362,
+    "text": "app.delete("
+  },
+  {
+    "line": 2650,
+    "text": "app.delete("
+  },
+  {
+    "line": 3345,
+    "text": "app.delete("
+  },
+  {
+    "line": 3394,
+    "text": "app.delete("
+  },
+  {
+    "line": 3619,
+    "text": "app.delete("
+  },
+  {
+    "line": 4203,
+    "text": "app.delete("
+  },
+  {
+    "line": 4857,
+    "text": "app.delete("
+  },
+  {
+    "line": 5237,
+    "text": "app.delete("
+  },
+  {
+    "line": 5302,
+    "text": "app.delete(\"/api/boq-templates/:id\", authMiddleware, async (req: Request, res: Response) => {"
+  },
+  {
+    "line": 5357,
+    "text": "app.delete(\"/api/bom-templates/:id\", authMiddleware, async (req: Request, res: Response) => {"
+  },
+  {
+    "line": 5768,
+    "text": "app.delete("
+  },
+  {
+    "line": 5832,
+    "text": "app.delete("
+  },
+  {
+    "line": 5871,
+    "text": "app.delete("
+  },
+  {
+    "line": 6388,
+    "text": "app.delete("
+  },
+  {
+    "line": 6768,
+    "text": "app.delete("
+  },
+  {
+    "line": 7674,
+    "text": "app.delete(\"/api/purchase-orders/:id\", authMiddleware, async (req: Request, res: Response) => {"
+  },
+  {
+    "line": 8309,
+    "text": "app.delete(\"/api/sketch-plans/:id\", authMiddleware, async (req: Request, res: Response) => {"
+  },
+  {
+    "line": 8434,
+    "text": "app.delete(\"/api/sketch-templates/:id\", authMiddleware, async (req: Request, res: Response) => {"
+  }
+]

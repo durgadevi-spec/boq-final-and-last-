@@ -1,0 +1,14 @@
+client\src\components\admin\ManageMaterials.tsx
+client\src\components\layout\Sidebar.tsx
+client\src\components\SketchPad.tsx
+client\src\pages\admin\AdminDashboard.tsx
+client\src\pages\admin\BomApprovals.tsx
+client\src\pages\admin\ProductApprovals.tsx
+client\src\pages\admin\Trash.tsx
+client\src\pages\CreateBoq.tsx
+client\src\pages\CreateProject.tsx
+client\src\pages\CreateSketchPlan.tsx
+client\src\pages\FinalizeBoq.tsx
+client\src\pages\GeneratePO.tsx
+client\src\pages\SketchPlans.tsx
+client\src\pages\supplier\SupplierSupport.tsx

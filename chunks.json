@@ -1,0 +1,44 @@
+[
+  {
+    "StartLine": 2168,
+    "EndLine": 2168,
+    "TargetContent": "        archiveService.archiveItem('materials', id, mat);",
+    "ReplacementContent": "        archiveService.archiveItem('materials', id, mat);\n        if (req.query.action === 'trash') {\n          archiveService.trashArchiveItem(id);\n        }"
+  },
+  {
+    "StartLine": 3357,
+    "EndLine": 3357,
+    "TargetContent": "        archiveService.archiveItem('subcategories', id, subResult.rows[0]);",
+    "ReplacementContent": "        archiveService.archiveItem('subcategories', id, subResult.rows[0]);\n        if (req.query.action === 'trash') {\n          archiveService.trashArchiveItem(id);\n        }"
+  },
+  {
+    "StartLine": 3410,
+    "EndLine": 3410,
+    "TargetContent": "        archiveService.archiveItem('categories', name, getCat.rows[0]);",
+    "ReplacementContent": "        archiveService.archiveItem('categories', name, getCat.rows[0]);\n        if (req.query.action === 'trash') {\n          archiveService.trashArchiveItem(name);\n        }"
+  },
+  {
+    "StartLine": 3637,
+    "EndLine": 3637,
+    "TargetContent": "        archiveService.archiveItem('products', id, result.rows[0]);",
+    "ReplacementContent": "        archiveService.archiveItem('products', id, result.rows[0]);\n        if (req.query.action === 'trash') {\n          archiveService.trashArchiveItem(id);\n        }"
+  },
+  {
+    "StartLine": 4877,
+    "EndLine": 4877,
+    "TargetContent": "        archiveService.archiveItem('boq_versions', versionId, versionData);",
+    "ReplacementContent": "        archiveService.archiveItem('boq_versions', versionId, versionData);\n        if (req.query.action === 'trash') {\n          archiveService.trashArchiveItem(versionId);\n        }"
+  },
+  {
+    "StartLine": 5308,
+    "EndLine": 5308,
+    "TargetContent": "      archiveService.archiveItem('boq_templates', id, getTpl.rows[0]);",
+    "ReplacementContent": "      archiveService.archiveItem('boq_templates', id, getTpl.rows[0]);\n        if (req.query.action === 'trash') {\n          archiveService.trashArchiveItem(id);\n        }"
+  },
+  {
+    "StartLine": 5363,
+    "EndLine": 5363,
+    "TargetContent": "      archiveService.archiveItem('bom_templates', id, getTpl.rows[0]);",
+    "ReplacementContent": "      archiveService.archiveItem('bom_templates', id, getTpl.rows[0]);\n        if (req.query.action === 'trash') {\n          archiveService.trashArchiveItem(id);\n        }"
+  }
+]

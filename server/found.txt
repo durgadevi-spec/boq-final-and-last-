@@ -1,0 +1,89 @@
+18:app.get('/api/archive', authMiddleware, (req, res) => {
+22:app.get('/api/trash', authMiddleware, (req, res) => {
+38:app.delete('/api/archive/:id/permanent', authMiddleware, async (req, res) => {
+203:app.get('/api/alerts', async (_req, res) => {
+227:app.delete('/api/alerts', authMiddleware, requireRole('admin', 'software_team'), async (_req, res) => {
+238:app.delete('/api/alerts/:id', authMiddleware, requireRole('admin', 'software_team'), async (req: Request, res: Response) => {
+1047:app.get("/api/budget-exceed-logs/:projectId", authMiddleware, async (req: Request, res: Response) => {
+1320:app.get("/api/debug/users", async (_req, res) => {
+1339:app.get(
+1369:app.get(
+1477:app.get(
+1584:app.get("/api/shops", async (_req, res) => {
+1671:app.get("/api/materials/search", authMiddleware, async (req: Request, res: Response) => {
+1724:app.get("/api/materials", async (_req, res) => {
+1745:app.get("/api/material-rate", async (req, res) => {
+1884:app.get("/api/shops/:id", async (req, res) => {
+1979:app.delete(
+2042:app.get("/api/materials/:id", async (req, res) => {
+2134:app.delete(
+2226:app.get("/api/shops-pending-approval", async (_req, res) => {
+2247:app.get("/api/vendor-categories", async (_req, res) => {
+2358:app.delete(
+2387:app.get("/api/material-templates", async (_req, res) => {
+2548:app.get("/api/material-templates/usage", async (_req, res) => {
+2571:app.get(
+2630:app.delete(
+2754:app.get("/api/material-categories", async (_req, res) => {
+3023:app.get(
+3211:app.get(
+3240:app.get(
+3321:app.delete(
+3381:app.get("/api/categories", async (_req, res) => {
+3396:app.delete(
+3456:app.get("/api/subcategories-admin", async (_req, res) => {
+3472:app.get("/api/sidebar-subcategories", async (_req, res) => {
+3571:app.get("/api/products", async (_req, res) => {
+3647:app.delete(
+3674:app.get("/api/products/:id", async (req: Request, res: Response) => {
+3792:app.get(
+3819:app.get(
+3873:app.get(
+3995:app.get(
+4098:app.get(
+4116:app.get(
+4229:app.delete(
+4264:app.get(
+4546:app.get(
+4642:app.get(
+4838:app.get(
+4877:app.delete(
+5070:app.get(
+5107:app.get(
+5184:app.get(
+5258:app.delete(
+5287:app.get("/api/boq-templates", authMiddleware, async (req: Request, res: Response) => {
+5320:app.delete("/api/boq-templates/:id", authMiddleware, async (req: Request, res: Response) => {
+5336:app.get("/api/bom-templates", authMiddleware, async (req: Request, res: Response) => {
+5369:app.delete("/api/bom-templates/:id", authMiddleware, async (req: Request, res: Response) => {
+5473:app.get(
+5643:app.get(
+5668:app.get(
+5753:app.get(
+5777:app.delete(
+5841:app.delete(
+5880:app.delete(
+6163:app.get(
+6202:app.get(
+6346:app.get(
+6397:app.delete(
+6469:app.get("/api/global-settings", authMiddleware, async (_req, res) => {
+6571:app.get(
+6601:app.get(
+6777:app.delete(
+6838:app.get("/api/purchase-orders/preview-vendors", authMiddleware, async (req: Request, res: Response) => {
+7151:app.get("/api/po-requests", authMiddleware, async (req: Request, res: Response) => {
+7184:app.get("/api/po-requests/:id", authMiddleware, async (req: Request, res: Response) => {
+7516:app.get("/api/purchase-orders", authMiddleware, async (req: Request, res: Response) => {
+7544:app.get("/api/purchase-orders/:id", authMiddleware, async (req: Request, res: Response) => {
+7683:app.delete("/api/purchase-orders/:id", authMiddleware, async (req: Request, res: Response) => {
+7709:app.get("/api/purchase-orders/check-material-increases", authMiddleware, async (req: Request, res: Response) => {
+7946:app.get('/api/admin/dynamic-access/pending-users', authMiddleware, requireRole('admin'), async (_req: Request, res: Response) => {
+7966:app.get('/api/admin/dynamic-access/managed-users', authMiddleware, requireRole('admin'), async (_req: Request, res: Response) => {
+7991:app.get('/api/admin/dynamic-access/permissions/:userId', authMiddleware, requireRole('admin'), async (req: Request, res: Response) => {
+8049:app.get('/api/my-permissions', authMiddleware, async (req: Request, res: Response) => {
+8072:app.get("/api/sketch-plans", authMiddleware, async (req: Request, res: Response) => {
+8089:app.get("/api/sketch-plans/:id", authMiddleware, async (req: Request, res: Response) => {
+8307:app.delete("/api/sketch-plans/:id", authMiddleware, async (req: Request, res: Response) => {
+8405:app.get("/api/sketch-templates", authMiddleware, async (req: Request, res: Response) => {
+8432:app.delete("/api/sketch-templates/:id", authMiddleware, async (req: Request, res: Response) => {

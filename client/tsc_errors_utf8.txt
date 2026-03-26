@@ -1,0 +1,312 @@
+﻿src/components/estimators/Step5RequiredMaterialsComparison.tsx(6,29): error TS2307: Cannot find module '../estimators/computeRequired' or its corresponding type declarations.
+src/components/estimators/Step5RequiredMaterialsComparison.tsx(150,45): error TS2503: Cannot find namespace 'JSX'.
+src/components/estimators/WallPartitionWorkflow.tsx(2,27): error TS2307: Cannot find module '@/components/estimators/Step1WallType' or its corresponding type declarations.
+src/components/estimators/WallPartitionWorkflow.tsx(3,29): error TS2307: Cannot find module '@/components/estimators/Step2SubOptions' or its corresponding type declarations.
+src/components/estimators/WallPartitionWorkflow.tsx(4,29): error TS2307: Cannot find module '@/components/estimators/Step3Dimensions' or its corresponding type declarations.
+src/components/estimators/WallPartitionWorkflow.tsx(5,28): error TS2307: Cannot find module '@/components/estimators/Step4Materials' or its corresponding type declarations.
+src/components/estimators/WallPartitionWorkflow.tsx(8,26): error TS2307: Cannot find module '@/components/estimators/Step5Summary' or its corresponding type declarations.
+src/components/estimators/WallPartitionWorkflow.tsx(11,41): error TS2307: Cannot find module '@/components/estimators/constants' or its corresponding type declarations.
+src/components/estimators/WallPartitionWorkflow.tsx(12,29): error TS2307: Cannot find module '@/components/estimators/computeRequired' or its corresponding type declarations.
+src/components/estimators/WallPartitionWorkflow.tsx(14,30): error TS7016: Could not find a declaration file for module 'uuid'. 'C:/Users/Hello/Documents/BOQ/BOQ-last-main/BOQ-last-main/node_modules/uuid/dist/esm-browser/index.js' implicitly has an 'any' type.
+  Try `npm i --save-dev @types/uuid` if it exists or add a new declaration (.d.ts) file containing `declare module 'uuid';`
+src/components/estimators/WallPartitionWorkflow.tsx(259,11): error TS2322: Type 'MaterialSelection[]' is not assignable to type 'SelectedMaterial[]'.
+  Type 'MaterialSelection' is not assignable to type 'SelectedMaterial'.
+    Types of property 'rate' are incompatible.
+      Type 'number | undefined' is not assignable to type 'number'.
+        Type 'undefined' is not assignable to type 'number'.
+src/components/estimators/WallPartitionWorkflow.tsx(274,11): error TS2322: Type 'MaterialSelection[]' is not assignable to type 'Material[]'.
+  Type 'MaterialSelection' is not assignable to type 'Material'.
+    Types of property 'rate' are incompatible.
+      Type 'number | undefined' is not assignable to type 'number'.
+        Type 'undefined' is not assignable to type 'number'.
+src/pages/admin/AdminAccessControl.tsx(113,37): error TS2503: Cannot find namespace 'JSX'.
+src/pages/admin/AdminDashboard.tsx(2643,33): error TS2322: Type '{ type: "file"; accept: string; multiple: true; onChange: (e: ChangeEvent<HTMLInputElement>) => void; onPreview: (url: any) => void; }' is not assignable to type 'IntrinsicAttributes & Omit<DetailedHTMLProps<InputHTMLAttributes<HTMLInputElement>, HTMLInputElement>, "ref"> & RefAttributes<...>'.
+  Property 'onPreview' does not exist on type 'IntrinsicAttributes & Omit<DetailedHTMLProps<InputHTMLAttributes<HTMLInputElement>, HTMLInputElement>, "ref"> & RefAttributes<...>'.
+src/pages/admin/AdminDashboard.tsx(2643,45): error TS7006: Parameter 'url' implicitly has an 'any' type.
+src/pages/admin/AdminDashboard.tsx(2869,29): error TS2322: Type '{ type: "file"; accept: string; multiple: true; onChange: (e: ChangeEvent<HTMLInputElement>) => void; onPreview: (url: any) => void; }' is not assignable to type 'IntrinsicAttributes & Omit<DetailedHTMLProps<InputHTMLAttributes<HTMLInputElement>, HTMLInputElement>, "ref"> & RefAttributes<...>'.
+  Property 'onPreview' does not exist on type 'IntrinsicAttributes & Omit<DetailedHTMLProps<InputHTMLAttributes<HTMLInputElement>, HTMLInputElement>, "ref"> & RefAttributes<...>'.
+src/pages/admin/AdminDashboard.tsx(2869,41): error TS7006: Parameter 'url' implicitly has an 'any' type.
+src/pages/admin/AdminDashboard.tsx(3041,25): error TS2322: Type '{ type: "file"; accept: string; multiple: true; onChange: (e: ChangeEvent<HTMLInputElement>) => void; onPreview: (url: any) => void; }' is not assignable to type 'IntrinsicAttributes & Omit<DetailedHTMLProps<InputHTMLAttributes<HTMLInputElement>, HTMLInputElement>, "ref"> & RefAttributes<...>'.
+  Property 'onPreview' does not exist on type 'IntrinsicAttributes & Omit<DetailedHTMLProps<InputHTMLAttributes<HTMLInputElement>, HTMLInputElement>, "ref"> & RefAttributes<...>'.
+src/pages/admin/AdminDashboard.tsx(3041,37): error TS7006: Parameter 'url' implicitly has an 'any' type.
+src/pages/admin/AdminDashboard.tsx(3078,27): error TS2322: Type 'null' is not assignable to type 'string | undefined'.
+src/pages/admin/AdminDashboard.tsx(3218,41): error TS2322: Type '{ type: "file"; accept: string; multiple: true; onChange: (e: ChangeEvent<HTMLInputElement>) => void; onPreview: (url: any) => void; }' is not assignable to type 'IntrinsicAttributes & Omit<DetailedHTMLProps<InputHTMLAttributes<HTMLInputElement>, HTMLInputElement>, "ref"> & RefAttributes<...>'.
+  Property 'onPreview' does not exist on type 'IntrinsicAttributes & Omit<DetailedHTMLProps<InputHTMLAttributes<HTMLInputElement>, HTMLInputElement>, "ref"> & RefAttributes<...>'.
+src/pages/admin/AdminDashboard.tsx(3218,53): error TS7006: Parameter 'url' implicitly has an 'any' type.
+src/pages/estimators/BlindsEstimator.tsx(524,60): error TS2345: Argument of type 'string | undefined' is not assignable to parameter of type 'string'.
+  Type 'undefined' is not assignable to type 'string'.
+src/pages/estimators/BlindsEstimator.tsx(1894,32): error TS2802: Type 'MapIterator<[string, any[]]>' can only be iterated through when using the '--downlevelIteration' flag or with a '--target' of 'es2015' or higher.
+src/pages/estimators/BlindsEstimator.tsx(1931,44): error TS2353: Object literal may only specify known properties, and 'panelType' does not exist in type '{ blindType?: string | null | undefined; subOption?: string | null | undefined; }'.
+src/pages/estimators/BlindsEstimator.tsx(2011,13): error TS2353: Object literal may only specify known properties, and 'panelType' does not exist in type '{ blindType?: string | null | undefined; subOption?: string | null | undefined; }'.
+src/pages/estimators/BlindsEstimator.tsx(2577,35): error TS2304: Cannot find name 'panelType'.
+src/pages/estimators/BlindsEstimator.tsx(2647,33): error TS2304: Cannot find name 'panelType'.
+src/pages/estimators/BlindsEstimator.tsx(2670,31): error TS7034: Variable 'filtered' implicitly has type 'any' in some locations where its type cannot be determined.
+src/pages/estimators/BlindsEstimator.tsx(2686,33): error TS7005: Variable 'filtered' implicitly has an 'any' type.
+src/pages/estimators/BlindsEstimator.tsx(3056,33): error TS2304: Cannot find name 'doorKeywordsByType'.
+src/pages/estimators/BlindsEstimator.tsx(3648,25): error TS2304: Cannot find name 'setPanelType'.
+src/pages/estimators/BlindsEstimator.tsx(3650,25): error TS2304: Cannot find name 'setGlazingType'.
+src/pages/estimators/BlindsEstimator.tsx(3654,25): error TS2304: Cannot find name 'setGlassHeight'.
+src/pages/estimators/BlindsEstimator.tsx(3655,25): error TS2304: Cannot find name 'setGlassWidth'.
+src/pages/estimators/BlindsEstimator.tsx(4551,31): error TS2304: Cannot find name 'panelType'.
+src/pages/estimators/BlindsEstimator.tsx(4569,39): error TS2503: Cannot find namespace 'JSX'.
+src/pages/estimators/BlindsEstimator.tsx(4571,53): error TS2802: Type 'MapIterator<[string, any[]]>' can only be iterated through when using the '--downlevelIteration' flag or with a '--target' of 'es2015' or higher.
+src/pages/estimators/BlindsEstimator.tsx(4577,66): error TS7006: Parameter 'k' implicitly has an 'any' type.
+src/pages/estimators/CivilWallEstimator.tsx(576,18): error TS2345: Argument of type 'string | null' is not assignable to parameter of type 'string | undefined'.
+  Type 'null' is not assignable to type 'string | undefined'.
+src/pages/estimators/CivilWallEstimator.tsx(576,55): error TS2345: Argument of type 'string | null' is not assignable to parameter of type 'string | undefined'.
+  Type 'null' is not assignable to type 'string | undefined'.
+src/pages/estimators/CivilWallEstimator.tsx(754,11): error TS2322: Type 'Material | null' is not assignable to type 'Material | undefined'.
+  Type 'null' is not assignable to type 'Material | undefined'.
+src/pages/estimators/CivilWallEstimator.tsx(774,22): error TS2339: Property 'batchId' does not exist on type 'SelectedMaterialConfig'.
+src/pages/estimators/CivilWallEstimator.tsx(774,45): error TS2339: Property 'batchId' does not exist on type 'SelectedMaterialConfig'.
+src/pages/estimators/CivilWallEstimator.tsx(779,60): error TS2345: Argument of type 'string | undefined' is not assignable to parameter of type 'string'.
+  Type 'undefined' is not assignable to type 'string'.
+src/pages/estimators/CivilWallEstimator.tsx(792,30): error TS2339: Property 'batchId' does not exist on type 'SelectedMaterialConfig'.
+src/pages/estimators/CivilWallEstimator.tsx(1035,18): error TS2339: Property 'address' does not exist on type 'Shop'.
+src/pages/estimators/CivilWallEstimator.tsx(1036,18): error TS2339: Property 'area' does not exist on type 'Shop'.
+src/pages/estimators/CivilWallEstimator.tsx(1041,18): error TS2339: Property 'phone' does not exist on type 'Shop'.
+src/pages/estimators/CivilWallEstimator.tsx(1079,18): error TS2339: Property 'batchId' does not exist on type 'SelectedMaterialConfig'.
+src/pages/estimators/CivilWallEstimator.tsx(1125,13): error TS2353: Object literal may only specify known properties, and 'batchId' does not exist in type 'SelectedMaterialConfig'.
+src/pages/estimators/CivilWallEstimator.tsx(1148,17): error TS2339: Property 'batchId' does not exist on type 'SelectedMaterialConfig'.
+src/pages/estimators/CivilWallEstimator.tsx(1148,39): error TS2339: Property 'batchId' does not exist on type 'SelectedMaterialConfig'.
+src/pages/estimators/CivilWallEstimator.tsx(1158,40): error TS2339: Property 'batchId' does not exist on type 'SelectedMaterialConfig'.
+src/pages/estimators/CivilWallEstimator.tsx(1159,32): error TS2339: Property 'batchId' does not exist on type 'SelectedMaterialConfig'.
+src/pages/estimators/CivilWallEstimator.tsx(1164,28): error TS2339: Property 'quantity' does not exist on type 'Material'.
+src/pages/estimators/CivilWallEstimator.tsx(1450,26): error TS2345: Argument of type '(prev: SelectedMaterialConfig[]) => (SelectedMaterialConfig | { materialId: string; selectedShopId: string | undefined; selectedBrand: any; })[]' is not assignable to parameter of type 'SetStateAction<SelectedMaterialConfig[]>'.
+  Type '(prev: SelectedMaterialConfig[]) => (SelectedMaterialConfig | { materialId: string; selectedShopId: string | undefined; selectedBrand: any; })[]' is not assignable to type '(prevState: SelectedMaterialConfig[]) => SelectedMaterialConfig[]'.
+    Type '(SelectedMaterialConfig | { materialId: string; selectedShopId: string | undefined; selectedBrand: any; })[]' is not assignable to type 'SelectedMaterialConfig[]'.
+      Type 'SelectedMaterialConfig | { materialId: string; selectedShopId: string | undefined; selectedBrand: any; }' is not assignable to type 'SelectedMaterialConfig'.
+        Type '{ materialId: string; selectedShopId: string | undefined; selectedBrand: any; }' is not assignable to type 'SelectedMaterialConfig'.
+          Types of property 'selectedShopId' are incompatible.
+            Type 'string | undefined' is not assignable to type 'string'.
+              Type 'undefined' is not assignable to type 'string'.
+src/pages/estimators/CivilWallEstimator.tsx(1520,13): error TS7034: Variable 'savedToDelete' implicitly has type 'any[]' in some locations where its type cannot be determined.
+src/pages/estimators/CivilWallEstimator.tsx(1521,13): error TS7034: Variable 'newToDelete' implicitly has type 'any[]' in some locations where its type cannot be determined.
+src/pages/estimators/CivilWallEstimator.tsx(1539,25): error TS2339: Property 'batchId' does not exist on type 'SelectedMaterialConfig'.
+src/pages/estimators/CivilWallEstimator.tsx(1565,23): error TS7005: Variable 'savedToDelete' implicitly has an 'any[]' type.
+src/pages/estimators/CivilWallEstimator.tsx(1576,16): error TS7005: Variable 'newToDelete' implicitly has an 'any[]' type.
+src/pages/estimators/CivilWallEstimator.tsx(1579,24): error TS2339: Property 'batchId' does not exist on type 'SelectedMaterialConfig'.
+src/pages/estimators/CivilWallEstimator.tsx(1589,46): error TS2339: Property 'batchId' does not exist on type 'SelectedMaterialConfig'.
+src/pages/estimators/CivilWallEstimator.tsx(1641,20): error TS2339: Property 'batchId' does not exist on type 'SelectedMaterialConfig'.
+src/pages/estimators/CivilWallEstimator.tsx(2335,26): error TS7006: Parameter 'prev' implicitly has an 'any' type.
+src/pages/estimators/CivilWallEstimator.tsx(2655,32): error TS2802: Type 'MapIterator<[string, any[]]>' can only be iterated through when using the '--downlevelIteration' flag or with a '--target' of 'es2015' or higher.
+src/pages/estimators/CivilWallEstimator.tsx(3429,31): error TS7034: Variable 'filtered' implicitly has type 'any' in some locations where its type cannot be determined.
+src/pages/estimators/CivilWallEstimator.tsx(3445,33): error TS7005: Variable 'filtered' implicitly has an 'any' type.
+src/pages/estimators/CivilWallEstimator.tsx(5208,60): error TS2339: Property 'batchId' does not exist on type 'MaterialWithQuantity'.
+src/pages/estimators/CivilWallEstimator.tsx(5261,41): error TS2339: Property 'doorType' does not exist on type 'MaterialWithQuantity'.
+src/pages/estimators/CivilWallEstimator.tsx(5266,41): error TS2339: Property 'panelType' does not exist on type 'MaterialWithQuantity'.
+src/pages/estimators/CivilWallEstimator.tsx(5271,41): error TS2339: Property 'subOption' does not exist on type 'MaterialWithQuantity'.
+src/pages/estimators/CivilWallEstimator.tsx(5276,41): error TS2339: Property 'glazingType' does not exist on type 'MaterialWithQuantity'.
+src/pages/estimators/CivilWallEstimator.tsx(5450,39): error TS2503: Cannot find namespace 'JSX'.
+src/pages/estimators/CivilWallEstimator.tsx(5452,53): error TS2802: Type 'MapIterator<[string, any[]]>' can only be iterated through when using the '--downlevelIteration' flag or with a '--target' of 'es2015' or higher.
+src/pages/estimators/CivilWallEstimator.tsx(5458,66): error TS7006: Parameter 'k' implicitly has an 'any' type.
+src/pages/estimators/DoorsEstimator.tsx(2,10): error TS2305: Module '"wouter"' has no exported member 'useNavigate'.
+src/pages/estimators/DoorsEstimator.tsx(634,18): error TS2345: Argument of type 'string | null' is not assignable to parameter of type 'string | undefined'.
+  Type 'null' is not assignable to type 'string | undefined'.
+src/pages/estimators/DoorsEstimator.tsx(634,55): error TS2345: Argument of type 'string | null' is not assignable to parameter of type 'string | undefined'.
+  Type 'null' is not assignable to type 'string | undefined'.
+src/pages/estimators/DoorsEstimator.tsx(812,11): error TS2322: Type 'Material | null' is not assignable to type 'Material | undefined'.
+  Type 'null' is not assignable to type 'Material | undefined'.
+src/pages/estimators/DoorsEstimator.tsx(832,22): error TS2339: Property 'batchId' does not exist on type 'SelectedMaterialConfig'.
+src/pages/estimators/DoorsEstimator.tsx(832,45): error TS2339: Property 'batchId' does not exist on type 'SelectedMaterialConfig'.
+src/pages/estimators/DoorsEstimator.tsx(837,60): error TS2345: Argument of type 'string | undefined' is not assignable to parameter of type 'string'.
+  Type 'undefined' is not assignable to type 'string'.
+src/pages/estimators/DoorsEstimator.tsx(850,30): error TS2339: Property 'batchId' does not exist on type 'SelectedMaterialConfig'.
+src/pages/estimators/DoorsEstimator.tsx(1080,18): error TS2339: Property 'address' does not exist on type 'Shop'.
+src/pages/estimators/DoorsEstimator.tsx(1081,18): error TS2339: Property 'area' does not exist on type 'Shop'.
+src/pages/estimators/DoorsEstimator.tsx(1086,18): error TS2339: Property 'phone' does not exist on type 'Shop'.
+src/pages/estimators/DoorsEstimator.tsx(1124,18): error TS2339: Property 'batchId' does not exist on type 'SelectedMaterialConfig'.
+src/pages/estimators/DoorsEstimator.tsx(1170,13): error TS2353: Object literal may only specify known properties, and 'batchId' does not exist in type 'SelectedMaterialConfig'.
+src/pages/estimators/DoorsEstimator.tsx(1193,17): error TS2339: Property 'batchId' does not exist on type 'SelectedMaterialConfig'.
+src/pages/estimators/DoorsEstimator.tsx(1193,39): error TS2339: Property 'batchId' does not exist on type 'SelectedMaterialConfig'.
+src/pages/estimators/DoorsEstimator.tsx(1203,40): error TS2339: Property 'batchId' does not exist on type 'SelectedMaterialConfig'.
+src/pages/estimators/DoorsEstimator.tsx(1204,32): error TS2339: Property 'batchId' does not exist on type 'SelectedMaterialConfig'.
+src/pages/estimators/DoorsEstimator.tsx(1209,28): error TS2339: Property 'quantity' does not exist on type 'Material'.
+src/pages/estimators/DoorsEstimator.tsx(1495,26): error TS2345: Argument of type '(prev: SelectedMaterialConfig[]) => (SelectedMaterialConfig | { materialId: string; selectedShopId: string | undefined; selectedBrand: any; })[]' is not assignable to parameter of type 'SetStateAction<SelectedMaterialConfig[]>'.
+  Type '(prev: SelectedMaterialConfig[]) => (SelectedMaterialConfig | { materialId: string; selectedShopId: string | undefined; selectedBrand: any; })[]' is not assignable to type '(prevState: SelectedMaterialConfig[]) => SelectedMaterialConfig[]'.
+    Type '(SelectedMaterialConfig | { materialId: string; selectedShopId: string | undefined; selectedBrand: any; })[]' is not assignable to type 'SelectedMaterialConfig[]'.
+      Type 'SelectedMaterialConfig | { materialId: string; selectedShopId: string | undefined; selectedBrand: any; }' is not assignable to type 'SelectedMaterialConfig'.
+        Type '{ materialId: string; selectedShopId: string | undefined; selectedBrand: any; }' is not assignable to type 'SelectedMaterialConfig'.
+          Types of property 'selectedShopId' are incompatible.
+            Type 'string | undefined' is not assignable to type 'string'.
+              Type 'undefined' is not assignable to type 'string'.
+src/pages/estimators/DoorsEstimator.tsx(1565,13): error TS7034: Variable 'savedToDelete' implicitly has type 'any[]' in some locations where its type cannot be determined.
+src/pages/estimators/DoorsEstimator.tsx(1566,13): error TS7034: Variable 'newToDelete' implicitly has type 'any[]' in some locations where its type cannot be determined.
+src/pages/estimators/DoorsEstimator.tsx(1584,25): error TS2339: Property 'batchId' does not exist on type 'SelectedMaterialConfig'.
+src/pages/estimators/DoorsEstimator.tsx(1610,23): error TS7005: Variable 'savedToDelete' implicitly has an 'any[]' type.
+src/pages/estimators/DoorsEstimator.tsx(1621,16): error TS7005: Variable 'newToDelete' implicitly has an 'any[]' type.
+src/pages/estimators/DoorsEstimator.tsx(1624,24): error TS2339: Property 'batchId' does not exist on type 'SelectedMaterialConfig'.
+src/pages/estimators/DoorsEstimator.tsx(1634,46): error TS2339: Property 'batchId' does not exist on type 'SelectedMaterialConfig'.
+src/pages/estimators/DoorsEstimator.tsx(1686,20): error TS2339: Property 'batchId' does not exist on type 'SelectedMaterialConfig'.
+src/pages/estimators/DoorsEstimator.tsx(2386,26): error TS7006: Parameter 'prev' implicitly has an 'any' type.
+src/pages/estimators/DoorsEstimator.tsx(2742,32): error TS2802: Type 'MapIterator<[string, any[]]>' can only be iterated through when using the '--downlevelIteration' flag or with a '--target' of 'es2015' or higher.
+src/pages/estimators/DoorsEstimator.tsx(3511,31): error TS7034: Variable 'filtered' implicitly has type 'any' in some locations where its type cannot be determined.
+src/pages/estimators/DoorsEstimator.tsx(3527,33): error TS7005: Variable 'filtered' implicitly has an 'any' type.
+src/pages/estimators/DoorsEstimator.tsx(5292,60): error TS2339: Property 'batchId' does not exist on type 'MaterialWithQuantity'.
+src/pages/estimators/DoorsEstimator.tsx(5345,41): error TS2339: Property 'doorType' does not exist on type 'MaterialWithQuantity'.
+src/pages/estimators/DoorsEstimator.tsx(5350,41): error TS2339: Property 'panelType' does not exist on type 'MaterialWithQuantity'.
+src/pages/estimators/DoorsEstimator.tsx(5355,41): error TS2339: Property 'subOption' does not exist on type 'MaterialWithQuantity'.
+src/pages/estimators/DoorsEstimator.tsx(5360,41): error TS2339: Property 'glazingType' does not exist on type 'MaterialWithQuantity'.
+src/pages/estimators/DoorsEstimator.tsx(5645,39): error TS2503: Cannot find namespace 'JSX'.
+src/pages/estimators/DoorsEstimator.tsx(5647,53): error TS2802: Type 'MapIterator<[string, any[]]>' can only be iterated through when using the '--downlevelIteration' flag or with a '--target' of 'es2015' or higher.
+src/pages/estimators/DoorsEstimator.tsx(5653,66): error TS7006: Parameter 'k' implicitly has an 'any' type.
+src/pages/estimators/DynamicEstimator.tsx(654,19): error TS2322: Type '{ checked: boolean; indeterminate: boolean; onCheckedChange: (checked: CheckedState) => void; }' is not assignable to type 'IntrinsicAttributes & Omit<CheckboxProps & RefAttributes<HTMLButtonElement>, "ref"> & RefAttributes<...>'.
+  Property 'indeterminate' does not exist on type 'IntrinsicAttributes & Omit<CheckboxProps & RefAttributes<HTMLButtonElement>, "ref"> & RefAttributes<...>'.
+src/pages/estimators/ElectricalEstimator.tsx(2,10): error TS2305: Module '"wouter"' has no exported member 'useNavigate'.
+src/pages/estimators/ElectricalEstimator.tsx(577,18): error TS2345: Argument of type 'string | null' is not assignable to parameter of type 'string | undefined'.
+  Type 'null' is not assignable to type 'string | undefined'.
+src/pages/estimators/ElectricalEstimator.tsx(577,55): error TS2345: Argument of type 'string | null' is not assignable to parameter of type 'string | undefined'.
+  Type 'null' is not assignable to type 'string | undefined'.
+src/pages/estimators/ElectricalEstimator.tsx(755,11): error TS2322: Type 'Material | null' is not assignable to type 'Material | undefined'.
+  Type 'null' is not assignable to type 'Material | undefined'.
+src/pages/estimators/ElectricalEstimator.tsx(775,22): error TS2339: Property 'batchId' does not exist on type 'SelectedMaterialConfig'.
+src/pages/estimators/ElectricalEstimator.tsx(775,45): error TS2339: Property 'batchId' does not exist on type 'SelectedMaterialConfig'.
+src/pages/estimators/ElectricalEstimator.tsx(780,60): error TS2345: Argument of type 'string | undefined' is not assignable to parameter of type 'string'.
+  Type 'undefined' is not assignable to type 'string'.
+src/pages/estimators/ElectricalEstimator.tsx(793,30): error TS2339: Property 'batchId' does not exist on type 'SelectedMaterialConfig'.
+src/pages/estimators/ElectricalEstimator.tsx(1022,18): error TS2339: Property 'address' does not exist on type 'Shop'.
+src/pages/estimators/ElectricalEstimator.tsx(1023,18): error TS2339: Property 'area' does not exist on type 'Shop'.
+src/pages/estimators/ElectricalEstimator.tsx(1028,18): error TS2339: Property 'phone' does not exist on type 'Shop'.
+src/pages/estimators/ElectricalEstimator.tsx(1066,18): error TS2339: Property 'batchId' does not exist on type 'SelectedMaterialConfig'.
+src/pages/estimators/ElectricalEstimator.tsx(1112,13): error TS2353: Object literal may only specify known properties, and 'batchId' does not exist in type 'SelectedMaterialConfig'.
+src/pages/estimators/ElectricalEstimator.tsx(1135,17): error TS2339: Property 'batchId' does not exist on type 'SelectedMaterialConfig'.
+src/pages/estimators/ElectricalEstimator.tsx(1135,39): error TS2339: Property 'batchId' does not exist on type 'SelectedMaterialConfig'.
+src/pages/estimators/ElectricalEstimator.tsx(1145,40): error TS2339: Property 'batchId' does not exist on type 'SelectedMaterialConfig'.
+src/pages/estimators/ElectricalEstimator.tsx(1146,32): error TS2339: Property 'batchId' does not exist on type 'SelectedMaterialConfig'.
+src/pages/estimators/ElectricalEstimator.tsx(1151,28): error TS2339: Property 'quantity' does not exist on type 'Material'.
+src/pages/estimators/ElectricalEstimator.tsx(1437,26): error TS2345: Argument of type '(prev: SelectedMaterialConfig[]) => (SelectedMaterialConfig | { materialId: string; selectedShopId: string | undefined; selectedBrand: any; })[]' is not assignable to parameter of type 'SetStateAction<SelectedMaterialConfig[]>'.
+  Type '(prev: SelectedMaterialConfig[]) => (SelectedMaterialConfig | { materialId: string; selectedShopId: string | undefined; selectedBrand: any; })[]' is not assignable to type '(prevState: SelectedMaterialConfig[]) => SelectedMaterialConfig[]'.
+    Type '(SelectedMaterialConfig | { materialId: string; selectedShopId: string | undefined; selectedBrand: any; })[]' is not assignable to type 'SelectedMaterialConfig[]'.
+      Type 'SelectedMaterialConfig | { materialId: string; selectedShopId: string | undefined; selectedBrand: any; }' is not assignable to type 'SelectedMaterialConfig'.
+        Type '{ materialId: string; selectedShopId: string | undefined; selectedBrand: any; }' is not assignable to type 'SelectedMaterialConfig'.
+          Types of property 'selectedShopId' are incompatible.
+            Type 'string | undefined' is not assignable to type 'string'.
+              Type 'undefined' is not assignable to type 'string'.
+src/pages/estimators/ElectricalEstimator.tsx(1507,13): error TS7034: Variable 'savedToDelete' implicitly has type 'any[]' in some locations where its type cannot be determined.
+src/pages/estimators/ElectricalEstimator.tsx(1508,13): error TS7034: Variable 'newToDelete' implicitly has type 'any[]' in some locations where its type cannot be determined.
+src/pages/estimators/ElectricalEstimator.tsx(1526,25): error TS2339: Property 'batchId' does not exist on type 'SelectedMaterialConfig'.
+src/pages/estimators/ElectricalEstimator.tsx(1552,23): error TS7005: Variable 'savedToDelete' implicitly has an 'any[]' type.
+src/pages/estimators/ElectricalEstimator.tsx(1563,16): error TS7005: Variable 'newToDelete' implicitly has an 'any[]' type.
+src/pages/estimators/ElectricalEstimator.tsx(1566,24): error TS2339: Property 'batchId' does not exist on type 'SelectedMaterialConfig'.
+src/pages/estimators/ElectricalEstimator.tsx(1576,46): error TS2339: Property 'batchId' does not exist on type 'SelectedMaterialConfig'.
+src/pages/estimators/ElectricalEstimator.tsx(1628,20): error TS2339: Property 'batchId' does not exist on type 'SelectedMaterialConfig'.
+src/pages/estimators/ElectricalEstimator.tsx(2322,26): error TS7006: Parameter 'prev' implicitly has an 'any' type.
+src/pages/estimators/ElectricalEstimator.tsx(2660,32): error TS2802: Type 'MapIterator<[string, any[]]>' can only be iterated through when using the '--downlevelIteration' flag or with a '--target' of 'es2015' or higher.
+src/pages/estimators/ElectricalEstimator.tsx(3439,31): error TS7034: Variable 'filtered' implicitly has type 'any' in some locations where its type cannot be determined.
+src/pages/estimators/ElectricalEstimator.tsx(3455,33): error TS7005: Variable 'filtered' implicitly has an 'any' type.
+src/pages/estimators/ElectricalEstimator.tsx(5220,60): error TS2339: Property 'batchId' does not exist on type 'MaterialWithQuantity'.
+src/pages/estimators/ElectricalEstimator.tsx(5273,41): error TS2339: Property 'doorType' does not exist on type 'MaterialWithQuantity'.
+src/pages/estimators/ElectricalEstimator.tsx(5278,41): error TS2339: Property 'panelType' does not exist on type 'MaterialWithQuantity'.
+src/pages/estimators/ElectricalEstimator.tsx(5283,41): error TS2339: Property 'subOption' does not exist on type 'MaterialWithQuantity'.
+src/pages/estimators/ElectricalEstimator.tsx(5288,41): error TS2339: Property 'glazingType' does not exist on type 'MaterialWithQuantity'.
+src/pages/estimators/ElectricalEstimator.tsx(5464,39): error TS2503: Cannot find namespace 'JSX'.
+src/pages/estimators/ElectricalEstimator.tsx(5466,53): error TS2802: Type 'MapIterator<[string, any[]]>' can only be iterated through when using the '--downlevelIteration' flag or with a '--target' of 'es2015' or higher.
+src/pages/estimators/ElectricalEstimator.tsx(5472,66): error TS7006: Parameter 'k' implicitly has an 'any' type.
+src/pages/estimators/FalseCeilingEstimator.tsx(576,18): error TS2345: Argument of type 'string | null' is not assignable to parameter of type 'string | undefined'.
+  Type 'null' is not assignable to type 'string | undefined'.
+src/pages/estimators/FalseCeilingEstimator.tsx(576,55): error TS2345: Argument of type 'string | null' is not assignable to parameter of type 'string | undefined'.
+  Type 'null' is not assignable to type 'string | undefined'.
+src/pages/estimators/FalseCeilingEstimator.tsx(754,11): error TS2322: Type 'Material | null' is not assignable to type 'Material | undefined'.
+  Type 'null' is not assignable to type 'Material | undefined'.
+src/pages/estimators/FalseCeilingEstimator.tsx(774,22): error TS2339: Property 'batchId' does not exist on type 'SelectedMaterialConfig'.
+src/pages/estimators/FalseCeilingEstimator.tsx(774,45): error TS2339: Property 'batchId' does not exist on type 'SelectedMaterialConfig'.
+src/pages/estimators/FalseCeilingEstimator.tsx(779,60): error TS2345: Argument of type 'string | undefined' is not assignable to parameter of type 'string'.
+  Type 'undefined' is not assignable to type 'string'.
+src/pages/estimators/FalseCeilingEstimator.tsx(792,30): error TS2339: Property 'batchId' does not exist on type 'SelectedMaterialConfig'.
+src/pages/estimators/FalseCeilingEstimator.tsx(1030,18): error TS2339: Property 'address' does not exist on type 'Shop'.
+src/pages/estimators/FalseCeilingEstimator.tsx(1031,18): error TS2339: Property 'area' does not exist on type 'Shop'.
+src/pages/estimators/FalseCeilingEstimator.tsx(1036,18): error TS2339: Property 'phone' does not exist on type 'Shop'.
+src/pages/estimators/FalseCeilingEstimator.tsx(1074,18): error TS2339: Property 'batchId' does not exist on type 'SelectedMaterialConfig'.
+src/pages/estimators/FalseCeilingEstimator.tsx(1120,13): error TS2353: Object literal may only specify known properties, and 'batchId' does not exist in type 'SelectedMaterialConfig'.
+src/pages/estimators/FalseCeilingEstimator.tsx(1143,17): error TS2339: Property 'batchId' does not exist on type 'SelectedMaterialConfig'.
+src/pages/estimators/FalseCeilingEstimator.tsx(1143,39): error TS2339: Property 'batchId' does not exist on type 'SelectedMaterialConfig'.
+src/pages/estimators/FalseCeilingEstimator.tsx(1153,40): error TS2339: Property 'batchId' does not exist on type 'SelectedMaterialConfig'.
+src/pages/estimators/FalseCeilingEstimator.tsx(1154,32): error TS2339: Property 'batchId' does not exist on type 'SelectedMaterialConfig'.
+src/pages/estimators/FalseCeilingEstimator.tsx(1159,28): error TS2339: Property 'quantity' does not exist on type 'Material'.
+src/pages/estimators/FalseCeilingEstimator.tsx(1445,26): error TS2345: Argument of type '(prev: SelectedMaterialConfig[]) => (SelectedMaterialConfig | { materialId: string; selectedShopId: string | undefined; selectedBrand: any; })[]' is not assignable to parameter of type 'SetStateAction<SelectedMaterialConfig[]>'.
+  Type '(prev: SelectedMaterialConfig[]) => (SelectedMaterialConfig | { materialId: string; selectedShopId: string | undefined; selectedBrand: any; })[]' is not assignable to type '(prevState: SelectedMaterialConfig[]) => SelectedMaterialConfig[]'.
+    Type '(SelectedMaterialConfig | { materialId: string; selectedShopId: string | undefined; selectedBrand: any; })[]' is not assignable to type 'SelectedMaterialConfig[]'.
+      Type 'SelectedMaterialConfig | { materialId: string; selectedShopId: string | undefined; selectedBrand: any; }' is not assignable to type 'SelectedMaterialConfig'.
+        Type '{ materialId: string; selectedShopId: string | undefined; selectedBrand: any; }' is not assignable to type 'SelectedMaterialConfig'.
+          Types of property 'selectedShopId' are incompatible.
+            Type 'string | undefined' is not assignable to type 'string'.
+              Type 'undefined' is not assignable to type 'string'.
+src/pages/estimators/FalseCeilingEstimator.tsx(1515,13): error TS7034: Variable 'savedToDelete' implicitly has type 'any[]' in some locations where its type cannot be determined.
+src/pages/estimators/FalseCeilingEstimator.tsx(1516,13): error TS7034: Variable 'newToDelete' implicitly has type 'any[]' in some locations where its type cannot be determined.
+src/pages/estimators/FalseCeilingEstimator.tsx(1534,25): error TS2339: Property 'batchId' does not exist on type 'SelectedMaterialConfig'.
+src/pages/estimators/FalseCeilingEstimator.tsx(1560,23): error TS7005: Variable 'savedToDelete' implicitly has an 'any[]' type.
+src/pages/estimators/FalseCeilingEstimator.tsx(1571,16): error TS7005: Variable 'newToDelete' implicitly has an 'any[]' type.
+src/pages/estimators/FalseCeilingEstimator.tsx(1574,24): error TS2339: Property 'batchId' does not exist on type 'SelectedMaterialConfig'.
+src/pages/estimators/FalseCeilingEstimator.tsx(1584,46): error TS2339: Property 'batchId' does not exist on type 'SelectedMaterialConfig'.
+src/pages/estimators/FalseCeilingEstimator.tsx(1636,20): error TS2339: Property 'batchId' does not exist on type 'SelectedMaterialConfig'.
+src/pages/estimators/FalseCeilingEstimator.tsx(2330,26): error TS7006: Parameter 'prev' implicitly has an 'any' type.
+src/pages/estimators/FalseCeilingEstimator.tsx(2666,32): error TS2802: Type 'MapIterator<[string, any[]]>' can only be iterated through when using the '--downlevelIteration' flag or with a '--target' of 'es2015' or higher.
+src/pages/estimators/FalseCeilingEstimator.tsx(3445,31): error TS7034: Variable 'filtered' implicitly has type 'any' in some locations where its type cannot be determined.
+src/pages/estimators/FalseCeilingEstimator.tsx(3461,33): error TS7005: Variable 'filtered' implicitly has an 'any' type.
+src/pages/estimators/FalseCeilingEstimator.tsx(5226,60): error TS2339: Property 'batchId' does not exist on type 'MaterialWithQuantity'.
+src/pages/estimators/FalseCeilingEstimator.tsx(5279,41): error TS2339: Property 'doorType' does not exist on type 'MaterialWithQuantity'.
+src/pages/estimators/FalseCeilingEstimator.tsx(5284,41): error TS2339: Property 'panelType' does not exist on type 'MaterialWithQuantity'.
+src/pages/estimators/FalseCeilingEstimator.tsx(5289,41): error TS2339: Property 'subOption' does not exist on type 'MaterialWithQuantity'.
+src/pages/estimators/FalseCeilingEstimator.tsx(5294,41): error TS2339: Property 'glazingType' does not exist on type 'MaterialWithQuantity'.
+src/pages/estimators/FalseCeilingEstimator.tsx(5470,39): error TS2503: Cannot find namespace 'JSX'.
+src/pages/estimators/FalseCeilingEstimator.tsx(5472,53): error TS2802: Type 'MapIterator<[string, any[]]>' can only be iterated through when using the '--downlevelIteration' flag or with a '--target' of 'es2015' or higher.
+src/pages/estimators/FalseCeilingEstimator.tsx(5478,66): error TS7006: Parameter 'k' implicitly has an 'any' type.
+src/pages/estimators/FlooringEstimator.tsx(576,18): error TS2345: Argument of type 'string | null' is not assignable to parameter of type 'string | undefined'.
+  Type 'null' is not assignable to type 'string | undefined'.
+src/pages/estimators/FlooringEstimator.tsx(576,55): error TS2345: Argument of type 'string | null' is not assignable to parameter of type 'string | undefined'.
+  Type 'null' is not assignable to type 'string | undefined'.
+src/pages/estimators/FlooringEstimator.tsx(763,11): error TS2322: Type 'Material | null' is not assignable to type 'Material | undefined'.
+  Type 'null' is not assignable to type 'Material | undefined'.
+src/pages/estimators/FlooringEstimator.tsx(788,60): error TS2345: Argument of type 'string | undefined' is not assignable to parameter of type 'string'.
+  Type 'undefined' is not assignable to type 'string'.
+src/pages/estimators/FlooringEstimator.tsx(1031,18): error TS2339: Property 'address' does not exist on type 'Shop'.
+src/pages/estimators/FlooringEstimator.tsx(1032,18): error TS2339: Property 'area' does not exist on type 'Shop'.
+src/pages/estimators/FlooringEstimator.tsx(1037,18): error TS2339: Property 'phone' does not exist on type 'Shop'.
+src/pages/estimators/FlooringEstimator.tsx(1075,18): error TS2339: Property 'batchId' does not exist on type 'SelectedMaterialConfig'.
+src/pages/estimators/FlooringEstimator.tsx(1121,13): error TS2353: Object literal may only specify known properties, and 'batchId' does not exist in type 'SelectedMaterialConfig'.
+src/pages/estimators/FlooringEstimator.tsx(1144,17): error TS2339: Property 'batchId' does not exist on type 'SelectedMaterialConfig'.
+src/pages/estimators/FlooringEstimator.tsx(1144,39): error TS2339: Property 'batchId' does not exist on type 'SelectedMaterialConfig'.
+src/pages/estimators/FlooringEstimator.tsx(1154,40): error TS2339: Property 'batchId' does not exist on type 'SelectedMaterialConfig'.
+src/pages/estimators/FlooringEstimator.tsx(1155,32): error TS2339: Property 'batchId' does not exist on type 'SelectedMaterialConfig'.
+src/pages/estimators/FlooringEstimator.tsx(1160,28): error TS2339: Property 'quantity' does not exist on type 'Material'.
+src/pages/estimators/FlooringEstimator.tsx(1446,26): error TS2345: Argument of type '(prev: SelectedMaterialConfig[]) => (SelectedMaterialConfig | { materialId: string; selectedShopId: string | undefined; selectedBrand: any; })[]' is not assignable to parameter of type 'SetStateAction<SelectedMaterialConfig[]>'.
+  Type '(prev: SelectedMaterialConfig[]) => (SelectedMaterialConfig | { materialId: string; selectedShopId: string | undefined; selectedBrand: any; })[]' is not assignable to type '(prevState: SelectedMaterialConfig[]) => SelectedMaterialConfig[]'.
+    Type '(SelectedMaterialConfig | { materialId: string; selectedShopId: string | undefined; selectedBrand: any; })[]' is not assignable to type 'SelectedMaterialConfig[]'.
+      Type 'SelectedMaterialConfig | { materialId: string; selectedShopId: string | undefined; selectedBrand: any; }' is not assignable to type 'SelectedMaterialConfig'.
+        Type '{ materialId: string; selectedShopId: string | undefined; selectedBrand: any; }' is not assignable to type 'SelectedMaterialConfig'.
+          Types of property 'selectedShopId' are incompatible.
+            Type 'string | undefined' is not assignable to type 'string'.
+              Type 'undefined' is not assignable to type 'string'.
+src/pages/estimators/FlooringEstimator.tsx(1516,13): error TS7034: Variable 'savedToDelete' implicitly has type 'any[]' in some locations where its type cannot be determined.
+src/pages/estimators/FlooringEstimator.tsx(1517,13): error TS7034: Variable 'newToDelete' implicitly has type 'any[]' in some locations where its type cannot be determined.
+src/pages/estimators/FlooringEstimator.tsx(1535,25): error TS2339: Property 'batchId' does not exist on type 'SelectedMaterialConfig'.
+src/pages/estimators/FlooringEstimator.tsx(1561,23): error TS7005: Variable 'savedToDelete' implicitly has an 'any[]' type.
+src/pages/estimators/FlooringEstimator.tsx(1572,16): error TS7005: Variable 'newToDelete' implicitly has an 'any[]' type.
+src/pages/estimators/FlooringEstimator.tsx(1575,24): error TS2339: Property 'batchId' does not exist on type 'SelectedMaterialConfig'.
+src/pages/estimators/FlooringEstimator.tsx(1585,46): error TS2339: Property 'batchId' does not exist on type 'SelectedMaterialConfig'.
+src/pages/estimators/FlooringEstimator.tsx(1637,20): error TS2339: Property 'batchId' does not exist on type 'SelectedMaterialConfig'.
+src/pages/estimators/FlooringEstimator.tsx(2331,26): error TS7006: Parameter 'prev' implicitly has an 'any' type.
+src/pages/estimators/FlooringEstimator.tsx(2660,32): error TS2802: Type 'MapIterator<[string, any[]]>' can only be iterated through when using the '--downlevelIteration' flag or with a '--target' of 'es2015' or higher.
+src/pages/estimators/FlooringEstimator.tsx(3436,31): error TS7034: Variable 'filtered' implicitly has type 'any' in some locations where its type cannot be determined.
+src/pages/estimators/FlooringEstimator.tsx(3452,33): error TS7005: Variable 'filtered' implicitly has an 'any' type.
+src/pages/estimators/FlooringEstimator.tsx(5215,60): error TS2339: Property 'batchId' does not exist on type 'MaterialWithQuantity'.
+src/pages/estimators/FlooringEstimator.tsx(5268,41): error TS2339: Property 'doorType' does not exist on type 'MaterialWithQuantity'.
+src/pages/estimators/FlooringEstimator.tsx(5273,41): error TS2339: Property 'panelType' does not exist on type 'MaterialWithQuantity'.
+src/pages/estimators/FlooringEstimator.tsx(5278,41): error TS2339: Property 'subOption' does not exist on type 'MaterialWithQuantity'.
+src/pages/estimators/FlooringEstimator.tsx(5283,41): error TS2339: Property 'glazingType' does not exist on type 'MaterialWithQuantity'.
+src/pages/estimators/FlooringEstimator.tsx(5457,39): error TS2503: Cannot find namespace 'JSX'.
+src/pages/estimators/FlooringEstimator.tsx(5459,53): error TS2802: Type 'MapIterator<[string, any[]]>' can only be iterated through when using the '--downlevelIteration' flag or with a '--target' of 'es2015' or higher.
+src/pages/estimators/FlooringEstimator.tsx(5465,66): error TS7006: Parameter 'k' implicitly has an 'any' type.
+src/pages/estimators/PaintingEstimator.tsx(424,38): error TS2538: Type 'undefined' cannot be used as an index type.
+src/pages/estimators/PaintingEstimator.tsx(429,39): error TS2538: Type 'undefined' cannot be used as an index type.
+src/pages/estimators/PlumbingEstimator.tsx(1624,65): error TS2339: Property 'productLabel' does not exist on type '{ quantity: number; supplyRate: number; installRate: number; shopName: string; supplyAmount: number; installAmount: number; id?: string | undefined; name?: string | undefined; code?: string | undefined; ... 21 more ...; created_at?: string | undefined; }'.
+src/pages/FinalizeBoq.tsx(333,19): error TS2304: Cannot find name 'openDeleteConfirm'.
+src/pages/FinalizeBoq.tsx(333,86): error TS7006: Parameter 'action' implicitly has an 'any' type.
+src/pages/Login.tsx(49,9): error TS2322: Type 'UserRole' is not assignable to type 'Role'.
+  Type 'null' is not assignable to type 'Role'.
+src/pages/Signup.tsx(181,9): error TS2345: Argument of type 'UserRole | null' is not assignable to parameter of type 'UserRole'.
+  Type '"user_client"' is not assignable to type 'UserRole'.
+src/pages/supplier/SupplierMaterials.tsx(127,61): error TS2339: Property 'approved' does not exist on type 'Shop'.
+src/pages/UserManual.tsx(221,14): error TS2739: Type '{}' is missing the following properties from type 'SidebarProps': isOpen, setIsOpen
+../server/storage.ts(321,16): error TS2802: Type 'MapIterator<{ id: string; role: string; username: string; fullName: string | null; password: string; approved: string; updatedAt: Date; mobileNumber: string | null; department: string | null; ... 5 more ...; createdAt: Date; }>' can only be iterated through when using the '--downlevelIteration' flag or with a '--target' of 'es2015' or higher.
+../server/storage.ts(325,16): error TS2802: Type 'MapIterator<{ id: string; role: string; username: string; fullName: string | null; password: string; approved: string; updatedAt: Date; mobileNumber: string | null; department: string | null; ... 5 more ...; createdAt: Date; }>' can only be iterated through when using the '--downlevelIteration' flag or with a '--target' of 'es2015' or higher.
