@@ -534,5 +534,702 @@
     "status": "archived",
     "archivedAt": "2026-03-26T06:08:15.409Z",
     "trashedAt": null
+  },
+  {
+    "id": "f82104d1-9ffe-45e0-8893-fb60ad54e23e",
+    "module": "products",
+    "originId": "1398f602-c645-4c1c-a680-d5a9fa95f4a3",
+    "data": {
+      "id": "1398f602-c645-4c1c-a680-d5a9fa95f4a3",
+      "name": "demo ",
+      "created_at": "2026-03-26T05:38:21.518Z",
+      "created_by": "VoltAmpele@gmail.com",
+      "subcategory": "Abradives (grind, polish, cut, or finish softer) Buffering Paper",
+      "tax_code_type": null,
+      "tax_code_value": null,
+      "hsn_code": null,
+      "sac_code": null,
+      "image": null,
+      "is_archived": false,
+      "is_trashed": false,
+      "trashed_at": null
+    },
+    "status": "trashed",
+    "archivedAt": "2026-03-26T11:08:34.257Z",
+    "trashedAt": "2026-03-26T11:08:34.305Z"
+  },
+  {
+    "id": "432992cc-c776-471d-982b-e3c8bf91f4eb",
+    "module": "boq_versions",
+    "originId": "ver-1773923309846-acyepgpaz",
+    "data": {
+      "id": "ver-1773923309846-acyepgpaz",
+      "project_id": "proj-1771305708831-8y772i430",
+      "version_number": 10,
+      "status": "draft",
+      "created_at": "2026-03-19T06:58:29.971Z",
+      "updated_at": "2026-03-19T06:58:29.971Z",
+      "edited_fields": {},
+      "project_name": "demo dont delete this sir",
+      "project_client": "hi",
+      "project_location": "abc",
+      "column_config": null,
+      "project_client_address": null,
+      "project_gst_no": null,
+      "project_value": "177076.18",
+      "rejection_reason": null,
+      "is_cleared": false,
+      "type": "bom",
+      "project_sqft": null,
+      "is_locked": false,
+      "last_template_snapshot": null,
+      "is_archived": false,
+      "is_trashed": false,
+      "trashed_at": null
+    },
+    "status": "trashed",
+    "archivedAt": "2026-03-26T12:39:41.581Z",
+    "trashedAt": "2026-03-26T12:39:41.582Z"
+  },
+  {
+    "id": "50a45789-6360-4ed4-b36b-20f4bd6f92d3",
+    "module": "boq_versions",
+    "originId": "ver-1773989417380-vluu925kh",
+    "data": {
+      "id": "ver-1773989417380-vluu925kh",
+      "project_id": "proj-1771305708831-8y772i430",
+      "version_number": 4,
+      "status": "draft",
+      "created_at": "2026-03-20T01:20:17.395Z",
+      "updated_at": "2026-03-20T01:20:17.395Z",
+      "edited_fields": {},
+      "project_name": "demo dont delete this sir",
+      "project_client": "hi",
+      "project_location": "abc",
+      "column_config": null,
+      "project_client_address": null,
+      "project_gst_no": null,
+      "project_value": "1172899",
+      "rejection_reason": null,
+      "is_cleared": false,
+      "type": "boq",
+      "project_sqft": null,
+      "is_locked": false,
+      "last_template_snapshot": null,
+      "is_archived": false,
+      "is_trashed": false,
+      "trashed_at": null
+    },
+    "status": "trashed",
+    "archivedAt": "2026-03-26T12:39:50.148Z",
+    "trashedAt": "2026-03-26T12:39:50.150Z"
+  },
+  {
+    "id": "d75975a9-6877-4a89-b236-fc6fce725be7",
+    "module": "boq_versions",
+    "originId": "ver-1774243824554-u79ancns7",
+    "data": {
+      "id": "ver-1774243824554-u79ancns7",
+      "project_id": "proj-1771305708831-8y772i430",
+      "version_number": 5,
+      "status": "draft",
+      "created_at": "2026-03-23T00:00:24.567Z",
+      "updated_at": "2026-03-23T00:00:24.567Z",
+      "edited_fields": {},
+      "project_name": "demo dont delete this sir",
+      "project_client": "hi",
+      "project_location": "abc",
+      "column_config": null,
+      "project_client_address": null,
+      "project_gst_no": null,
+      "project_value": "3518753",
+      "rejection_reason": null,
+      "is_cleared": false,
+      "type": "boq",
+      "project_sqft": null,
+      "is_locked": false,
+      "last_template_snapshot": {
+        "columns": [
+          {
+            "name": "GST 18%",
+            "isTotal": false,
+            "operator": "%",
+            "baseValue": 0,
+            "baseSource": "Override Total",
+            "isPercentage": true,
+            "percentageValue": 18,
+            "multiplierSource": "manual"
+          },
+          {
+            "name": "Finance 10%",
+            "isTotal": false,
+            "operator": "%",
+            "baseValue": 0,
+            "baseSource": "Override Total",
+            "isPercentage": true,
+            "percentageValue": 10,
+            "multiplierSource": "manual"
+          },
+          {
+            "name": "Margin 35%",
+            "isTotal": false,
+            "operator": "%",
+            "baseValue": 0,
+            "baseSource": "Override Total",
+            "isPercentage": true,
+            "percentageValue": 35,
+            "multiplierSource": "manual"
+          },
+          {
+            "name": "Others 10%",
+            "isTotal": false,
+            "operator": "%",
+            "baseValue": 0,
+            "baseSource": "Override Total",
+            "isPercentage": true,
+            "percentageValue": 10,
+            "multiplierSource": "manual"
+          },
+          {
+            "name": "Margin Total",
+            "isTotal": true
+          },
+          {
+            "name": "Negotiation 10%",
+            "isTotal": false,
+            "operator": "%",
+            "baseValue": 0,
+            "baseSource": "Margin Total",
+            "isPercentage": true,
+            "percentageValue": 10,
+            "multiplierSource": "manual"
+          },
+          {
+            "name": "Final Total",
+            "isTotal": true
+          },
+          {
+            "name": "Rate/Item",
+            "isTotal": false,
+            "operator": "/",
+            "baseValue": 0,
+            "baseSource": "Final Total",
+            "isPercentage": true,
+            "percentageValue": 0,
+            "multiplierSource": "Qty"
+          },
+          {
+            "name": "Supply Rate",
+            "isTotal": false,
+            "operator": "%",
+            "baseValue": 0,
+            "baseSource": "Rate/Item",
+            "isPercentage": true,
+            "percentageValue": 90,
+            "multiplierSource": "manual"
+          },
+          {
+            "name": "Labour Rate",
+            "isTotal": false,
+            "operator": "%",
+            "baseValue": 0,
+            "baseSource": "Rate/Item",
+            "isPercentage": true,
+            "percentageValue": 10,
+            "multiplierSource": "manual"
+          },
+          {
+            "name": "Supply Amount",
+            "isTotal": false,
+            "operator": "*",
+            "baseValue": 0,
+            "baseSource": "Supply Rate",
+            "isPercentage": true,
+            "percentageValue": 0,
+            "multiplierSource": "Qty"
+          },
+          {
+            "name": "Labour Amount",
+            "isTotal": false,
+            "operator": "*",
+            "baseValue": 0,
+            "baseSource": "Labour Rate",
+            "isPercentage": true,
+            "percentageValue": 0,
+            "multiplierSource": "Qty"
+          }
+        ],
+        "itemData": {
+          "item-1774243824581-lqxgmgp8r": {
+            "qty": "",
+            "rate": "",
+            "unit": "",
+            "columns": [
+              {
+                "name": "GST 18%",
+                "isTotal": false,
+                "operator": "%",
+                "baseValue": 0,
+                "baseSource": "Override Total",
+                "isPercentage": true,
+                "percentageValue": 18,
+                "multiplierSource": "manual"
+              },
+              {
+                "name": "Finance 10%",
+                "isTotal": false,
+                "operator": "%",
+                "baseValue": 0,
+                "baseSource": "Override Total",
+                "isPercentage": true,
+                "percentageValue": 10,
+                "multiplierSource": "manual"
+              },
+              {
+                "name": "Margin 35%",
+                "isTotal": false,
+                "operator": "%",
+                "baseValue": 0,
+                "baseSource": "Override Total",
+                "isPercentage": true,
+                "percentageValue": 35,
+                "multiplierSource": "manual"
+              },
+              {
+                "name": "Others 10%",
+                "isTotal": false,
+                "operator": "%",
+                "baseValue": 0,
+                "baseSource": "Override Total",
+                "isPercentage": true,
+                "percentageValue": 10,
+                "multiplierSource": "manual"
+              },
+              {
+                "name": "Margin Total",
+                "isTotal": true
+              },
+              {
+                "name": "Negotiation 10%",
+                "isTotal": false,
+                "operator": "%",
+                "baseValue": 0,
+                "baseSource": "Margin Total",
+                "isPercentage": true,
+                "percentageValue": 10,
+                "multiplierSource": "manual"
+              },
+              {
+                "name": "Final Total",
+                "isTotal": true
+              },
+              {
+                "name": "Rate/Item",
+                "isTotal": false,
+                "operator": "/",
+                "baseValue": 0,
+                "baseSource": "Final Total",
+                "isPercentage": true,
+                "percentageValue": 0,
+                "multiplierSource": "Qty"
+              },
+              {
+                "name": "Supply Rate",
+                "isTotal": false,
+                "operator": "%",
+                "baseValue": 0,
+                "baseSource": "Rate/Item",
+                "isPercentage": true,
+                "percentageValue": 90,
+                "multiplierSource": "manual"
+              },
+              {
+                "name": "Labour Rate",
+                "isTotal": false,
+                "operator": "%",
+                "baseValue": 0,
+                "baseSource": "Rate/Item",
+                "isPercentage": true,
+                "percentageValue": 10,
+                "multiplierSource": "manual"
+              },
+              {
+                "name": "Supply Amount",
+                "isTotal": false,
+                "operator": "*",
+                "baseValue": 0,
+                "baseSource": "Supply Rate",
+                "isPercentage": true,
+                "percentageValue": 0,
+                "multiplierSource": "Qty"
+              },
+              {
+                "name": "Labour Amount",
+                "isTotal": false,
+                "operator": "*",
+                "baseValue": 0,
+                "baseSource": "Labour Rate",
+                "isPercentage": true,
+                "percentageValue": 0,
+                "multiplierSource": "Qty"
+              }
+            ],
+            "description": "Consolidated configuration for demo test"
+          },
+          "item-1774243824598-fk9tsl63y": {
+            "qty": "",
+            "rate": "",
+            "unit": "",
+            "columns": [
+              {
+                "name": "GST 18%",
+                "isTotal": false,
+                "operator": "%",
+                "baseValue": 0,
+                "baseSource": "Override Total",
+                "isPercentage": true,
+                "percentageValue": 18,
+                "multiplierSource": "manual"
+              },
+              {
+                "name": "Finance 10%",
+                "isTotal": false,
+                "operator": "%",
+                "baseValue": 0,
+                "baseSource": "Override Total",
+                "isPercentage": true,
+                "percentageValue": 10,
+                "multiplierSource": "manual"
+              },
+              {
+                "name": "Margin 35%",
+                "isTotal": false,
+                "operator": "%",
+                "baseValue": 0,
+                "baseSource": "Override Total",
+                "isPercentage": true,
+                "percentageValue": 35,
+                "multiplierSource": "manual"
+              },
+              {
+                "name": "Others 10%",
+                "isTotal": false,
+                "operator": "%",
+                "baseValue": 0,
+                "baseSource": "Override Total",
+                "isPercentage": true,
+                "percentageValue": 10,
+                "multiplierSource": "manual"
+              },
+              {
+                "name": "Margin Total",
+                "isTotal": true
+              },
+              {
+                "name": "Negotiation 10%",
+                "isTotal": false,
+                "operator": "%",
+                "baseValue": 0,
+                "baseSource": "Margin Total",
+                "isPercentage": true,
+                "percentageValue": 10,
+                "multiplierSource": "manual"
+              },
+              {
+                "name": "Final Total",
+                "isTotal": true
+              },
+              {
+                "name": "Rate/Item",
+                "isTotal": false,
+                "operator": "/",
+                "baseValue": 0,
+                "baseSource": "Final Total",
+                "isPercentage": true,
+                "percentageValue": 0,
+                "multiplierSource": "Qty"
+              },
+              {
+                "name": "Supply Rate",
+                "isTotal": false,
+                "operator": "%",
+                "baseValue": 0,
+                "baseSource": "Rate/Item",
+                "isPercentage": true,
+                "percentageValue": 90,
+                "multiplierSource": "manual"
+              },
+              {
+                "name": "Labour Rate",
+                "isTotal": false,
+                "operator": "%",
+                "baseValue": 0,
+                "baseSource": "Rate/Item",
+                "isPercentage": true,
+                "percentageValue": 10,
+                "multiplierSource": "manual"
+              },
+              {
+                "name": "Supply Amount",
+                "isTotal": false,
+                "operator": "*",
+                "baseValue": 0,
+                "baseSource": "Supply Rate",
+                "isPercentage": true,
+                "percentageValue": 0,
+                "multiplierSource": "Qty"
+              },
+              {
+                "name": "Labour Amount",
+                "isTotal": false,
+                "operator": "*",
+                "baseValue": 0,
+                "baseSource": "Labour Rate",
+                "isPercentage": true,
+                "percentageValue": 0,
+                "multiplierSource": "Qty"
+              }
+            ],
+            "description": "testing the description and the hsn or sac "
+          }
+        },
+        "templateId": "2cbfc870-b761-4609-bbc1-01a259790592",
+        "templateName": "Hexaware SEZ",
+        "globalSettings": {
+          "Margin": {
+            "operator": "%",
+            "baseValue": 0,
+            "baseSource": "manual",
+            "percentageValue": 3,
+            "multiplierSource": "manual"
+          },
+          "GST 18%": {
+            "operator": "%",
+            "baseValue": 0,
+            "baseSource": "Override Total",
+            "percentageValue": 18,
+            "multiplierSource": "manual"
+          },
+          "Others 8%": {
+            "operator": "%",
+            "baseValue": 0,
+            "baseSource": "Override Total",
+            "percentageValue": 10,
+            "multiplierSource": "manual"
+          },
+          "Rate/Item": {
+            "operator": "/",
+            "baseValue": 0,
+            "baseSource": "Final Total",
+            "percentageValue": 0,
+            "multiplierSource": "Qty"
+          },
+          "Margin 25%": {
+            "operator": "%",
+            "baseValue": 0,
+            "baseSource": "Override Total",
+            "percentageValue": 0,
+            "multiplierSource": "manual"
+          },
+          "Margin 35%": {
+            "operator": "%",
+            "baseValue": 0,
+            "baseSource": "Override Total",
+            "percentageValue": 35,
+            "multiplierSource": "manual"
+          },
+          "Others 10%": {
+            "operator": "%",
+            "baseValue": 0,
+            "baseSource": "Override Total",
+            "percentageValue": 10,
+            "multiplierSource": "manual"
+          },
+          "Finance 10%": {
+            "operator": "%",
+            "baseValue": 0,
+            "baseSource": "Override Total",
+            "percentageValue": 10,
+            "multiplierSource": "manual"
+          },
+          "Labour Rate": {
+            "operator": "%",
+            "baseValue": 0,
+            "baseSource": "Rate/Item",
+            "percentageValue": 10,
+            "multiplierSource": "manual"
+          },
+          "Supply Rate": {
+            "operator": "%",
+            "baseValue": 0,
+            "baseSource": "Rate/Item",
+            "percentageValue": 90,
+            "multiplierSource": "manual"
+          },
+          "Labour Amount": {
+            "operator": "*",
+            "baseValue": 0,
+            "baseSource": "Labour Rate",
+            "percentageValue": 0,
+            "multiplierSource": "Qty"
+          },
+          "Supply Amount": {
+            "operator": "*",
+            "baseValue": 0,
+            "baseSource": "Supply Rate",
+            "percentageValue": 0,
+            "multiplierSource": "Qty"
+          },
+          "Negotiation 10%": {
+            "operator": "%",
+            "baseValue": 0,
+            "baseSource": "Margin Total",
+            "percentageValue": 10,
+            "multiplierSource": "manual"
+          }
+        }
+      },
+      "is_archived": false,
+      "is_trashed": false,
+      "trashed_at": null
+    },
+    "status": "trashed",
+    "archivedAt": "2026-03-26T12:39:56.243Z",
+    "trashedAt": "2026-03-26T12:39:56.246Z"
+  },
+  {
+    "id": "bfaa308b-479d-4c60-8225-2f2e25b82db6",
+    "module": "boq_items",
+    "originId": "item-1774505291593-9skixk2o0",
+    "data": {
+      "id": "item-1774505291593-9skixk2o0",
+      "project_id": "proj-1771305708831-8y772i430",
+      "estimator": "civilwall",
+      "table_data": {
+        "image": null,
+        "hsn_code": null,
+        "sac_code": null,
+        "created_at": "2026-03-26T06:08:11.515Z",
+        "product_id": "c5b9d0da-1366-471e-91f9-e1e0ba6d9a31",
+        "configBasis": {
+          "baseRequiredQty": 50,
+          "requiredUnitType": "Sqft",
+          "wastagePctDefault": 0
+        },
+        "subcategory": "Wallpaper",
+        "hsn_sac_code": null,
+        "hsn_sac_type": null,
+        "product_name": "Wall Paper Supply and Fixing",
+        "step11_items": [
+          {
+            "id": "CONSOLIDATED_c5b9d0da-1366-471e-91f9-e1e0ba6d9a31_c6ce9330-549a-4cdd-8560-121903292a68",
+            "qty": 1,
+            "unit": "Sqft",
+            "title": "Wall Paper Supply and Fixing",
+            "bill_no": "PRODUCT_c5b9d0da-1366-471e-91f9-e1e0ba6d9a31",
+            "group_id": "c5b9d0da-1366-471e-91f9-e1e0ba6d9a31",
+            "config_id": "c6ce9330-549a-4cdd-8560-121903292a68",
+            "estimator": "civilwall",
+            "description": "Supply and Laying of Wall paper of approved Shade",
+            "supply_rate": 4800,
+            "install_rate": 0,
+            "step11_items": [
+              {
+                "id": "c6ce9330-549a-4cdd-8560-121903292a68_0",
+                "qty": 1,
+                "unit": "Sqft",
+                "title": "Wall Paper (Excel-4042-5)-Roll  ",
+                "bill_no": "TEMPLATE_c5b9d0da-1366-471e-91f9-e1e0ba6d9a31_Latest Draft_0",
+                "group_id": "c5b9d0da-1366-471e-91f9-e1e0ba6d9a31",
+                "config_id": "c6ce9330-549a-4cdd-8560-121903292a68",
+                "estimator": "civilwall",
+                "shop_name": "Madharas Wallpaper",
+                "description": "Wall Paper Supply and Fixing - Wall Paper (Excel-4042-5)-Roll  ",
+                "material_id": "7f84c805-3b64-4eaa-b890-0a556fb9701c",
+                "supply_rate": 4000,
+                "install_rate": 0
+              },
+              {
+                "id": "c6ce9330-549a-4cdd-8560-121903292a68_1",
+                "qty": 1,
+                "unit": "Sqft",
+                "title": "Wall Paper Laying Labour   Charges Per Roll",
+                "bill_no": "TEMPLATE_c5b9d0da-1366-471e-91f9-e1e0ba6d9a31_Latest Draft_1",
+                "group_id": "c5b9d0da-1366-471e-91f9-e1e0ba6d9a31",
+                "config_id": "c6ce9330-549a-4cdd-8560-121903292a68",
+                "estimator": "civilwall",
+                "shop_name": "Madharas Wallpaper",
+                "description": "Wall Paper Supply and Fixing - Wall Paper Laying Labour   Charges Per Roll",
+                "material_id": "669d93d1-b569-4ab0-9b5c-276d34a03a14",
+                "supply_rate": 800,
+                "install_rate": 0
+              }
+            ]
+          }
+        ],
+        "materialLines": [
+          {
+            "id": "7f84c805-3b64-4eaa-b890-0a556fb9701c",
+            "name": "Wall Paper (Excel-4042-5)-Roll  ",
+            "unit": "Roll",
+            "baseQty": 1,
+            "shop_name": "Madharas Wallpaper",
+            "supplyRate": 4000,
+            "installRate": 0
+          },
+          {
+            "id": "669d93d1-b569-4ab0-9b5c-276d34a03a14",
+            "name": "Wall Paper Laying Labour   Charges Per Roll",
+            "unit": "Roll",
+            "baseQty": 1,
+            "shop_name": "Madharas Wallpaper",
+            "supplyRate": 800,
+            "installRate": 0
+          }
+        ],
+        "targetRequiredQty": 100,
+        "finalize_description": "Supply and Laying of Wall paper of approved Shade"
+      },
+      "created_at": "2026-03-26T00:38:11.997Z",
+      "user_added": true,
+      "version_id": "ver-1773985379412-0umcjjfo8",
+      "sort_order": 5
+    },
+    "status": "archived",
+    "archivedAt": "2026-03-26T12:40:04.810Z",
+    "trashedAt": null
+  },
+  {
+    "id": "97876f5c-c327-49a5-a366-2efdb23167f7",
+    "module": "boq_versions",
+    "originId": "ver-1774529455019-6jcdog1ck",
+    "data": {
+      "id": "ver-1774529455019-6jcdog1ck",
+      "project_id": "proj-1771305708831-8y772i430",
+      "version_number": 13,
+      "status": "draft",
+      "created_at": "2026-03-26T07:20:55.619Z",
+      "updated_at": "2026-03-26T07:20:55.619Z",
+      "edited_fields": {},
+      "project_name": "demo dont delete this sir",
+      "project_client": "hi",
+      "project_location": "abc",
+      "column_config": null,
+      "project_client_address": null,
+      "project_gst_no": null,
+      "project_value": "3518753",
+      "rejection_reason": null,
+      "is_cleared": false,
+      "type": "bom",
+      "project_sqft": null,
+      "is_locked": false,
+      "last_template_snapshot": null,
+      "is_archived": false,
+      "is_trashed": false,
+      "trashed_at": null
+    },
+    "status": "trashed",
+    "archivedAt": "2026-03-26T12:56:54.716Z",
+    "trashedAt": "2026-03-26T12:56:54.724Z"
   }
 ]

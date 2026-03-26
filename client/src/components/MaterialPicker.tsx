@@ -15,6 +15,7 @@ type Material = {
   id: string;
   name: string;
   code: string;
+  image?: string;
   category?: string;
   subcategory?: string;
   vendor_category?: string;
@@ -27,6 +28,16 @@ type Material = {
   rate?: number;
   created_at: string;
   updated_at: string;
+};
+
+const parseImages = (imageField: string | null | undefined): string[] => {
+  if (!imageField) return [];
+  try {
+    if (imageField.startsWith('[')) return JSON.parse(imageField);
+    return [imageField];
+  } catch (e) {
+    return [imageField];
+  }
 };
 
 type MaterialPickerProps = {
@@ -160,40 +171,53 @@ export default function MaterialPicker({
                   onClick={() => handleMaterialSelect(material)}
                   className="w-full justify-start h-auto py-3 px-4 hover:border-blue-300 hover:bg-blue-50/30 transition-colors"
                 >
-                  <div className="text-left w-full">
-                    <div className="flex justify-between items-start">
-                      <div className="font-bold text-gray-900">{material.name}</div>
-                      <div className="text-[10px] font-mono bg-gray-100 text-gray-600 px-1.5 py-0.5 rounded">
-                        {material.code}
-                      </div>
-                    </div>
-
-                    <div className="flex flex-wrap gap-x-3 gap-y-1 mt-1">
-                      {material.shop_name && (
-                        <div className="text-xs font-semibold text-blue-700 flex items-center">
-                          <span className="w-2 h-2 rounded-full bg-blue-500 mr-1.5"></span>
-                          {material.shop_name}
-                        </div>
+                  <div className="flex items-center gap-4 w-full">
+                    <div className="h-14 w-14 border rounded bg-gray-50 overflow-hidden flex items-center justify-center shrink-0">
+                      {material.image ? (
+                        <img
+                          src={parseImages(material.image)[0]}
+                          alt=""
+                          className="max-w-full max-h-full object-contain"
+                        />
+                      ) : (
+                        <div className="text-[10px] text-gray-400 font-bold uppercase text-center p-1">No Icon</div>
                       )}
-                      {material.category && (
+                    </div>
+                    <div className="text-left w-full flex-1">
+                      <div className="flex justify-between items-start">
+                        <div className="font-bold text-gray-900">{material.name}</div>
+                        <div className="text-[10px] font-mono bg-gray-100 text-gray-600 px-1.5 py-0.5 rounded ml-2 shrink-0">
+                          {material.code}
+                        </div>
+                      </div>
+
+                      <div className="flex flex-wrap gap-x-3 gap-y-1 mt-1">
+                        {material.shop_name && (
+                          <div className="text-xs font-semibold text-blue-700 flex items-center">
+                            <span className="w-2 h-2 rounded-full bg-blue-500 mr-1.5"></span>
+                            {material.shop_name}
+                          </div>
+                        )}
+                        {material.category && (
+                          <div className="text-[11px] text-gray-500">
+                            {material.category} {material.subcategory && ` → ${material.subcategory}`}
+                          </div>
+                        )}
+                        {material.hsn_code && (
+                          <div className="text-[10px] bg-amber-50 text-amber-700 px-1 rounded">HSN: {material.hsn_code}</div>
+                        )}
+                        {material.sac_code && (
+                          <div className="text-[10px] bg-blue-50 text-blue-700 px-1 rounded">SAC: {material.sac_code}</div>
+                        )}
+                      </div>
+
+                      <div className="flex justify-between items-center mt-2 pt-2 border-t border-gray-100 italic">
                         <div className="text-[11px] text-gray-500">
-                          {material.category} {material.subcategory && ` → ${material.subcategory}`}
+                          {material.unit || "unit"}
                         </div>
-                      )}
-                      {material.hsn_code && (
-                        <div className="text-[10px] bg-amber-50 text-amber-700 px-1 rounded">HSN: {material.hsn_code}</div>
-                      )}
-                      {material.sac_code && (
-                        <div className="text-[10px] bg-blue-50 text-blue-700 px-1 rounded">SAC: {material.sac_code}</div>
-                      )}
-                    </div>
-
-                    <div className="flex justify-between items-center mt-2 pt-2 border-t border-gray-100 italic">
-                      <div className="text-[11px] text-gray-500">
-                        {material.unit || "unit"}
-                      </div>
-                      <div className="font-extrabold text-green-700">
-                        ₹{Number(material.rate || 0).toLocaleString()}
+                        <div className="font-extrabold text-green-700">
+                          ₹{Number(material.rate || 0).toLocaleString()}
+                        </div>
                       </div>
                     </div>
                   </div>

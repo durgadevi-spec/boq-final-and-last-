@@ -62,6 +62,9 @@ import PORequestApprovals from "@/pages/admin/PORequestApprovals";
 import ApprovedPORequests from "@/pages/admin/ApprovedPORequests";
 import PORequestDetail from "@/pages/PORequestDetail";
 import UserManual from "@/pages/UserManual";
+import SiteReports from "@/pages/SiteReports";
+import CreateSiteReport from "@/pages/CreateSiteReport";
+import SiteReportDetail from "@/pages/SiteReportDetail";
 
 function Router() {
   return (
@@ -142,6 +145,11 @@ function Router() {
       <Route path="/supplier/materials" component={SupplierMaterials} />
       <Route path="/supplier/support" component={() => <SupplierSupport />} />
       <Route path="/supplier/dashboard" component={SupplierDashboard} />
+
+      {/* ================= SITE MANAGEMENT ================= */}
+      <Route path="/site-reports" component={SiteReports} />
+      <Route path="/site-reports/new" component={CreateSiteReport} />
+      <Route path="/site-reports/:id" component={SiteReportDetail} />
 
       {/* ================= FALLBACK ================= */}
       <Route component={NotFound} />

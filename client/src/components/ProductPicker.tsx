@@ -31,6 +31,16 @@ type ProductPickerProps = {
   onOpenChange: (open: boolean) => void;
 };
 
+const parseImages = (imageField: string | null | undefined): string[] => {
+  if (!imageField) return [];
+  try {
+    if (imageField.startsWith('[')) return JSON.parse(imageField);
+    return [imageField];
+  } catch (e) {
+    return [imageField];
+  }
+};
+
 export default function ProductPicker({
   onSelectProduct,
   selectedProjectId,
@@ -149,28 +159,41 @@ export default function ProductPicker({
                 : "No products match your search"}
             </div>
           ) : (
-            <div className="space-y-2 max-h-96 overflow-y-auto">
+            <div className="space-y-2 max-h-96 overflow-y-auto pr-2">
               {filteredProducts.map((product) => (
                 <Button
                   key={product.id}
                   variant="outline"
                   onClick={() => handleProductSelect(product)}
-                  className="w-full justify-start h-auto py-3 px-4"
+                  className="w-full justify-start h-auto py-3 px-4 hover:border-blue-300 hover:bg-blue-50/30 transition-colors"
                 >
-                  <div className="text-left space-y-1">
-                    <div className="font-semibold">{product.name}</div>
-                    <div className="text-xs text-gray-500">
-                      {product.category_name && product.subcategory_name
-                        ? `${product.category_name} → ${product.subcategory_name}`
-                        : product.category
-                          ? product.category
-                          : "No category"}
+                  <div className="flex items-center gap-4 w-full">
+                    <div className="h-12 w-12 border rounded bg-gray-50 overflow-hidden flex items-center justify-center shrink-0">
+                      {product.image ? (
+                        <img
+                          src={parseImages(product.image)[0]}
+                          alt=""
+                          className="max-w-full max-h-full object-contain"
+                        />
+                      ) : (
+                        <div className="text-[10px] text-gray-400 font-bold uppercase">No Icon</div>
+                      )}
                     </div>
-                    {product.description && (
-                      <div className="text-xs text-gray-600">
-                        {product.description}
+                    <div className="text-left space-y-1 flex-1 min-w-0">
+                      <div className="font-semibold truncate">{product.name}</div>
+                      <div className="text-[10px] text-gray-500 bg-gray-100/50 px-1.5 py-0.5 rounded-full inline-block">
+                        {product.category_name && product.subcategory_name
+                          ? `${product.category_name} → ${product.subcategory_name}`
+                          : product.category
+                            ? product.category
+                            : "No category"}
                       </div>
-                    )}
+                      {product.description && (
+                        <div className="text-[10px] text-gray-600 italic truncate">
+                          {product.description}
+                        </div>
+                      )}
+                    </div>
                   </div>
                 </Button>
               ))}

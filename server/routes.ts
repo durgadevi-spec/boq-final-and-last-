@@ -1867,7 +1867,7 @@ export async function registerRoutes(
 
       // First try to fetch from approved materials
       const materialResult = await query(
-        `SELECT rate, unit, brandname, modelnumber, category, subcategory, product, technicalspecification, dimensions, finishtype, metaltype, created_at 
+        `SELECT rate, unit, brandname, modelnumber, category, subcategory, product, technicalspecification, dimensions, finishtype, metaltype, image, created_at 
          FROM materials 
          WHERE template_id = $1 AND shop_id = $2 AND approved IS TRUE 
          LIMIT 1`,
@@ -1885,7 +1885,7 @@ export async function registerRoutes(
 
       // If no approved material found, try to fetch from material submissions
       const submissionResult = await query(
-        `SELECT rate, unit, brandname, modelnumber, category, subcategory, product, technicalspecification, dimensions, finishtype, metaltype, submitted_at as created_at 
+        `SELECT rate, unit, brandname, modelnumber, category, subcategory, product, technicalspecification, dimensions, finishtype, metaltype, image, submitted_at as created_at 
          FROM material_submissions 
          WHERE template_id = $1 AND shop_id = $2 
          ORDER BY submitted_at DESC 
@@ -3848,8 +3848,8 @@ export async function registerRoutes(
 
         const id = randomUUID();
         const result = await query(
-          `INSERT INTO material_submissions (id, template_id, shop_id, rate, unit, brandname, modelnumber, subcategory, category, product, technicalspecification, dimensions, finishtype, metaltype, submitted_by, submitted_at, approved)
-           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, NOW(), NULL)
+          `INSERT INTO material_submissions (id, template_id, shop_id, rate, unit, brandname, modelnumber, subcategory, category, product, technicalspecification, dimensions, finishtype, metaltype, image, submitted_by, submitted_at, approved)
+           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, NOW(), NULL)
            RETURNING *`,
           [
             id,
@@ -3866,6 +3866,7 @@ export async function registerRoutes(
             dimensions || null,
             finishtype || null,
             metaltype || null,
+            (req.body as any)?.image || null,
             (req as any).user?.id,
           ],
         );
@@ -4019,8 +4020,8 @@ export async function registerRoutes(
 
         const materialId = randomUUID();
         await query(
-          `INSERT INTO materials (id, name, code, rate, shop_id, unit, category, brandname, modelnumber, subcategory, product, technicalspecification, template_id, approved)
-           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, true)`,
+          `INSERT INTO materials (id, name, code, rate, shop_id, unit, category, brandname, modelnumber, subcategory, product, technicalspecification, template_id, image, approved)
+           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, true)`,
           [
             materialId,
             template.name,
@@ -4035,6 +4036,7 @@ export async function registerRoutes(
             submission.product,
             submission.technicalspecification,
             submission.template_id,
+            submission.image || template.image || null,
           ],
         );
 

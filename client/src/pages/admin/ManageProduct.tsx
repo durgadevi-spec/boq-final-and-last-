@@ -16,7 +16,7 @@ import { useToast } from "@/hooks/use-toast";
 import { Layout } from "@/components/layout/Layout";
 import { useLocation } from "wouter";
 import { computeBoq, UnitType } from "@/lib/boqCalc";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogDescription, DialogFooter } from "@/components/ui/dialog";
 import { fuzzySearch } from "@/lib/utils";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
@@ -44,13 +44,13 @@ const EmptyState = ({ icon: Icon, title, subtitle, className = "" }: { icon: any
 );
 
 const parseImages = (imageField: string | null | undefined): string[] => {
-  if (!imageField) return [];
-  try {
-    if (imageField.startsWith('[')) return JSON.parse(imageField);
-    return [imageField];
-  } catch (e) {
-    return [imageField];
-  }
+    if (!imageField) return [];
+    try {
+        if (imageField.startsWith('[')) return JSON.parse(imageField);
+        return [imageField];
+    } catch (e) {
+        return [imageField];
+    }
 };
 
 export default function ManageProduct() {
@@ -84,6 +84,9 @@ export default function ManageProduct() {
     const [ignoredMismatches, setIgnoredMismatches] = useState<Set<string>>(new Set());
     const [isUpdatingRates, setIsUpdatingRates] = useState(false);
     const [genericDelete, setGenericDelete] = useState<{ isOpen: boolean, id: number, name: string } | null>(null);
+    const [showTemplateSelector, setShowTemplateSelector] = useState(false);
+    const [productForTemplate, setProductForTemplate] = useState<Product | null>(null);
+    const [templates, setTemplates] = useState<any[]>([]);
     const { toast } = useToast();
 
     const searchParams = useMemo(() => new URLSearchParams(location.split('?')[1] || ""), [location]);
@@ -143,6 +146,46 @@ export default function ManageProduct() {
             }
         }
     }, [approvalIdParam, productIdParam, productsData, selectedProduct]);
+    useEffect(() => {
+        const fetchTemplates = async () => {
+            try {
+                const res = await apiFetch("/api/material-templates");
+                if (res.ok) {
+                    const d = await res.json();
+                    setTemplates(d.templates || []);
+                }
+            } catch (error) {
+                console.error("Failed to load templates:", error);
+            }
+        };
+        fetchTemplates();
+    }, []);
+
+    const updateProductImage = async (productId: string, imageUrl: string) => {
+        try {
+            const product = (productsData as Product[])?.find(p => p.id === productId);
+            if (!product) return;
+
+            const res = await apiFetch(`/api/products/${productId}`, {
+                method: 'PUT',
+                body: JSON.stringify({
+                    id: productId,
+                    name: product.name,
+                    subcategory: product.subcategory,
+                    image: JSON.stringify([imageUrl])
+                }),
+            });
+
+            if (res.ok) {
+                toast({ title: "Success", description: "Product icon updated successfully" });
+                // Re-fetch products or update local state if possible
+                // Since products are managed by react-query, we can invalidate it
+            }
+        } catch (error) {
+            console.error('Update product image error:', error);
+            toast({ title: "Error", description: "Failed to update product icon", variant: "destructive" });
+        }
+    };
 
     const { data: allApprovals } = useQuery({
         queryKey: ["/api/product-approvals-all"],
@@ -184,7 +227,7 @@ export default function ManageProduct() {
     }, [allApprovals]);
 
     const filteredCloneConfigs = useMemo(() => {
-        return allApprovedConfigs.filter(c => 
+        return allApprovedConfigs.filter(c =>
             fuzzySearch(cloneSearch, [c.product_name || "", c.config_name || ""])
         );
     }, [allApprovedConfigs, cloneSearch]);
@@ -394,7 +437,7 @@ export default function ManageProduct() {
             const res = await apiFetch(`/api/product-approvals/${config.id}`);
             if (res.ok) {
                 const d = await res.json();
-                
+
                 // Set the target product as selected
                 const target = targetProductForClone || (productsData || []).find((p: any) => p.id === config.product_id);
                 if (target) {
@@ -402,7 +445,7 @@ export default function ManageProduct() {
                     // Load the config into the target product
                     applyConfig(d.approval, d.items, `Cloned configuration from "${config.product_name}" to "${target.name}"`);
                 }
-                
+
                 setIsCloneDialogOpen(false);
                 setTargetProductForClone(null);
                 setStep(3); // Go to detail step after cloning
@@ -570,7 +613,7 @@ export default function ManageProduct() {
                     <CardContent className="p-8">
 
                         {genericDelete && (
-                            <DeleteConfirmationDialog 
+                            <DeleteConfirmationDialog
                                 isOpen={genericDelete.isOpen}
                                 onOpenChange={(open) => !open && setGenericDelete(null)}
                                 onConfirm={confirmDeleteConfig}
@@ -601,8 +644,8 @@ export default function ManageProduct() {
                                         <div className="p-6 space-y-4 flex-1 flex flex-col min-h-0">
                                             <div className="relative">
                                                 <Search className="absolute left-3 top-2.5 h-4 w-4 text-muted-foreground" />
-                                                <Input 
-                                                    placeholder="Search approved configurations..." 
+                                                <Input
+                                                    placeholder="Search approved configurations..."
                                                     className="pl-10 h-10 border-primary/10 shadow-sm"
                                                     value={cloneSearch}
                                                     onChange={e => setCloneSearch(e.target.value)}
@@ -616,8 +659,8 @@ export default function ManageProduct() {
                                                     </div>
                                                 ) : (
                                                     filteredCloneConfigs.map(config => (
-                                                        <div 
-                                                            key={config.id} 
+                                                        <div
+                                                            key={config.id}
                                                             className="flex items-center justify-between p-4 bg-white rounded-xl border-2 border-slate-50 hover:border-primary/20 hover:bg-slate-50/50 transition-all cursor-pointer group"
                                                             onClick={() => handleCloneConfig(config)}
                                                         >
@@ -646,13 +689,13 @@ export default function ManageProduct() {
                                         <Loader2 className="h-10 w-10 animate-spin text-primary" />
                                         <p className="text-muted-foreground font-medium">Loading products...</p>
                                     </div>
-                                ) : (
+                                ) : (needsWorkProducts.length > 0 || approvedProducts.length > 0) ? (
                                     <Tabs defaultValue="needs-work" className="w-full">
                                         <TabsList className="grid w-full grid-cols-2 mb-6">
                                             <TabsTrigger value="needs-work" className="font-bold">Needs Work ({needsWorkProducts.length})</TabsTrigger>
                                             <TabsTrigger value="approved" className="font-bold">Approved ({approvedProducts.length})</TabsTrigger>
                                         </TabsList>
-                                        
+
                                         <TabsContent value="needs-work" className="mt-0">
                                             <div className="rounded-xl border shadow-sm overflow-hidden bg-white max-h-[500px] overflow-y-auto">
                                                 <Table>
@@ -678,9 +721,26 @@ export default function ManageProduct() {
                                                                     </TableCell>
                                                                     <TableCell className="font-semibold text-base py-4">
                                                                         <div className="flex items-center gap-3">
-                                                                            {parseImages(product.image).length > 0 && (
-                                                                                <img src={parseImages(product.image)[0]} alt={product.name} className="h-10 w-10 object-cover rounded shadow-sm border border-slate-200 shrink-0" />
-                                                                            )}
+                                                                            <div
+                                                                                className="cursor-pointer hover:ring-2 hover:ring-primary rounded-md transition-all group relative shrink-0 overflow-hidden"
+                                                                                onClick={(e) => {
+                                                                                    e.stopPropagation();
+                                                                                    setProductForTemplate(product);
+                                                                                    setShowTemplateSelector(true);
+                                                                                }}
+                                                                                title="Change Product Icon"
+                                                                            >
+                                                                                <img
+                                                                                    src={parseImages(product.image).length > 0 ? parseImages(product.image)[0] : "/placeholder-product.png"}
+                                                                                    alt={product.name}
+                                                                                    className="h-10 w-10 object-cover rounded shadow-sm border border-slate-200"
+                                                                                />
+                                                                                {!product.image && (
+                                                                                    <div className="absolute inset-0 flex items-center justify-center bg-black/5 opacity-0 group-hover:opacity-100 transition-opacity">
+                                                                                        <Plus className="h-4 w-4 text-primary" />
+                                                                                    </div>
+                                                                                )}
+                                                                            </div>
                                                                             <div className="flex flex-col gap-1">
                                                                                 <span>{product.name}</span>
                                                                                 <div className="flex gap-2">
@@ -695,16 +755,16 @@ export default function ManageProduct() {
                                                                         {isPending ? (
                                                                             <Badge variant="outline" className="bg-amber-50 text-amber-600 border-amber-200 text-[10px] h-5 px-1.5 font-bold uppercase tracking-tight whitespace-nowrap">Submitted</Badge>
                                                                         ) : isRejected ? (
-                                                                             <Badge variant="outline" className="bg-red-50 text-red-600 border-red-200 text-[10px] h-5 px-1.5 font-bold uppercase tracking-tight whitespace-nowrap">Action Required</Badge>
+                                                                            <Badge variant="outline" className="bg-red-50 text-red-600 border-red-200 text-[10px] h-5 px-1.5 font-bold uppercase tracking-tight whitespace-nowrap">Action Required</Badge>
                                                                         ) : (
                                                                             <span className="text-[10px] font-medium text-muted-foreground border border-dashed border-muted/50 px-2 py-0.5 rounded-sm whitespace-nowrap">Needs Work</span>
                                                                         )}
                                                                     </TableCell>
                                                                     <TableCell onClick={e => e.stopPropagation()}>
-                                                                        <Button 
-                                                                            variant="ghost" 
-                                                                            size="sm" 
-                                                                            className="h-8 w-8 p-0 text-primary hover:bg-primary hover:text-white rounded-full transition-all" 
+                                                                        <Button
+                                                                            variant="ghost"
+                                                                            size="sm"
+                                                                            className="h-8 w-8 p-0 text-primary hover:bg-primary hover:text-white rounded-full transition-all"
                                                                             title="Clone from another config"
                                                                             onClick={(e) => openCloneDialog(e, product)}
                                                                         >
@@ -718,7 +778,7 @@ export default function ManageProduct() {
                                                 </Table>
                                             </div>
                                         </TabsContent>
-                                        
+
                                         <TabsContent value="approved" className="mt-0">
                                             <div className="rounded-xl border shadow-sm overflow-hidden bg-white max-h-[500px] overflow-y-auto">
                                                 <Table>
@@ -743,9 +803,26 @@ export default function ManageProduct() {
                                                                     </TableCell>
                                                                     <TableCell className="font-semibold text-base py-4">
                                                                         <div className="flex items-center gap-3">
-                                                                            {parseImages(product.image).length > 0 && (
-                                                                                <img src={parseImages(product.image)[0]} alt={product.name} className="h-10 w-10 object-cover rounded shadow-sm border border-slate-200 shrink-0" />
-                                                                            )}
+                                                                            <div
+                                                                                className="cursor-pointer hover:ring-2 hover:ring-primary rounded-md transition-all group relative shrink-0 overflow-hidden"
+                                                                                onClick={(e) => {
+                                                                                    e.stopPropagation();
+                                                                                    setProductForTemplate(product);
+                                                                                    setShowTemplateSelector(true);
+                                                                                }}
+                                                                                title="Change Product Icon"
+                                                                            >
+                                                                                <img
+                                                                                    src={parseImages(product.image).length > 0 ? parseImages(product.image)[0] : "/placeholder-product.png"}
+                                                                                    alt={product.name}
+                                                                                    className="h-10 w-10 object-cover rounded shadow-sm border border-slate-200"
+                                                                                />
+                                                                                {!product.image && (
+                                                                                    <div className="absolute inset-0 flex items-center justify-center bg-black/5 opacity-0 group-hover:opacity-100 transition-opacity">
+                                                                                        <Plus className="h-4 w-4 text-primary" />
+                                                                                    </div>
+                                                                                )}
+                                                                            </div>
                                                                             <div className="flex flex-col gap-1">
                                                                                 <span>{product.name}</span>
                                                                                 {isPendingRevision && <Badge variant="outline" className="bg-amber-100 text-amber-700 border-amber-200 text-[8px] h-4 px-1.5 font-bold uppercase flex items-center gap-1 w-fit"><Loader2 className="h-2 w-2 animate-spin" /> Revision Pending</Badge>}
@@ -759,10 +836,10 @@ export default function ManageProduct() {
                                                                         </div>
                                                                     </TableCell>
                                                                     <TableCell onClick={e => e.stopPropagation()}>
-                                                                        <Button 
-                                                                            variant="ghost" 
-                                                                            size="sm" 
-                                                                            className="h-8 w-8 p-0 text-primary hover:bg-primary hover:text-white rounded-full transition-all" 
+                                                                        <Button
+                                                                            variant="ghost"
+                                                                            size="sm"
+                                                                            className="h-8 w-8 p-0 text-primary hover:bg-primary hover:text-white rounded-full transition-all"
                                                                             title="Clone from another config"
                                                                             onClick={(e) => openCloneDialog(e, product)}
                                                                         >
@@ -777,6 +854,13 @@ export default function ManageProduct() {
                                             </div>
                                         </TabsContent>
                                     </Tabs>
+                                ) : (
+                                    <EmptyState
+                                        icon={Package}
+                                        title="No Products Found"
+                                        subtitle="No products available in the selected category/subcategory."
+                                        className="py-20 border-2 border-dashed rounded-xl bg-slate-50/50"
+                                    />
                                 )}
                                 {selectedProduct && (
                                     <div className="space-y-3 p-6 bg-primary/5 rounded-xl border border-primary/20">
@@ -1369,6 +1453,85 @@ export default function ManageProduct() {
                     </CardContent>
                 </Card>
             </div>
+
+            {/* Template Selector Dialog */}
+            <Dialog open={showTemplateSelector} onOpenChange={setShowTemplateSelector}>
+                <DialogContent className="max-w-3xl max-h-[85vh] flex flex-col p-6 overflow-hidden">
+                    <DialogHeader className="pb-4 border-b">
+                        <DialogTitle className="text-xl font-bold flex items-center gap-2">
+                            <Layers className="h-5 w-5 text-primary" />
+                            Select Product Template
+                        </DialogTitle>
+                        <p className="text-sm text-muted-foreground mt-1">
+                            Choose an image from existing templates for <strong>{productForTemplate?.name}</strong>.
+                        </p>
+                    </DialogHeader>
+
+                    <div className="flex-1 overflow-y-auto py-6 pr-2">
+                        {templates.filter(tpl =>
+                            !productForTemplate?.subcategory ||
+                            (tpl.subcategory && tpl.subcategory.toLowerCase().trim() === productForTemplate.subcategory.toLowerCase().trim())
+                        ).length === 0 ? (
+                            <div className="flex flex-col items-center justify-center py-20 text-center border-2 border-dashed rounded-2xl bg-muted/20">
+                                <Search className="h-12 w-12 text-muted-foreground opacity-20 mb-4" />
+                                <p className="text-base font-bold text-muted-foreground">No templates available</p>
+                                <p className="text-sm text-muted-foreground opacity-60">No templates found matching this product's subcategory: <em>{productForTemplate?.subcategory}</em></p>
+                            </div>
+                        ) : (
+                            <div className="grid grid-cols-2 md:grid-cols-4 gap-6">
+                                {templates.filter(tpl =>
+                                    !productForTemplate?.subcategory ||
+                                    (tpl.subcategory && tpl.subcategory.toLowerCase().trim() === productForTemplate.subcategory.toLowerCase().trim())
+                                ).map((template: any) => {
+                                    const templateImgs = parseImages(template.image);
+                                    const tplImg = templateImgs.length > 0 ? templateImgs[0] : null;
+                                    const productImgs = parseImages(productForTemplate?.image);
+                                    const isSelected = tplImg && productImgs.length > 0 && productImgs[0] === tplImg;
+
+                                    return (
+                                        <div
+                                            key={template.id}
+                                            className={`
+                                                relative cursor-pointer border-2 rounded-2xl p-4 flex flex-col items-center gap-3 transition-all animate-in zoom-in-95 duration-200
+                                                ${isSelected ? 'border-primary bg-primary/5 ring-4 ring-primary/10 shadow-lg' : 'border-border bg-white hover:border-primary/50 hover:shadow-md'}
+                                            `}
+                                            onClick={async () => {
+                                                if (tplImg) {
+                                                    await updateProductImage(productForTemplate!.id, tplImg);
+                                                    setShowTemplateSelector(false);
+                                                } else {
+                                                    toast({ title: "No Image", description: "This template has no image.", variant: "destructive" });
+                                                }
+                                            }}
+                                        >
+                                            <div className="w-full aspect-square rounded-xl bg-slate-50 border flex items-center justify-center overflow-hidden shadow-inner group-hover:shadow transition-shadow">
+                                                {tplImg ? (
+                                                    <img src={tplImg} alt="" className="max-w-full max-h-full object-contain p-2" />
+                                                ) : (
+                                                    <Layers className="h-10 w-10 text-slate-200" />
+                                                )}
+                                            </div>
+                                            <div className="text-center w-full">
+                                                <p className="text-xs font-bold truncate text-slate-700" title={template.name}>{template.name}</p>
+                                                <p className="text-[10px] text-muted-foreground mt-1 font-semibold uppercase tracking-widest">{template.code}</p>
+                                            </div>
+                                            {isSelected && (
+                                                <div className="absolute -top-2 -right-2 bg-primary text-white rounded-full p-1 shadow-lg ring-2 ring-white">
+                                                    <Check className="h-3 w-3" />
+                                                </div>
+                                            )}
+                                        </div>
+                                    );
+                                })}
+                            </div>
+                        )}
+                    </div>
+
+                    <div className="pt-4 border-t flex justify-end">
+                        <Button variant="outline" onClick={() => setShowTemplateSelector(false)} className="px-8 font-bold">Close</Button>
+                    </div>
+                </DialogContent>
+            </Dialog>
         </Layout>
     );
 }

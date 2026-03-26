@@ -873,6 +873,8 @@ export default function AdminDashboard() {
   const [newMasterMaterial, setNewMasterMaterial] = useState<{
     name: string;
     code: string;
+    category: string;
+    subcategory: string;
     vendorCategory: string;
     taxCodeType: 'hsn' | 'sac' | null;
     taxCodeValue: string;
@@ -883,6 +885,8 @@ export default function AdminDashboard() {
   }>({
     name: "",
     code: "",
+    category: "",
+    subcategory: "",
     vendorCategory: "",
     taxCodeType: null,
     taxCodeValue: "",
@@ -918,12 +922,15 @@ export default function AdminDashboard() {
       const payload: any = {
         name: newMasterMaterial.name.trim(),
         code: newMasterMaterial.code,
+        category: newMasterMaterial.category,
+        subcategory: newMasterMaterial.subcategory,
         vendorCategory: newMasterMaterial.vendorCategory.trim(),
         taxCodeType: newMasterMaterial.taxCodeType,
         taxCodeValue: newMasterMaterial.taxCodeValue.trim(),
         hsnCode: newMasterMaterial.hsnCode.trim(),
         sacCode: newMasterMaterial.sacCode.trim(),
         technicalSpecification: newMasterMaterial.technicalSpecification.trim(),
+        image: newMasterMaterial.image
       };
 
       const res = await postJSON('/material-templates', payload);
@@ -939,12 +946,15 @@ export default function AdminDashboard() {
       setNewMasterMaterial({
         name: "",
         code: "",
+        category: "",
+        subcategory: "",
         vendorCategory: "",
         taxCodeType: null,
         taxCodeValue: "",
         hsnCode: "",
         sacCode: "",
-        technicalSpecification: ""
+        technicalSpecification: "",
+        image: undefined
       });
     } catch (err: any) {
       console.error('create master material error', err);
@@ -2881,21 +2891,21 @@ export default function AdminDashboard() {
                                 <div className="flex items-center justify-between">
                                   <div className="flex items-center gap-3 flex-1">
                                     <div
-                                      className="h-10 w-10 border rounded bg-gray-50 overflow-hidden flex items-center justify-center shrink-0 cursor-pointer hover:border-blue-500 transition-colors group"
+                                      className="h-14 w-14 border rounded-lg bg-gray-100 overflow-hidden flex items-center justify-center shrink-0 cursor-pointer hover:border-blue-500 hover:bg-white transition-all group shadow-sm"
                                       onClick={() => {
                                         setProductForTemplate(product);
                                         setShowTemplateSelector(true);
                                       }}
-                                      title="Click to select template icon"
+                                      title="Click to select or change template icon"
                                     >
                                       {product.image ? (
                                         <img
                                           src={parseImages(product.image)[0]}
                                           alt=""
-                                          className="max-w-full max-h-full object-contain"
+                                          className="max-w-full max-h-full object-contain group-hover:scale-110 transition-transform"
                                         />
                                       ) : (
-                                        <Package className="h-5 w-5 text-blue-600 group-hover:scale-110 transition-transform" />
+                                        <Package className="h-6 w-6 text-blue-600 group-hover:rotate-12 transition-transform" />
                                       )}
                                     </div>
                                     <div className="flex-1">
@@ -3093,6 +3103,73 @@ export default function AdminDashboard() {
                     </div>
                     <div className="space-y-2">
                       <Label>
+                        Category <span className="text-red-500">*</span>
+                      </Label>
+                      <Select
+                        value={newMasterMaterial.category}
+                        onValueChange={(value) =>
+                          setNewMasterMaterial({
+                            ...newMasterMaterial,
+                            category: value,
+                            subcategory: "", // Reset subcategory when category changes
+                          })
+                        }
+                      >
+                        <SelectTrigger>
+                          <SelectValue placeholder="Select category" />
+                        </SelectTrigger>
+                        <SelectContent className="max-h-[200px] overflow-y-auto">
+                          {categories.length === 0 ? (
+                            <SelectItem value="none" disabled>
+                              No categories available
+                            </SelectItem>
+                          ) : (
+                            categories.map((cat) => (
+                              <SelectItem key={cat} value={cat}>
+                                {cat}
+                              </SelectItem>
+                            ))
+                          )}
+                        </SelectContent>
+                      </Select>
+                    </div>
+
+                    <div className="space-y-2">
+                      <Label>
+                        Subcategory <span className="text-red-500">*</span>
+                      </Label>
+                      <Select
+                        value={newMasterMaterial.subcategory}
+                        onValueChange={(value) =>
+                          setNewMasterMaterial({
+                            ...newMasterMaterial,
+                            subcategory: value,
+                          })
+                        }
+                      >
+                        <SelectTrigger>
+                          <SelectValue placeholder="Select subcategory" />
+                        </SelectTrigger>
+                        <SelectContent className="max-h-[200px] overflow-y-auto">
+                          {subCategories.filter(s => s.category === newMasterMaterial.category).length === 0 ? (
+                            <SelectItem value="none" disabled>
+                              No subcategories available
+                            </SelectItem>
+                          ) : (
+                            subCategories
+                              .filter(s => s.category === newMasterMaterial.category)
+                              .map((sub: any) => (
+                                <SelectItem key={sub.id} value={sub.name}>
+                                  {sub.name}
+                                </SelectItem>
+                              ))
+                          )}
+                        </SelectContent>
+                      </Select>
+                    </div>
+
+                    <div className="space-y-2">
+                      <Label>
                         Vendor Category
                       </Label>
                       <Select
@@ -3190,6 +3267,8 @@ export default function AdminDashboard() {
                       onClick={handleAddMasterMaterial}
                       disabled={
                         !newMasterMaterial.name.trim() ||
+                        !newMasterMaterial.category ||
+                        !newMasterMaterial.subcategory ||
                         masterMaterials.some((m: any) => m.name.toLowerCase().trim() === newMasterMaterial.name.toLowerCase().trim()) ||
                         masterMaterials.some((m: any) => m.code === newMasterMaterial.code)
                       }
@@ -3895,48 +3974,62 @@ export default function AdminDashboard() {
                       .map((request: any) => (
                         <Card key={request.id} className="border-border/50">
                           <CardContent className="pt-6 space-y-4">
-                            <div>
-                              <h3 className="text-lg font-bold">
-                                {request.material.name}
-                              </h3>
-                              <p className="text-sm text-muted-foreground">
-                                Submitted by: {request.submittedBy} at{" "}
-                                {new Date(
-                                  request.submittedAt
-                                ).toLocaleDateString()}
-                              </p>
-                              <div className="grid grid-cols-2 gap-3 text-sm mt-2">
-                                <div>
-                                  <p className="font-semibold">Code</p>
-                                  <p>{request.material.code || request.material.template_code || request.material.templateCode || '-'}</p>
-                                </div>
-                                <div>
-                                  <p className="font-semibold">Rate</p>
-                                  <p>₹{request.material.rate ?? request.material.price ?? '-'}</p>
-                                </div>
-                                <div>
-                                  <p className="font-semibold">Unit</p>
-                                  <p>{request.material.unit || request.material.uom || '-'}</p>
-                                </div>
-                                <div>
-                                  <p className="font-semibold">Category</p>
-                                  <p>{request.material.category || request.material.categoryName || request.material.category_name || request.material.vendorCategory || request.material.vendor_category || '-'}</p>
-                                </div>
-                                <div>
-                                  <p className="font-semibold">Sub Category</p>
-                                  <p>{request.material.subCategory || request.material.subcategory || request.material.sub_category || '-'}</p>
-                                </div>
-                                <div>
-                                  <p className="font-semibold">Brand</p>
-                                  <p>{request.material.brandName || request.material.brandname || request.material.brand || request.material.make || '-'}</p>
-                                </div>
-                                {(request.material.technicalSpecification || request.material.technicalspecification) && (
-                                  <div className="col-span-2">
-                                    <p className="font-semibold">Technical Specification</p>
-                                    <p className="text-blue-600 italic text-xs">{request.material.technicalSpecification || request.material.technicalspecification}</p>
-                                  </div>
+                            <div className="flex items-center gap-3 mb-4">
+                              <div className="h-12 w-12 border rounded bg-gray-50 overflow-hidden flex items-center justify-center shrink-0">
+                                {request.material.image ? (
+                                  <img
+                                    src={parseImages(request.material.image)[0]}
+                                    alt=""
+                                    className="max-w-full max-h-full object-contain"
+                                  />
+                                ) : (
+                                  <Package className="h-6 w-6 text-muted-foreground" />
                                 )}
                               </div>
+                              <div className="flex-1 min-w-0">
+                                <h3 className="text-lg font-bold">
+                                  {request.material.name}
+                                </h3>
+                                <p className="text-sm text-muted-foreground">
+                                  Submitted by: {request.submittedBy} at{" "}
+                                  {new Date(
+                                    request.submittedAt
+                                  ).toLocaleDateString()}
+                                </p>
+                              </div>
+                            </div>
+
+                            <div className="grid grid-cols-2 gap-3 text-sm mt-2">
+                              <div>
+                                <p className="font-semibold">Code</p>
+                                <p>{request.material.code || request.material.template_code || request.material.templateCode || '-'}</p>
+                              </div>
+                              <div>
+                                <p className="font-semibold">Rate</p>
+                                <p>₹{request.material.rate ?? request.material.price ?? '-'}</p>
+                              </div>
+                              <div>
+                                <p className="font-semibold">Unit</p>
+                                <p>{request.material.unit || request.material.uom || '-'}</p>
+                              </div>
+                              <div>
+                                <p className="font-semibold">Category</p>
+                                <p>{request.material.category || request.material.categoryName || request.material.category_name || request.material.vendorCategory || request.material.vendor_category || '-'}</p>
+                              </div>
+                              <div>
+                                <p className="font-semibold">Sub Category</p>
+                                <p>{request.material.subCategory || request.material.subcategory || request.material.sub_category || '-'}</p>
+                              </div>
+                              <div>
+                                <p className="font-semibold">Brand</p>
+                                <p>{request.material.brandName || request.material.brandname || request.material.brand || request.material.make || '-'}</p>
+                              </div>
+                              {(request.material.technicalSpecification || request.material.technicalspecification) && (
+                                <div className="col-span-2">
+                                  <p className="font-semibold">Technical Specification</p>
+                                  <p className="text-blue-600 italic text-xs">{request.material.technicalSpecification || request.material.technicalspecification}</p>
+                                </div>
+                              )}
                             </div>
 
                             {/* Approve / Reject Buttons - Admin/Software Team/Purchase Team */}
@@ -4483,25 +4576,38 @@ export default function AdminDashboard() {
           </DialogHeader>
 
           <div className="flex-1 overflow-y-auto p-4">
-            {masterMaterials.filter(tpl =>
-              !productForTemplate?.subcategory ||
-              (tpl.subcategory && tpl.subcategory.toLowerCase().trim() === productForTemplate.subcategory.toLowerCase().trim())
-            ).length === 0 ? (
-              <div className="text-center py-12 border-2 border-dashed rounded-xl bg-muted/30">
-                <PackageOpen className="h-12 w-12 text-muted-foreground mx-auto mb-3 opacity-20" />
-                <p className="text-muted-foreground font-medium">No templates found for this subcategory</p>
-                <p className="text-xs text-muted-foreground mt-1">Add templates in the Materials tab first</p>
-              </div>
-            ) : (
-              <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                {masterMaterials
-                  .filter(tpl =>
-                    !productForTemplate?.subcategory ||
-                    (tpl.subcategory && tpl.subcategory.toLowerCase().trim() === productForTemplate.subcategory.toLowerCase().trim())
-                  )
-                  .map((template: any) => {
-                    const templateImg = template.image;
-                    const isSelected = productForTemplate?.image && parseImages(productForTemplate.image)[0] === templateImg;
+            {(() => {
+              const filteredList = (masterMaterials.filter(tpl =>
+                !productForTemplate?.subcategory ||
+                (tpl.subcategory && tpl.subcategory.toLowerCase().trim() === productForTemplate.subcategory.toLowerCase().trim())
+              ).length > 0
+                ? masterMaterials.filter(tpl =>
+                  !productForTemplate?.subcategory ||
+                  (tpl.subcategory && tpl.subcategory.toLowerCase().trim() === productForTemplate.subcategory.toLowerCase().trim())
+                )
+                : masterMaterials
+              ).filter(tpl => {
+                const imgs = parseImages(tpl.image);
+                return imgs.length > 0 && !!imgs[0];
+              });
+
+              if (filteredList.length === 0) {
+                return (
+                  <div className="text-center py-12 border-2 border-dashed rounded-xl bg-muted/30">
+                    <ImageIcon className="h-12 w-12 text-muted-foreground mx-auto mb-3 opacity-20" />
+                    <p className="text-muted-foreground font-medium">No templates with images found</p>
+                    <p className="text-xs text-muted-foreground mt-1">Upload images to your materials first</p>
+                  </div>
+                );
+              }
+
+              return (
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                  {filteredList.map((template: any) => {
+                    const templateImgs = parseImages(template.image);
+                    const templateImg = templateImgs.length > 0 ? templateImgs[0] : null;
+                    const productImgs = parseImages(productForTemplate?.image);
+                    const isSelected = templateImg && productImgs.length > 0 && productImgs[0] === templateImg;
 
                     return (
                       <div
@@ -4514,17 +4620,11 @@ export default function AdminDashboard() {
                           if (templateImg) {
                             handleUpdateProductImage(productForTemplate.id, templateImg);
                             setShowTemplateSelector(false);
-                          } else {
-                            toast({ title: "No Image", description: "This template has no image assigned", variant: "destructive" });
                           }
                         }}
                       >
                         <div className="w-16 h-16 rounded-lg bg-white border flex items-center justify-center overflow-hidden shrink-0 shadow-sm group-hover:shadow transition-shadow">
-                          {templateImg ? (
-                            <img src={templateImg} alt="" className="max-w-full max-h-full object-contain p-1" />
-                          ) : (
-                            <ImageIcon className="h-6 w-6 text-gray-300" />
-                          )}
+                          <img src={templateImg!} alt="" className="max-w-full max-h-full object-contain p-1" />
                         </div>
                         <div className="text-center">
                           <p className="text-xs font-semibold line-clamp-2 leading-tight h-8 flex items-center justify-center">{template.name}</p>
@@ -4539,8 +4639,9 @@ export default function AdminDashboard() {
                       </div>
                     );
                   })}
-              </div>
-            )}
+                </div>
+              );
+            })()}
           </div>
 
           <DialogFooter className="border-t pt-4">

@@ -22,6 +22,7 @@ import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
 import * as XLSX from 'xlsx';
 import { DeleteConfirmationDialog } from "@/components/ui/DeleteConfirmationDialog";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 
 // ─── Types ─────────────────────────────────────────────────────────────────────
 
@@ -898,22 +899,28 @@ export default function CreateBom() {
 
   // BOM Template state
   const [bomTemplates, setBomTemplates] = useState<any[]>([]);
+  const [sketchTemplates, setSketchTemplates] = useState<any[]>([]);
   const [showTemplateManager, setShowTemplateManager] = useState(false);
   const [showSaveTemplateDialog, setShowSaveTemplateDialog] = useState(false);
   const [templateToSave, setTemplateToSave] = useState<BOMItem | null>(null);
   const [newTemplateName, setNewTemplateName] = useState("");
   const [templateSearch, setTemplateSearch] = useState("");
-  const [deleteConfirm, setDeleteConfirm] = useState<{ isOpen: boolean; type: 'template' | 'version'; id: string; name: string } | null>(null);
+  const [deleteConfirm, setDeleteConfirm] = useState<{ isOpen: boolean; type: 'template' | 'sketch' | 'version'; id: string; name: string } | null>(null);
 
-  const loadBomTemplates = useCallback(async () => {
+  const loadTemplates = useCallback(async () => {
     try {
       const resp = await apiFetch("/api/bom-templates");
       if (resp.ok) {
         const data = await resp.json();
         setBomTemplates(data.templates || []);
       }
+      const sketchResp = await apiFetch("/api/sketch-templates");
+      if (sketchResp.ok) {
+        const sData = await sketchResp.json();
+        setSketchTemplates(sData.templates || []);
+      }
     } catch (e) {
-      console.error("Failed to load BOM templates:", e);
+      console.error("Failed to load templates:", e);
     }
   }, []);
 
@@ -926,7 +933,7 @@ export default function CreateBom() {
       });
       if (resp.ok) {
         toast({ title: "Template Saved", description: `"${name}" has been saved as a BOM template.` });
-        loadBomTemplates();
+        loadTemplates();
         setShowSaveTemplateDialog(false);
         setNewTemplateName("");
       } else {
@@ -972,15 +979,108 @@ export default function CreateBom() {
     }
   };
 
-  const handleDeleteTemplate = async (id: string) => {
+  const handleApplySketchTemplate = async (template: any) => {
+    if (!selectedVersionId) return;
+
+    try {
+      let data = template.template_data;
+      if (typeof data === 'string') {
+        try { data = JSON.parse(data); } catch (e) { console.error("Parse error", e); return; }
+      }
+
+      const items = Array.isArray(data) ? data : (data?.items || []);
+
+      if (items.length === 0) {
+        toast({ title: "Empty Template", description: "This sketch template has no items.", variant: "destructive" });
+        return;
+      }
+
+      toast({ title: "Importing Sketch", description: `Adding ${items.length} items to your BOM...` });
+
+      let currentMaterials = materialsById;
+      // Ensure materials are loaded to get rates
+      if (Object.keys(currentMaterials).length === 0) {
+        try {
+          const mRes = await apiFetch("/api/materials");
+          if (mRes.ok) {
+            const mData = await mRes.json();
+            const mById = Object.fromEntries((mData.materials || []).map((m: any) => [m.id, m]));
+            setMaterialsById(mById);
+            currentMaterials = mById; 
+          }
+        } catch (e) { console.error("Failed to pre-load materials", e); }
+      }
+
+      let currentSortOrder = boqItems.length;
+      for (const item of items) {
+        const dims = [item.length, item.width, item.height].filter(Boolean).filter(d => d !== "0" && d !== "").join(' x ');
+        const desc = `${item.description || ''} ${dims ? `(Dims: ${dims} ${item.dimension_unit || ''})` : ''}`.trim();
+
+        let matRate = 0;
+        if (item.material_id && currentMaterials[item.material_id]) {
+          matRate = currentMaterials[item.material_id].rate || 0;
+        }
+
+        const tableData = {
+          product_name: item.item_name || "Sketch Item",
+          product_id: null,
+          category: item.category || "General",
+          finalize_description: desc,
+          finalize_qty: Number(item.qty) || 1,
+          finalize_rate: matRate,
+          unit: item.unit || "nos",
+          step11_items: [
+            {
+              s_no: 1,
+              title: item.item_name || "Sketch Item",
+              description: desc,
+              unit: item.unit || "nos",
+              qty: Number(item.qty) || 1,
+              supply_rate: matRate,
+              install_rate: 0,
+              manual: true
+            }
+          ],
+          created_at: new Date().toISOString()
+        };
+
+        const resp = await apiFetch("/api/boq-items", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            project_id: selectedProjectId,
+            version_id: selectedVersionId,
+            estimator: "General",
+            table_data: tableData,
+            sort_order: currentSortOrder++,
+          }),
+        });
+
+        if (resp.ok) {
+          const created = await resp.json();
+          const itemWithParsedData = { ...created, table_data: parseTableData(created.table_data) };
+          setBoqItems(prev => [...prev, itemWithParsedData]);
+        }
+      }
+
+      setShowTemplateManager(false);
+      toast({ title: "Sketch Imported", description: `${items.length} items added from sketch template.` });
+    } catch (e) {
+      console.error("Apply sketch template error:", e);
+      toast({ title: "Error", description: "Failed to import sketch template", variant: "destructive" });
+    }
+  };
+
+  const handleDeleteTemplate = (id: string) => {
     const tpl = bomTemplates.find(t => t.id === id);
     if (!tpl) return;
-    setDeleteConfirm({
-      isOpen: true,
-      type: 'template',
-      id: id,
-      name: tpl.name || "BOM Template"
-    });
+    setDeleteConfirm({ isOpen: true, type: 'template', id, name: tpl.name || "BOM Template" });
+  };
+
+  const handleDeleteSketchTemplate = (id: string) => {
+    const tpl = sketchTemplates.find(t => t.id === id);
+    if (!tpl) return;
+    setDeleteConfirm({ isOpen: true, type: 'sketch', id, name: tpl.name || "Sketch Template" });
   };
 
   const confirmDelete = async (action: 'archive' | 'trash') => {
@@ -992,7 +1092,7 @@ export default function CreateBom() {
         const resp = await apiFetch(`/api/bom-templates/${id}?action=${action}`, { method: "DELETE" });
         if (resp.ok) {
           toast({ title: action === 'trash' ? "Template moved to trash" : "Template archived" });
-          loadBomTemplates();
+          loadTemplates();
         }
       } else if (type === 'version') {
         const res = await apiFetch(`/api/boq-versions/${encodeURIComponent(id)}?action=${action}`, { method: "DELETE" });
@@ -1006,6 +1106,12 @@ export default function CreateBom() {
             setBoqItems([]);
             toast({ title: action === 'trash' ? "Version moved to trash" : "Version archived" });
           }
+        }
+      } else if (type === 'sketch') {
+        const resp = await apiFetch(`/api/sketch-templates/${id}`, { method: "DELETE" });
+        if (resp.ok) {
+          toast({ title: "Sketch template deleted" });
+          loadTemplates();
         }
       }
     } catch (e) {
@@ -1114,8 +1220,8 @@ export default function CreateBom() {
     if (!selectedVersionId) { setBoqItems([]); setEditedFields({}); editedFieldsRef.current = {}; return; }
     loadBoqItemsAndEdits();
     loadHistory();
-    loadBomTemplates();
-  }, [selectedVersionId, loadBoqItemsAndEdits, loadHistory, loadBomTemplates]);
+    loadTemplates();
+  }, [selectedVersionId, loadBoqItemsAndEdits, loadHistory, loadTemplates]);
 
   const mismatches = useMemo(() => {
     const list: any[] = [];
@@ -1355,6 +1461,44 @@ export default function CreateBom() {
     return { unit, rate, shopName, hsnSacType, hsnSacCode };
   };
 
+  const getMergedTableData = (boqItem: BOMItem) => {
+    const td = parseTableData(boqItem.table_data);
+    const isEngine = !!(td.materialLines && td.targetRequiredQty !== undefined);
+
+    if (isEngine) {
+      if (Array.isArray(td.materialLines)) {
+        td.materialLines = td.materialLines.map((line: any, idx: number) => {
+          const itemKey = `${boqItem.id}-engine-${idx}`;
+          const qty = Number(getEditedValue(itemKey, "qty", line.perUnitQty));
+          const sRate = Number(getEditedValue(itemKey, "supply_rate", line.supplyRate));
+          const iRate = Number(getEditedValue(itemKey, "install_rate", line.installRate));
+          return { ...line, perUnitQty: qty, baseQty: qty, supplyRate: sRate, installRate: iRate };
+        });
+      }
+      if (Array.isArray(td.step11_items)) {
+        td.step11_items = td.step11_items.map((it: any, s11Idx: number) => {
+          if (!it?.manual) return it;
+          const itemKey = `${boqItem.id}-manual-${s11Idx}`;
+          const qty = Number(getEditedValue(itemKey, "qty", it.qty ?? 0));
+          const sRate = Number(getEditedValue(itemKey, "supply_rate", it.supply_rate ?? 0));
+          const iRate = Number(getEditedValue(itemKey, "install_rate", it.install_rate ?? 0));
+          return { ...it, qty, supply_rate: sRate, install_rate: iRate };
+        });
+      }
+    } else {
+      if (Array.isArray(td.step11_items)) {
+        td.step11_items = td.step11_items.map((it: any, s11Idx: number) => {
+          const itemKey = it.itemKey || `${boqItem.id}-${s11Idx}`;
+          const qty = Number(getEditedValue(itemKey, "qty", it.qty ?? 0));
+          const sRate = Number(getEditedValue(itemKey, "supply_rate", it.supply_rate ?? 0));
+          const iRate = Number(getEditedValue(itemKey, "install_rate", it.install_rate ?? 0));
+          return { ...it, qty, supply_rate: sRate, install_rate: iRate };
+        });
+      }
+    }
+    return td;
+  };
+
   // ── Handlers ───────────────────────────────────────────────────────────────
 
   const handleAddProduct = async () => {
@@ -1586,7 +1730,7 @@ export default function CreateBom() {
       setBoqItems(prev => [...prev, newItem]);
       toast({ title: "Success", description: `Added ${selectedProduct.name}` });
       setShowStep11Preview(false); setSelectedProduct(null); setPendingItems([]);
-      loadBoqItemsAndEdits();
+      loadTemplates();
     } catch (err) {
       toast({ title: "Error", description: "Failed to save BOQ item", variant: "destructive" });
     }
@@ -2582,36 +2726,89 @@ export default function CreateBom() {
               />
             </div>
           </div>
-          <div className="py-4 max-h-[60vh] overflow-y-auto">
-            {bomTemplates.length === 0 ? (
-              <div className="text-center py-8 text-slate-500 bg-slate-50 rounded-lg border border-dashed border-slate-200">
-                <div className="text-sm font-medium">No templates saved yet.</div>
-                <div className="text-xs">Save any product card as a template to see it here.</div>
-              </div>
-            ) : (
-              <div className="grid gap-3">
-                {bomTemplates
-                  .filter(t => fuzzySearch(templateSearch, [t.name, t.config?.product_name || ""]))
-                  .map((template) => (
-                    <div key={template.id} className="flex items-center justify-between p-3 border border-slate-200 rounded-lg hover:bg-slate-50 transition-colors">
-                      <div className="flex flex-col">
-                        <span className="text-sm font-bold text-slate-800">{template.name}</span>
-                        <span className="text-[10px] text-slate-500 uppercase font-medium">
-                          {template.config.product_name || "Custom Product"} • Created {new Date(template.created_at).toLocaleDateString()}
-                        </span>
-                      </div>
-                      <div className="flex items-center gap-2">
-                        <Button variant="outline" size="sm" onClick={() => handleApplyTemplate(template)} className="h-8 text-xs font-bold">
-                          Apply
-                        </Button>
-                        <Button variant="ghost" size="sm" onClick={() => handleDeleteTemplate(template.id)} className="h-8 w-8 p-0 text-slate-400 hover:text-red-600">
-                          <Trash2 className="h-4 w-4" />
-                        </Button>
-                      </div>
+          <div className="py-2">
+            <Tabs defaultValue="bom" className="w-full">
+              <TabsList className="grid w-full grid-cols-2 mb-4">
+                <TabsTrigger value="bom" className="text-xs font-bold">BOM Templates</TabsTrigger>
+                <TabsTrigger value="sketch" className="text-xs font-bold">Sketch Templates</TabsTrigger>
+              </TabsList>
+
+              <TabsContent value="bom">
+                <div className="py-2 max-h-[50vh] overflow-y-auto">
+                  {bomTemplates.length === 0 ? (
+                    <div className="text-center py-8 text-slate-500 bg-slate-50 rounded-lg border border-dashed border-slate-200">
+                      <div className="text-sm font-medium">No BOM templates saved yet.</div>
+                      <div className="text-xs">Save any product card as a template to see it here.</div>
                     </div>
-                  ))}
-              </div>
-            )}
+                  ) : (
+                    <div className="grid gap-3">
+                      {bomTemplates
+                        .filter(t => fuzzySearch(templateSearch, [t.name, t.config?.product_name || ""]))
+                        .map((template) => (
+                          <div key={template.id} className="flex items-center justify-between p-3 border border-slate-200 rounded-lg hover:bg-slate-50 transition-colors">
+                            <div className="flex flex-col">
+                              <span className="text-sm font-bold text-slate-800">{template.name}</span>
+                              <span className="text-[10px] text-slate-500 uppercase font-medium">
+                                {template.config?.product_name || "Custom Product"} • Created {new Date(template.created_at).toLocaleDateString()}
+                              </span>
+                            </div>
+                            <div className="flex items-center gap-2">
+                              <Button variant="outline" size="sm" onClick={() => handleApplyTemplate(template)} className="h-8 text-xs font-bold">
+                                Apply
+                              </Button>
+                              <Button variant="ghost" size="sm" onClick={() => handleDeleteTemplate(template.id)} className="h-8 w-8 p-0 text-slate-400 hover:text-red-600">
+                                <Trash2 className="h-4 w-4" />
+                              </Button>
+                            </div>
+                          </div>
+                        ))}
+                    </div>
+                  )}
+                </div>
+              </TabsContent>
+
+              <TabsContent value="sketch">
+                <div className="py-2 max-h-[50vh] overflow-y-auto">
+                  {sketchTemplates.length === 0 ? (
+                    <div className="text-center py-8 text-slate-500 bg-slate-50 rounded-lg border border-dashed border-slate-200">
+                      <div className="text-sm font-medium">No Sketch templates found.</div>
+                      <div className="text-xs">Save templates in the "Sketch a Plan" module to see them here.</div>
+                    </div>
+                  ) : (
+                    <div className="grid gap-3">
+                      {sketchTemplates
+                        .filter(t => fuzzySearch(templateSearch, [t.name]))
+                        .map((template) => {
+                          let itemCount = 0;
+                          try {
+                            const data = typeof template.template_data === 'string' ? JSON.parse(template.template_data) : template.template_data;
+                            itemCount = Array.isArray(data) ? data.length : (data?.items?.length || 0);
+                          } catch (e) { /* ignore */ }
+
+                          return (
+                            <div key={template.id} className="flex items-center justify-between p-3 border border-slate-200 rounded-lg hover:bg-slate-50 transition-colors">
+                              <div className="flex flex-col">
+                                <span className="text-sm font-bold text-slate-800">{template.name}</span>
+                                <span className="text-[10px] text-slate-500 uppercase font-medium">
+                                  Sketch Template • {itemCount} items • Created {new Date(template.created_at).toLocaleDateString()}
+                                </span>
+                              </div>
+                              <div className="flex items-center gap-2">
+                                <Button variant="outline" size="sm" onClick={() => handleApplySketchTemplate(template)} className="h-8 text-xs font-bold bg-blue-50 text-blue-700 border-blue-200 hover:bg-blue-100">
+                                  Apply to BOM
+                                </Button>
+                                <Button variant="ghost" size="sm" onClick={() => handleDeleteSketchTemplate(template.id)} className="h-8 w-8 p-0 text-slate-400 hover:text-red-600">
+                                  <Trash2 className="h-4 w-4" />
+                                </Button>
+                              </div>
+                            </div>
+                          );
+                        })}
+                    </div>
+                  )}
+                </div>
+              </TabsContent>
+            </Tabs>
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setShowTemplateManager(false)}>Close</Button>
@@ -2652,7 +2849,11 @@ export default function CreateBom() {
           <DialogFooter>
             <Button variant="outline" onClick={() => setShowSaveTemplateDialog(false)}>Cancel</Button>
             <Button
-              onClick={() => handleSaveAsTemplate(newTemplateName, templateToSave?.table_data)}
+              onClick={() => {
+                if (!templateToSave) return;
+                const mergedData = getMergedTableData(templateToSave);
+                handleSaveAsTemplate(newTemplateName, mergedData);
+              }}
               disabled={!newTemplateName.trim()}
               className="bg-green-600 hover:bg-green-700 text-white font-bold"
             >

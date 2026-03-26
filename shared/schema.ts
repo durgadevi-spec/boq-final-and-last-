@@ -19,7 +19,7 @@ export const users = pgTable("users", {
   username: text("username").notNull().unique(),
   password: text("password").notNull(),
 
-  // user, admin, supplier, software_team, purchase_team
+  // user, admin, supplier, software_team, purchase_team, pre_sales, contractor, product_manager, site_engineer
   role: text("role").notNull().default("user"),
 
   // approved, pending, rejected
@@ -259,3 +259,94 @@ export type PoRequest = typeof poRequests.$inferSelect;
 export type InsertPoRequest = z.infer<typeof insertPoRequestSchema>;
 export type PoRequestItem = typeof poRequestItems.$inferSelect;
 export type InsertPoRequestItem = z.infer<typeof insertPoRequestItemSchema>;
+
+// --- SITE REPORT TABLES ---
+
+export const siteReports = pgTable("site_reports", {
+  id: uuid("id").primaryKey().default(sql`gen_random_uuid()`),
+  projectId: text("project_id").notNull(),
+  projectName: text("project_name").notNull(),
+  userId: text("user_id").notNull(),
+  reportDate: timestamp("report_date", { withTimezone: true }).default(sql`now()`),
+  summary: text("summary"),
+  // draft, submitted
+  status: text("status").notNull().default("draft"),
+  createdAt: timestamp("created_at", { withTimezone: true }).default(sql`now()`),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).default(sql`now()`),
+});
+
+export const siteReportTasks = pgTable("site_report_tasks", {
+  id: uuid("id").primaryKey().default(sql`gen_random_uuid()`),
+  siteReportId: uuid("site_report_id").notNull().references(() => siteReports.id, { onDelete: 'cascade' }),
+  itemType: text("item_type").notNull(), // 'item' or 'product'
+  itemId: text("item_id").notNull(),
+  itemName: text("item_name").notNull(),
+  taskDescription: text("task_description"),
+  completionPercentage: integer("completion_percentage").notNull().default(0),
+  status: text("status"), // 'Not Started', 'In Progress', 'Completed'
+  createdAt: timestamp("created_at", { withTimezone: true }).default(sql`now()`),
+});
+
+export const siteReportLabours = pgTable("site_report_labours", {
+  id: uuid("id").primaryKey().default(sql`gen_random_uuid()`),
+  taskId: uuid("task_id").notNull().references(() => siteReportTasks.id, { onDelete: 'cascade' }),
+  labourName: text("labour_name"),
+  count: integer("count").notNull().default(1),
+  inTime: text("in_time"),
+  outTime: text("out_time"),
+  createdAt: timestamp("created_at", { withTimezone: true }).default(sql`now()`),
+});
+
+export const siteReportMedia = pgTable("site_report_media", {
+  id: uuid("id").primaryKey().default(sql`gen_random_uuid()`),
+  taskId: uuid("task_id").notNull().references(() => siteReportTasks.id, { onDelete: 'cascade' }),
+  fileUrl: text("file_url").notNull(),
+  fileType: text("file_type").notNull(), // 'image' or 'video'
+  fileName: text("file_name"),
+  createdAt: timestamp("created_at", { withTimezone: true }).default(sql`now()`),
+});
+
+export const siteReportIssues = pgTable("site_report_issues", {
+  id: uuid("id").primaryKey().default(sql`gen_random_uuid()`),
+  taskId: uuid("task_id").notNull().references(() => siteReportTasks.id, { onDelete: 'cascade' }),
+  description: text("description").notNull(),
+  createdAt: timestamp("created_at", { withTimezone: true }).default(sql`now()`),
+});
+
+export const emailGroups = pgTable("email_groups", {
+  id: uuid("id").primaryKey().default(sql`gen_random_uuid()`),
+  name: text("name").notNull(),
+  userId: text("user_id").notNull(),
+  createdAt: timestamp("created_at", { withTimezone: true }).default(sql`now()`),
+});
+
+export const emailGroupMembers = pgTable("email_group_members", {
+  id: uuid("id").primaryKey().default(sql`gen_random_uuid()`),
+  groupId: uuid("group_id").notNull().references(() => emailGroups.id, { onDelete: 'cascade' }),
+  email: text("email").notNull(),
+  createdAt: timestamp("created_at", { withTimezone: true }).default(sql`now()`),
+});
+
+// Zod schemas and types
+export const insertSiteReportSchema = createInsertSchema(siteReports);
+export const insertSiteReportTaskSchema = createInsertSchema(siteReportTasks);
+export const insertSiteReportLabourSchema = createInsertSchema(siteReportLabours);
+export const insertSiteReportMediaSchema = createInsertSchema(siteReportMedia);
+export const insertSiteReportIssueSchema = createInsertSchema(siteReportIssues);
+export const insertEmailGroupSchema = createInsertSchema(emailGroups);
+export const insertEmailGroupMemberSchema = createInsertSchema(emailGroupMembers);
+
+export type SiteReport = typeof siteReports.$inferSelect;
+export type InsertSiteReport = z.infer<typeof insertSiteReportSchema>;
+export type SiteReportTask = typeof siteReportTasks.$inferSelect;
+export type InsertSiteReportTask = z.infer<typeof insertSiteReportTaskSchema>;
+export type SiteReportLabour = typeof siteReportLabours.$inferSelect;
+export type InsertSiteReportLabour = z.infer<typeof insertSiteReportLabourSchema>;
+export type SiteReportMedia = typeof siteReportMedia.$inferSelect;
+export type InsertSiteReportMedia = z.infer<typeof insertSiteReportMediaSchema>;
+export type SiteReportIssue = typeof siteReportIssues.$inferSelect;
+export type InsertSiteReportIssue = z.infer<typeof insertSiteReportIssueSchema>;
+export type EmailGroup = typeof emailGroups.$inferSelect;
+export type InsertEmailGroup = z.infer<typeof insertEmailGroupSchema>;
+export type EmailGroupMember = typeof emailGroupMembers.$inferSelect;
+export type InsertEmailGroupMember = z.infer<typeof insertEmailGroupMemberSchema>;

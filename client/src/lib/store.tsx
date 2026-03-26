@@ -145,6 +145,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
             brandName: s.submission.brandname || s.submission.brandName || s.submission.brand || s.submission.make || "",
             modelNumber: s.submission.modelnumber || s.submission.modelNumber || "",
             technicalSpecification: s.submission.technicalspecification || s.submission.technicalSpecification || "",
+            image: s.submission.image || s.submission.template_image || null,
           },
           submittedBy: s.submission.shop_name || "Supplier",
           submittedAt: s.submission.submitted_at || s.submission.created_at,
