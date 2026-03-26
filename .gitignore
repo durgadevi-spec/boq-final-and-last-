@@ -1,17 +1,38 @@
-# logs
+# Logs
 *.log
 server-dev.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
 
-# temp files
+# Temp files
 server/tmp_*
 data/
+tmp/
+temp/
 
-# node
+# Runtime / generated files (IMPORTANT)
+server/archive_data.json
+
+# Node
 node_modules/
 
-# env files
+# Build output
+dist/
+build/
+
+# Env files (DO NOT COMMIT)
 .env
 .env.local
+.env.production
 
-# runtime data
-server/archive_data.json
+# OS files
+.DS_Store
+Thumbs.db
+
+# PM2 logs
+.pm2/logs
+
+# Misc
+*.pid
+*.seed
