@@ -31,9 +31,20 @@ export const ALL_SIDEBAR_MODULES = [
   { key: "user_manual", label: "User Manual" },
   { key: "sketch_plan", label: "Sketch a Plan" },
   // ── Create Product: granular sub-permissions ──────────────────────────────
-  { key: "create_product_category", label: "Create Product → Manage Categories" },
-  { key: "create_product_subcategory", label: "Create Product → Manage Subcategories" },
-  { key: "create_product_product", label: "Create Product → Manage Products" },
+  { key: "create_product_category", label: "Create Product → Manage Categories (Page Access)" },
+  { key: "create_product_category_add", label: "Categories → Add Category" },
+  { key: "create_product_category_edit", label: "Categories → Edit Category" },
+  { key: "create_product_category_delete", label: "Categories → Delete Category" },
+
+  { key: "create_product_subcategory", label: "Create Product → Manage Subcategories (Page Access)" },
+  { key: "create_product_subcategory_add", label: "Subcategories → Add Subcategory" },
+  { key: "create_product_subcategory_edit", label: "Subcategories → Edit Subcategory" },
+  { key: "create_product_subcategory_delete", label: "Subcategories → Delete Subcategory" },
+
+  { key: "create_product_product", label: "Create Product → Manage Products (Page Access)" },
+  { key: "create_product_product_add", label: "Products → Add Product" },
+  { key: "create_product_product_edit", label: "Products → Edit Product" },
+  { key: "create_product_product_delete", label: "Products → Delete Product" },
   // ── Manage Product: granular sub-permissions ──────────────────────────────
   { key: "manage_product_work", label: "Manage Product → Needs Work (Edit/Submit)" },
   { key: "manage_product_approval", label: "Manage Product → Approve / Reject" },
@@ -50,8 +61,17 @@ export const PERMISSION_GROUPS = [
     keys: [
       "create_product",
       "create_product_category",
+      "create_product_category_add",
+      "create_product_category_edit",
+      "create_product_category_delete",
       "create_product_subcategory",
+      "create_product_subcategory_add",
+      "create_product_subcategory_edit",
+      "create_product_subcategory_delete",
       "create_product_product",
+      "create_product_product_add",
+      "create_product_product_edit",
+      "create_product_product_delete",
     ],
   },
   {
@@ -127,7 +147,11 @@ export function getDefaultPermissions(role: string): string[] {
   if (role === 'admin' || role === 'software_team' || role === 'purchase_team' || role === 'pre_sales' || role === 'product_manager' || role === 'contractor') {
     modules.push('create_product', 'manage_product');
     // Create Product granular
-    modules.push('create_product_category', 'create_product_subcategory', 'create_product_product');
+    modules.push(
+      'create_product_category', 'create_product_category_add', 'create_product_category_edit', 'create_product_category_delete',
+      'create_product_subcategory', 'create_product_subcategory_add', 'create_product_subcategory_edit', 'create_product_subcategory_delete',
+      'create_product_product', 'create_product_product_add', 'create_product_product_edit', 'create_product_product_delete'
+    );
     // Manage Product granular
     modules.push('manage_product_work');
   }

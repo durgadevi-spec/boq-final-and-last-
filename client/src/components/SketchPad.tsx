@@ -47,18 +47,100 @@ interface Block {
 }
 
 const PREDEFINED_BLOCKS = [
-  { id: "sofa-1", type: "sofa", label: "1-Seater Sofa", width: 3, height: 3 },
-  { id: "sofa-2", type: "sofa", label: "2-Seater Sofa", width: 6, height: 3 },
-  { id: "sofa-3", type: "sofa", label: "3-Seater Sofa", width: 8, height: 3 },
-  { id: "sofa-corner", type: "sofa", label: "Corner Sofa", width: 8, height: 8 },
-  { id: "table-coffee", type: "table", label: "Coffee Table", width: 4, height: 2 },
-  { id: "table-dining", type: "table", label: "Dining Table", width: 6, height: 4 },
-  { id: "bed-single", type: "bed", label: "Single Bed", width: 3.5, height: 6.5 },
+  // FURNITURE - SOFAS
+  { id: "sofa-1", type: "sofa", label: "1-Seater Sofa", width: 3, height: 3.5 },
+  { id: "sofa-2", type: "sofa", label: "2-Seater Sofa", width: 6, height: 3.5 },
+  { id: "sofa-3", type: "sofa", label: "3-Seater Sofa", width: 9, height: 3.5 },
+  { id: "sofa-4", type: "sofa", label: "4-Seater Sofa", width: 12, height: 3.5 },
+  { id: "sofa-lshape", type: "sofa", label: "L-Shape Sofa", width: 10, height: 10 },
+  { id: "sofa-corner", type: "sofa", label: "Corner Sofa", width: 10, height: 10 },
+  { id: "sofa-sectional", type: "sofa", label: "Sectional Sofa", width: 12, height: 8 },
+  
+  // FURNITURE - BEDS
+  { id: "bed-single", type: "bed", label: "Single Bed", width: 3, height: 6.5 },
+  { id: "bed-double", type: "bed", label: "Double Bed (Top View)", width: 4.5, height: 6.5 },
   { id: "bed-queen", type: "bed", label: "Queen Bed", width: 5, height: 7 },
-  { id: "cabinet-main", type: "cabinet", label: "Cabinet", width: 4, height: 2 },
-  { id: "shape-rect", type: "shape", label: "Rectangle", width: 5, height: 5 },
+  { id: "bed-king", type: "bed", label: "King Bed", width: 6.5, height: 7.5 },
+  { id: "bed-twin", type: "bed", label: "Twin Bed", width: 3.5, height: 6 },
+  
+  // FURNITURE - TABLES & CHAIRS
+  { id: "table-coffee", type: "table", label: "Coffee Table", width: 4, height: 2.5 },
+  { id: "table-side", type: "table", label: "Side Table", width: 2, height: 2 },
+  { id: "table-console", type: "table", label: "Console Table", width: 4, height: 1.5 },
+  { id: "table-dining", type: "table", label: "Dining Table 4 Seat", width: 6, height: 4 },
+  { id: "table-dining-6", type: "table", label: "Dining Table 6 Seat", width: 8, height: 5 },
+  { id: "table-dining-8", type: "table", label: "Dining Table 8 Seat", width: 10, height: 6 },
+  { id: "table-round", type: "table", label: "Round Dining Table", width: 5, height: 5 },
+  { id: "armchair-set", type: "table", label: "Armchairs & Table Set", width: 12, height: 8 },
+  { id: "chair-dining", type: "shape", label: "Dining Chair", width: 2.5, height: 2.5 },
+  { id: "chair-office", type: "shape", label: "Office Chair", width: 2, height: 2 },
+  
+  // FURNITURE - STORAGE
+  { id: "cabinet", type: "cabinet", label: "Cabinet", width: 4, height: 2.5 },
+  { id: "cabinet-tall", type: "cabinet", label: "Tall Cabinet", width: 3, height: 6 },
+  { id: "office-desk", type: "cabinet", label: "Office Desk", width: 5, height: 2.5 },
+  { id: "desk-computer", type: "cabinet", label: "Computer Desk", width: 5, height: 2.5 },
+  { id: "bookshelf", type: "cabinet", label: "Bookshelf", width: 3, height: 6 },
+  { id: "wardrobe", type: "cabinet", label: "Wardrobe", width: 3.5, height: 6.5 },
+  { id: "nightstand", type: "cabinet", label: "Nightstand", width: 2, height: 1.5 },
+  { id: "dresser", type: "cabinet", label: "Dresser", width: 4, height: 2 },
+  
+  // FURNITURE - TEXTILES & SOFT ITEMS
+  { id: "curtains", type: "shape", label: "Curtains (Top View)", width: 10, height: 0.5 },
+  { id: "curtains-heavy", type: "shape", label: "Heavy Curtains", width: 12, height: 0.7 },
+  { id: "rug-small", type: "shape", label: "Small Rug", width: 5, height: 3 },
+  { id: "rug-medium", type: "shape", label: "Medium Rug", width: 8, height: 5 },
+  { id: "rug-large", type: "shape", label: "Large Rug", width: 12, height: 8 },
+  
+  // KITCHEN & APPLIANCES
+  { id: "fridge", type: "cabinet", label: "Fridge (Top View)", width: 3, height: 2.5 },
+  { id: "stove", type: "cabinet", label: "Stove/Cooktop", width: 3, height: 2 },
+  { id: "microwave", type: "cabinet", label: "Microwave", width: 2, height: 1.5 },
+  { id: "dishwasher", type: "cabinet", label: "Dishwasher", width: 2.5, height: 2 },
+  { id: "sink-kitchen", type: "shape", label: "Kitchen Sink", width: 2.5, height: 2 },
+  { id: "counter-kitchen", type: "shape", label: "Kitchen Counter", width: 6, height: 2.5 },
+  
+  // BATHROOM FIXTURES
+  { id: "bathroom-sink", type: "shape", label: "Bathroom Sink", width: 3, height: 2 },
+  { id: "bathtub", type: "shape", label: "Bathtub", width: 5, height: 3 },
+  { id: "toilet", type: "shape", label: "Toilet (Top View)", width: 2.5, height: 4.5 },
+  { id: "shower", type: "shape", label: "Shower Stall", width: 3.5, height: 3.5 },
+  { id: "mirror", type: "shape", label: "Mirror", width: 4, height: 0.5 },
+  
+  // LANDSCAPE & OUTDOOR
+  { id: "tree-topview", type: "shape", label: "Tree (Top View)", width: 4, height: 4 },
+  { id: "tree-small", type: "shape", label: "Small Tree", width: 2.5, height: 2.5 },
+  { id: "tree-large", type: "shape", label: "Large Tree", width: 5, height: 5 },
+  { id: "bush", type: "shape", label: "Bush/Shrub", width: 2, height: 2 },
+  { id: "planter", type: "shape", label: "Planter/Pot", width: 1.5, height: 1.5 },
+  
+  // TECHNICAL & ENTERTAINMENT
+  { id: "tv", type: "shape", label: "TV (Top View)", width: 3, height: 0.5 },
+  { id: "tv-large", type: "shape", label: "Large TV", width: 4.5, height: 0.7 },
+  { id: "monitor", type: "shape", label: "Monitor", width: 2.5, height: 0.3 },
+  { id: "speaker", type: "shape", label: "Speaker", width: 0.8, height: 0.8 },
+  { id: "lamp-floor", type: "shape", label: "Floor Lamp", width: 1, height: 1 },
+  { id: "lamp-table", type: "shape", label: "Table Lamp", width: 0.7, height: 0.7 },
+  
+  // DOORS & WINDOWS
+  { id: "door-single", type: "shape", label: "Single Door", width: 3, height: 0.15 },
+  { id: "door-double", type: "shape", label: "Double Door", width: 6, height: 0.15 },
+  { id: "door-sliding", type: "shape", label: "Sliding Door", width: 4, height: 0.2 },
+  { id: "window-single", type: "shape", label: "Window", width: 2, height: 0.2 },
+  { id: "window-large", type: "shape", label: "Large Window", width: 4, height: 0.2 },
+  
+  // ROOM BUNDLES & SETS
+  { id: "living-room", type: "shape", label: "Living Room Set", width: 12, height: 10 },
+  { id: "bedroom-set", type: "shape", label: "Bedroom Set", width: 12, height: 10 },
+  { id: "dining-set", type: "shape", label: "Dining Room Set", width: 10, height: 8 },
+  
+  // GENERAL SHAPES & AREAS
+  { id: "shape-rect-small", type: "shape", label: "Rectangle", width: 5, height: 3 },
+  { id: "shape-rect-medium", type: "shape", label: "Rectangle (Medium)", width: 8, height: 5 },
+  { id: "shape-rect-large", type: "shape", label: "Rectangle (Large)", width: 12, height: 8 },
+  { id: "shape-square-small", type: "shape", label: "Square", width: 5, height: 5 },
+  { id: "shape-square-medium", type: "shape", label: "Square (Medium)", width: 8, height: 8 },
   { id: "shape-square-area", type: "shape", label: "Square Area", width: 10, height: 10 },
-  { id: "shape-square", type: "shape", label: "Square", width: 4, height: 4 },
 ];
 
 interface SketchPadProps {
@@ -98,7 +180,7 @@ export function SketchPad({ onSave, onAutoSave, initialData, width = 600, height
 
   // Smart features state
   const [gridSize, setGridSize] = useState(20);
-  const [referenceScale, setReferenceScale] = useState(100); // represents total width in unitPrefix
+  const [referenceScale, setReferenceScale] = useState(12); // represents total width in unitPrefix
 
 
 
@@ -363,8 +445,8 @@ export function SketchPad({ onSave, onAutoSave, initialData, width = 600, height
       ctx.drawImage(initialImage, 0, 0, canvas.width, canvas.height);
     }
 
-    // Draw Grid
-    if (showGrid) {
+    // Draw Grid (only for drawing tab, not block builder)
+    if (showGrid && activeTab === "drawing") {
       // Calculate visible bounds in canvas coordinates
       const left = -panOffset.x / zoom;
       const top = -panOffset.y / zoom;
@@ -593,58 +675,230 @@ export function SketchPad({ onSave, onAutoSave, initialData, width = 600, height
       ctx.shadowOffsetX = 0;
       ctx.shadowOffsetY = 0;
 
-      // Detailed Furniture Representation
-      ctx.strokeStyle = isSelected ? "rgba(79, 70, 229, 0.5)" : "rgba(100, 116, 139, 0.3)";
-      ctx.lineWidth = 1 / zoom;
+      // Detailed Furniture Representation - REALISTIC CAD STYLE
+      ctx.lineWidth = 2.5 / zoom;
+      const lineColor = isSelected ? "rgba(20, 20, 50, 0.9)" : "rgba(50, 50, 100, 0.8)";
+      const fillColor = isSelected ? "rgba(100, 100, 200, 0.15)" : "rgba(100, 100, 150, 0.08)";
+      const accentColor = isSelected ? "rgba(79, 70, 229, 0.7)" : "rgba(79, 70, 229, 0.5)";
+      
+      ctx.strokeStyle = lineColor;
+      ctx.fillStyle = fillColor;
 
       if (b.type === "sofa") {
-        // Draw sofa backrest
-        ctx.strokeRect(-w / 2 + 5 / zoom, -h / 2 + 2 / zoom, w - 10 / zoom, 8 / zoom);
-        // Draw arms
-        ctx.strokeRect(-w / 2 + 2 / zoom, -h / 2 + 10 / zoom, 6 / zoom, h - 12 / zoom);
-        ctx.strokeRect(w / 2 - 8 / zoom, -h / 2 + 10 / zoom, 6 / zoom, h - 12 / zoom);
-        // Seat cushions
-        if (w > 40 / zoom) {
+        // Draw outer frame
+        ctx.strokeRect(-w / 2, -h / 2, w, h);
+        ctx.fillRect(-w / 2, -h / 2, w, h);
+        
+        // Backrest (top thicker line)
+        ctx.lineWidth = 3.5 / zoom;
+        ctx.strokeStyle = accentColor;
+        ctx.beginPath();
+        ctx.moveTo(-w / 2 + 2 / zoom, -h / 2 + 3 / zoom);
+        ctx.lineTo(w / 2 - 2 / zoom, -h / 2 + 3 / zoom);
+        ctx.stroke();
+        
+        // Left armrest
+        ctx.lineWidth = 3 / zoom;
+        ctx.fillStyle = "rgba(79, 70, 229, 0.2)";
+        ctx.fillRect(-w / 2 + 1 / zoom, -h / 2 + 6 / zoom, w * 0.1, h - 8 / zoom);
+        ctx.strokeRect(-w / 2 + 1 / zoom, -h / 2 + 6 / zoom, w * 0.1, h - 8 / zoom);
+        
+        // Right armrest
+        ctx.fillRect(w / 2 - w * 0.1 - 1 / zoom, -h / 2 + 6 / zoom, w * 0.1, h - 8 / zoom);
+        ctx.strokeRect(w / 2 - w * 0.1 - 1 / zoom, -h / 2 + 6 / zoom, w * 0.1, h - 8 / zoom);
+        
+        // Seat cushions - multiple divisions based on sofa width in feet
+        ctx.strokeStyle = lineColor;
+        ctx.lineWidth = 2 / zoom;
+        const seatStartX = -w / 2 + w * 0.11;
+        const seatWidth = w * 0.78;
+        // Determine number of seats based on actual width in feet
+        const numSeats = b.width <= 3.5 ? 1 : (b.width <= 7 ? 2 : (b.width <= 10 ? 3 : 4));
+        const cushionWidth = seatWidth / numSeats;
+        
+        for (let i = 0; i < numSeats; i++) {
+          const cx = seatStartX + i * cushionWidth;
+          ctx.fillStyle = "rgba(100, 100, 150, 0.12)";
+          ctx.fillRect(cx, -h / 2 + h * 0.2, cushionWidth - 1 / zoom, h * 0.7);
+          ctx.strokeRect(cx, -h / 2 + h * 0.2, cushionWidth - 1 / zoom, h * 0.7);
+        }
+        
+      } else if (b.type === "bed") {
+        // Outer frame
+        ctx.strokeStyle = lineColor;
+        ctx.lineWidth = 3.5 / zoom;
+        ctx.strokeRect(-w / 2 + 1 / zoom, -h / 2 + 1 / zoom, w - 2 / zoom, h - 2 / zoom);
+        ctx.fillStyle = fillColor;
+        ctx.fillRect(-w / 2 + 1 / zoom, -h / 2 + 1 / zoom, w - 2 / zoom, h - 2 / zoom);
+        
+        // Headboard (solid darker top)
+        ctx.strokeStyle = accentColor;
+        ctx.fillStyle = "rgba(79, 70, 229, 0.3)";
+        ctx.lineWidth = 3 / zoom;
+        ctx.fillRect(-w / 2 + 2 / zoom, -h / 2 + 1 / zoom, w - 4 / zoom, h * 0.12);
+        ctx.strokeRect(-w / 2 + 2 / zoom, -h / 2 + 1 / zoom, w - 4 / zoom, h * 0.12);
+        
+        // Pillows at headboard
+        ctx.fillStyle = "rgba(120, 120, 200, 0.2)";
+        ctx.strokeStyle = accentColor;
+        ctx.lineWidth = 2.5 / zoom;
+        const pillow1X = -w / 2 + w * 0.15;
+        const pillow1Y = -h / 2 + h * 0.15;
+        ctx.fillRect(pillow1X, pillow1Y, w * 0.2, h * 0.15);
+        ctx.strokeRect(pillow1X, pillow1Y, w * 0.2, h * 0.15);
+        
+        if (w > 60 / zoom) {
+          const pillow2X = w / 2 - w * 0.35;
+          ctx.fillRect(pillow2X, pillow1Y, w * 0.2, h * 0.15);
+          ctx.strokeRect(pillow2X, pillow1Y, w * 0.2, h * 0.15);
+        }
+        
+        // Mattress/bed surface with pattern
+        ctx.strokeStyle = lineColor;
+        ctx.lineWidth = 1.5 / zoom;
+        const sectionsH = 3;
+        for (let i = 0; i < sectionsH; i++) {
+          const y = -h / 2 + h * 0.3 + (i * h * 0.2);
           ctx.beginPath();
-          ctx.moveTo(0, -h / 2 + 10 / zoom);
-          ctx.lineTo(0, h / 2 - 2 / zoom);
+          ctx.moveTo(-w / 2 + 3 / zoom, y);
+          ctx.lineTo(w / 2 - 3 / zoom, y);
           ctx.stroke();
         }
-      } else if (b.type === "bed") {
-        // Pillows
-        const pW = w * 0.3;
-        const pH = h * 0.2;
-        ctx.strokeRect(-w / 2 + 5 / zoom, -h / 2 + 5 / zoom, pW, pH);
-        if (w > 30 / zoom) {
-          ctx.strokeRect(w / 2 - 5 / zoom - pW, -h / 2 + 5 / zoom, pW, pH);
-        }
-        // Blanket line
-        ctx.beginPath();
-        ctx.moveTo(-w / 2 + 2 / zoom, -h / 2 + h * 0.4);
-        ctx.lineTo(w / 2 - 2 / zoom, -h / 2 + h * 0.4);
-        ctx.stroke();
+        
       } else if (b.type === "table") {
-        // Inner border for table
-        ctx.strokeRect(-w / 2 + 4 / zoom, -h / 2 + 4 / zoom, w - 8 / zoom, h - 8 / zoom);
-        // Chairs (represented by circles if it's a dining table)
+        // Table top
+        ctx.fillStyle = fillColor;
+        ctx.strokeStyle = lineColor;
+        ctx.lineWidth = 3 / zoom;
+        ctx.fillRect(-w / 2 + 2 / zoom, -h / 2 + 2 / zoom, w - 4 / zoom, h - 4 / zoom);
+        ctx.strokeRect(-w / 2 + 2 / zoom, -h / 2 + 2 / zoom, w - 4 / zoom, h - 4 / zoom);
+        
+        // Inner border pattern
+        ctx.strokeStyle = accentColor;
+        ctx.lineWidth = 1.5 / zoom;
+        ctx.strokeRect(-w / 2 + 6 / zoom, -h / 2 + 6 / zoom, w - 12 / zoom, h - 12 / zoom);
+        
+        // Chairs around dining table
         if (b.label.toLowerCase().includes("dining")) {
-          const chairR = 4 / zoom;
-          // Side chairs
-          ctx.beginPath(); ctx.arc(-w / 2 - chairR, 0, chairR, 0, Math.PI * 2); ctx.stroke();
-          ctx.beginPath(); ctx.arc(w / 2 + chairR, 0, chairR, 0, Math.PI * 2); ctx.stroke();
+          ctx.fillStyle = "rgba(79, 70, 229, 0.2)";
+          ctx.strokeStyle = accentColor;
+          ctx.lineWidth = 2.5 / zoom;
+          const chairR = 6 / zoom;
+          
+          // Left chairs
+          ctx.beginPath();
+          ctx.arc(-w / 2 - chairR * 2, -h / 2 + h * 0.3, chairR, 0, Math.PI * 2);
+          ctx.fill();
+          ctx.stroke();
+          
+          ctx.beginPath();
+          ctx.arc(-w / 2 - chairR * 2, h / 2 - h * 0.3, chairR, 0, Math.PI * 2);
+          ctx.fill();
+          ctx.stroke();
+          
+          // Right chairs
+          ctx.beginPath();
+          ctx.arc(w / 2 + chairR * 2, -h / 2 + h * 0.3, chairR, 0, Math.PI * 2);
+          ctx.fill();
+          ctx.stroke();
+          
+          ctx.beginPath();
+          ctx.arc(w / 2 + chairR * 2, h / 2 - h * 0.3, chairR, 0, Math.PI * 2);
+          ctx.fill();
+          ctx.stroke();
         }
+        
       } else if (b.type === "cabinet") {
-        // Draw handles/lines
+        // Cabinet outer frame
+        ctx.fillStyle = fillColor;
+        ctx.strokeStyle = lineColor;
+        ctx.lineWidth = 3 / zoom;
+        ctx.fillRect(-w / 2 + 1 / zoom, -h / 2 + 1 / zoom, w - 2 / zoom, h - 2 / zoom);
+        ctx.strokeRect(-w / 2 + 1 / zoom, -h / 2 + 1 / zoom, w - 2 / zoom, h - 2 / zoom);
+        
+        // Door panels (two doors)
+        ctx.strokeStyle = accentColor;
+        ctx.lineWidth = 2.5 / zoom;
+        ctx.fillStyle = "rgba(79, 70, 229, 0.1)";
+        
+        const doorGap = 2 / zoom;
+        const doorW = (w - doorGap) / 2 - 3 / zoom;
+        
+        // Left door
+        ctx.fillRect(-w / 2 + 3 / zoom, -h / 2 + 3 / zoom, doorW, h - 6 / zoom);
+        ctx.strokeRect(-w / 2 + 3 / zoom, -h / 2 + 3 / zoom, doorW, h - 6 / zoom);
+        
+        // Right door
+        ctx.fillRect(-w / 2 + 3 / zoom + doorW + doorGap, -h / 2 + 3 / zoom, doorW, h - 6 / zoom);
+        ctx.strokeRect(-w / 2 + 3 / zoom + doorW + doorGap, -h / 2 + 3 / zoom, doorW, h - 6 / zoom);
+        
+        // Door handles (knobs)
+        ctx.fillStyle = "rgba(79, 70, 229, 0.4)";
+        ctx.lineWidth = 2 / zoom;
+        ctx.strokeStyle = accentColor;
+        const handleR = 2.5 / zoom;
+        
         ctx.beginPath();
-        ctx.moveTo(-w / 2 + 2 / zoom, 0); ctx.lineTo(w / 2 - 2 / zoom, 0); ctx.stroke();
-        ctx.strokeRect(-w / 2 + w * 0.2, 2 / zoom, 4 / zoom, 2 / zoom);
-        ctx.strokeRect(w / 2 - w * 0.2 - 4 / zoom, 2 / zoom, 4 / zoom, 2 / zoom);
+        ctx.arc(-w / 4 - doorW / 2, 0, handleR, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.stroke();
+        
+        ctx.beginPath();
+        ctx.arc(w / 4 + doorW / 2, 0, handleR, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.stroke();
+        
+      } else if (b.type === "shape") {
+        // Generic shape with pattern
+        ctx.fillStyle = fillColor;
+        ctx.strokeStyle = lineColor;
+        ctx.lineWidth = 3 / zoom;
+        ctx.fillRect(-w / 2 + 2 / zoom, -h / 2 + 2 / zoom, w - 4 / zoom, h - 4 / zoom);
+        ctx.strokeRect(-w / 2 + 2 / zoom, -h / 2 + 2 / zoom, w - 4 / zoom, h - 4 / zoom);
+        
+        // Cross pattern for different shapes
+        if (b.label.toLowerCase().includes("toilet")) {
+          // Toilet oval shape
+          ctx.strokeStyle = accentColor;
+          ctx.lineWidth = 2.5 / zoom;
+          ctx.beginPath();
+          ctx.ellipse(0, 0, w * 0.35, h * 0.45, 0, 0, Math.PI * 2);
+          ctx.fill();
+          ctx.stroke();
+          
+          // Seat opening
+          ctx.strokeStyle = lineColor;
+          ctx.lineWidth = 2 / zoom;
+          ctx.beginPath();
+          ctx.ellipse(0, h * 0.15, w * 0.3, h * 0.35, 0, 0, Math.PI * 2);
+          ctx.stroke();
+          
+        } else if (b.label.toLowerCase().includes("sink") || b.label.toLowerCase().includes("bath")) {
+          // Curved sink/tub
+          ctx.strokeStyle = accentColor;
+          ctx.lineWidth = 2.5 / zoom;
+          ctx.beginPath();
+          ctx.ellipse(0, 0, w * 0.4, h * 0.45, 0, 0, Math.PI * 2);
+          ctx.stroke();
+          
+        } else {
+          // Generic diagonal lines pattern
+          ctx.strokeStyle = accentColor;
+          ctx.lineWidth = 1.5 / zoom;
+          for (let i = -w / 2; i < w / 2; i += 8 / zoom) {
+            ctx.beginPath();
+            ctx.moveTo(i, -h / 2);
+            ctx.lineTo(i + h, h / 2);
+            ctx.stroke();
+          }
+        }
       }
+
 
       // Selection indicator (corner handles if selected)
       if (isSelected) {
         ctx.fillStyle = "#4f46e5";
-        const hSize = 5 / zoom;
+        const hSize = 6 / zoom;
         [[-w / 2, -h / 2], [w / 2, -h / 2], [-w / 2, h / 2], [w / 2, h / 2]].forEach(([px, py]) => {
           ctx.fillRect(px - hSize / 2, py - hSize / 2, hSize, hSize);
         });
@@ -654,27 +908,34 @@ export function SketchPad({ onSave, onAutoSave, initialData, width = 600, height
 
       // Label with Background for readability
       const labelText = `${b.width}×${b.height}${unitPrefix}`;
-      ctx.font = `bold ${10 / zoom}px Inter, system-ui, sans-serif`;
+      ctx.font = `bold ${12 / zoom}px Inter, system-ui, sans-serif`;
       const metrics = ctx.measureText(labelText);
-      const bgW = metrics.width + 8 / zoom;
-      const bgH = 14 / zoom;
+      const bgW = Math.max(metrics.width + 12 / zoom, 100 / zoom);
+      const bgH = 32 / zoom;
 
       ctx.save();
       ctx.translate(b.x * zoom + panOffset.x, b.y * zoom + panOffset.y);
 
-      // Text Background
-      ctx.fillStyle = "rgba(255, 255, 255, 0.8)";
+      // Text Background - positioned at top of block
+      ctx.fillStyle = "rgba(255, 255, 255, 0.95)";
+      ctx.strokeStyle = "rgba(79, 70, 229, 0.3)";
+      ctx.lineWidth = 1 / zoom;
       ctx.beginPath();
-      ctx.roundRect(-bgW / 2, -bgH / 2 - 2 / zoom, bgW, bgH, 4 / zoom);
+      ctx.roundRect(-bgW / 2, -bgH / 2 - (h * zoom / 2) - 8 / zoom, bgW, bgH, 4 / zoom);
       ctx.fill();
+      ctx.stroke();
 
-      ctx.fillStyle = "#1e293b";
+      // Dimensions text
+      ctx.fillStyle = "#4f46e5";
       ctx.textAlign = "center";
-      ctx.fillText(labelText, 0, 0);
+      ctx.textBaseline = "middle";
+      ctx.font = `bold ${12 / zoom}px Inter, system-ui, sans-serif`;
+      ctx.fillText(labelText, 0, -8 / zoom);
 
-      ctx.font = `black uppercase ${7 / zoom}px Inter, system-ui, sans-serif`;
+      // Block name text
+      ctx.font = `bold ${10 / zoom}px Inter, system-ui, sans-serif`;
       ctx.fillStyle = "#64748b";
-      ctx.fillText(b.label, 0, 8 / zoom);
+      ctx.fillText(b.label, 0, 4 / zoom);
       ctx.restore();
     };
 

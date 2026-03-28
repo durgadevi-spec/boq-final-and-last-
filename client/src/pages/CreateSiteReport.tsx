@@ -27,7 +27,7 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog";
-import { Plus, Trash2, ArrowLeft, Save, Loader2, HardHat, AlertTriangle, Image as ImageIcon, X, Search } from "lucide-react";
+import { Plus, Trash2, ArrowLeft, Save, Loader2, HardHat, AlertTriangle, Camera, Image as ImageIcon, X, Search, Package } from "lucide-react";
 import apiFetch from "@/lib/api";
 import { useToast } from "@/hooks/use-toast";
 import { Layout } from "@/components/layout/Layout";
@@ -94,9 +94,92 @@ function SearchableItemDialog({ items, onSelect, selectedId }: { items: any[], o
   );
 }
 
+function MultiSearchableItemDialog({ items, selectedItems, onAddItem, onRemoveItem }: { 
+  items: any[], 
+  selectedItems: any[], 
+  onAddItem: (itemId: string) => void, 
+  onRemoveItem: (itemId: string) => void 
+}) {
+  const [open, setOpen] = useState(false);
+  const [search, setSearch] = useState("");
+  
+  const filteredItems = items.filter(item => 
+    item.itemName.toLowerCase().includes(search.toLowerCase()) ||
+    item.category?.toLowerCase().includes(search.toLowerCase())
+  ).filter(item => !selectedItems.some(si => si.id === item.id));
+
+  return (
+    <div className="space-y-2">
+      {/* Selected Items Tags */}
+      {selectedItems.length > 0 && (
+        <div className="flex flex-wrap gap-1">
+          {selectedItems.map((item) => (
+            <div key={item.id} className="inline-flex items-center gap-1 px-2 py-1 bg-gray-100 text-gray-700 text-xs rounded-md">
+              <span className="font-medium">{item.name}</span>
+              <button
+                type="button"
+                onClick={() => onRemoveItem(item.id)}
+                className="text-gray-500 hover:text-red-600 ml-1"
+              >
+                <X className="h-3 w-3" />
+              </button>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* Add Item Button */}
+      <Dialog open={open} onOpenChange={setOpen}>
+        <DialogTrigger asChild>
+          <Button variant="outline" className="w-full justify-center h-8 text-sm border-gray-300 border-dashed">
+            <Plus className="h-3 w-3 mr-1" /> Add Item
+          </Button>
+        </DialogTrigger>
+        <DialogContent className="sm:max-w-[425px]">
+          <DialogHeader>
+            <DialogTitle>Add Items to Task</DialogTitle>
+          </DialogHeader>
+          <div className="py-4 space-y-4">
+            <div className="relative">
+              <Search className="absolute left-2 top-2.5 h-4 w-4 text-gray-500" />
+              <Input
+                placeholder="Search items, products, materials..."
+                className="pl-8"
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+              />
+            </div>
+            <div className="max-h-[300px] overflow-y-auto pr-2 space-y-1">
+              {filteredItems.length === 0 && (
+                <p className="text-center py-4 text-sm text-gray-500">
+                  {search ? "No items found." : "All available items already selected."}
+                </p>
+              )}
+              {filteredItems.map((item) => (
+                <button
+                  key={item.id}
+                  className="w-full text-left px-3 py-2 rounded-md text-sm transition-colors hover:bg-gray-100 text-gray-900"
+                  onClick={() => {
+                    onAddItem(item.id);
+                    setSearch("");
+                  }}
+                >
+                  <div className="font-medium">{item.itemName}</div>
+                  <div className="text-[10px] opacity-70 uppercase tracking-wider">{item.category}</div>
+                </button>
+              ))}
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
+    </div>
+  );
+}
+
 export default function CreateSiteReport() {
   const [loading, setLoading] = useState(false);
   const [projects, setProjects] = useState<any[]>([]);
+  const [projectSearch, setProjectSearch] = useState("");
   const [selectedProjectId, setSelectedProjectId] = useState("");
   const [reportDate, setReportDate] = useState(new Date().toISOString().split('T')[0]);
   const [summary, setSummary] = useState("");
@@ -108,10 +191,20 @@ export default function CreateSiteReport() {
 
   const fetchProjects = async () => {
     try {
-      const res = await apiFetch("/api/boq-projects");
+      // Use all=true so admin/software team can see all projects in Site Reports dropdown
+      const res = await apiFetch("/api/boq-projects?all=true");
       if (res.ok) {
         const data = await res.json();
         setProjects(data.projects || []);
+      } else {
+        // fallback to restricted projects if 'all' is not permitted
+        const fallback = await apiFetch("/api/boq-projects");
+        if (fallback.ok) {
+          const df = await fallback.json();
+          setProjects(df.projects || []);
+        } else {
+          console.warn("Could not load projects for site report");
+        }
       }
     } catch (error) {
       console.error("Failed to fetch projects:", error);
@@ -136,6 +229,8 @@ export default function CreateSiteReport() {
     fetchProjectItems(); // Initial fetch for global items
   }, []);
 
+  const filteredProjects = projects.filter(p => p.name?.toLowerCase().includes(projectSearch.toLowerCase()));
+
   useEffect(() => {
     if (selectedProjectId) {
       fetchProjectItems(selectedProjectId);
@@ -146,12 +241,12 @@ export default function CreateSiteReport() {
     setTasks([...tasks, {
       id: Math.random().toString(36).substr(2, 9),
       item_type: "boq_item",
-      item_id: "",
-      item_name: "",
+      selected_items: [], // Changed from item_id and item_name to selected_items array
       task_description: "",
       completion_percentage: 0,
       status: "In Progress",
       labour: [],
+      materials: [],
       issues: [],
       media: []
     }]);
@@ -164,9 +259,16 @@ export default function CreateSiteReport() {
   const updateTask = (taskId: string, field: string, value: any) => {
     setTasks(tasks.map(t => {
       if (t.id === taskId) {
-        if (field === 'item_id') {
-           const selectedItem = projectItems.find(i => i.id === value);
-           return { ...t, item_id: value, item_name: selectedItem?.itemName || "Unknown" };
+        if (field === 'add_item') {
+          // Add item to selected_items array
+          const item = projectItems.find(i => i.id === value);
+          if (item && !t.selected_items.some((si: any) => si.id === value)) {
+            return { ...t, selected_items: [...t.selected_items, { id: value, name: item.itemName, category: item.category }] };
+          }
+          return t;
+        } else if (field === 'remove_item') {
+          // Remove item from selected_items array
+          return { ...t, selected_items: t.selected_items.filter((si: any) => si.id !== value) };
         }
         return { ...t, [field]: value };
       }
@@ -183,12 +285,55 @@ export default function CreateSiteReport() {
     }));
   };
 
+  const addMaterial = (taskId: string) => {
+    setTasks(tasks.map(t => {
+      if (t.id === taskId) {
+        return { ...t, materials: [...(t.materials || []), { material_name: "", quantity: 1, unit: "nos" }] };
+      }
+      return t;
+    }));
+  };
+
   const addIssue = (taskId: string) => {
     setTasks(tasks.map(t => {
       if (t.id === taskId) {
         return { ...t, issues: [...(t.issues || []), { description: "" }] };
       }
       return t;
+    }));
+  };
+
+  const handleTaskImageUpload = (taskId: string, e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = e.target.files;
+    if (!files || files.length === 0) return;
+
+    Array.from(files).forEach((file) => {
+      const reader = new FileReader();
+      const fileName = file.name;
+      reader.onloadend = () => {
+        setTasks((prev) => prev.map((t) => {
+          if (t.id !== taskId) return t;
+          const nextMedia = [
+            ...(t.media || []),
+            {
+              file_url: reader.result as string,
+              url: reader.result as string,
+              file_name: fileName,
+              file_type: file.type || "image/jpeg"
+            }
+          ];
+          return { ...t, media: nextMedia };
+        }));
+      };
+      reader.readAsDataURL(file);
+    });
+  };
+
+  const removeTaskImage = (taskId: string, idx: number) => {
+    setTasks(tasks.map(t => {
+      if (t.id !== taskId) return t;
+      const nextMedia = (t.media || []).filter((_: any, i: number) => i !== idx);
+      return { ...t, media: nextMedia };
     }));
   };
 
@@ -199,11 +344,37 @@ export default function CreateSiteReport() {
       return;
     }
 
+    const selectedProject = projects.find(p => p.id === selectedProjectId);
+    const cleanedTasks = tasks
+      .map((task) => ({ 
+        ...task, 
+        selected_items: task.selected_items || []
+      }))
+      .filter((task) => task.selected_items && task.selected_items.length > 0);
+
+    if (cleanedTasks.length === 0) {
+      toast({ title: "No tasks", description: "Please add at least one task with items selected.", variant: "destructive" });
+      return;
+    }
+
+    // Flatten tasks: create one task per selected item
+    const flattenedTasks = cleanedTasks.flatMap(task => 
+      task.selected_items.map((item: any) => ({
+        item_type: task.item_type,
+        item_id: item.id,
+        item_name: item.name,
+        task_description: task.task_description,
+        completion_percentage: task.completion_percentage,
+        status: task.status,
+        labour: task.labour || [],
+        materials: task.materials || [],
+        issues: task.issues || [],
+        media: task.media || []
+      }))
+    );
+
     setLoading(true);
     try {
-      const selectedProject = projects.find(p => p.id === selectedProjectId);
-      
-      // 1. Create Report with all nested data in one go
       const reportRes = await apiFetch("/api/site-reports", {
         method: "POST",
         body: JSON.stringify({
@@ -211,17 +382,23 @@ export default function CreateSiteReport() {
           project_name: selectedProject?.name || "Unknown Project",
           report_date: reportDate,
           summary: summary,
-          tasks: tasks // Sending the full tree
+          tasks: flattenedTasks
         })
       });
 
-      if (!reportRes.ok) throw new Error("Failed to save report");
+      if (!reportRes.ok) {
+        const text = await reportRes.text();
+        throw new Error(`API ${reportRes.status} ${reportRes.statusText}: ${text}`);
+      }
 
+      const response = await reportRes.json();
       toast({ title: "Success", description: "Site report created successfully." });
       setLocation("/site-reports");
-    } catch (error) {
-       console.error("Submit failed:", error);
-       toast({ title: "Error", description: "Failed to save site report.", variant: "destructive" });
+
+      return response;
+    } catch (error: any) {
+      console.error("Submit failed:", error);
+      toast({ title: "Error", description: error?.message || "Failed to save site report.", variant: "destructive" });
     } finally {
       setLoading(false);
     }
@@ -253,10 +430,22 @@ export default function CreateSiteReport() {
                   <SelectTrigger className="h-8 text-sm border-gray-300">
                     <SelectValue placeholder="Select project..." />
                   </SelectTrigger>
-                  <SelectContent>
-                    {projects.map(p => (
-                      <SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>
-                    ))}
+                  <SelectContent className="max-h-64 overflow-y-auto">
+                    <div className="p-2">
+                      <Input
+                        placeholder="Search projects..."
+                        value={projectSearch}
+                        onChange={(e) => setProjectSearch(e.target.value)}
+                        className="h-8 text-sm"
+                      />
+                    </div>
+                    {filteredProjects.length === 0 ? (
+                      <div className="px-3 py-2 text-xs text-gray-500">No projects found.</div>
+                    ) : (
+                      filteredProjects.map(p => (
+                        <SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>
+                      ))
+                    )}
                   </SelectContent>
                 </Select>
               </div>
@@ -312,7 +501,10 @@ export default function CreateSiteReport() {
                         {index + 1}
                       </span>
                       <CardTitle className="text-xs font-bold text-gray-700">
-                        {task.item_name || 'New Task'}
+                        {task.selected_items && task.selected_items.length > 0 
+                          ? `${task.selected_items.length} item${task.selected_items.length > 1 ? 's' : ''} selected`
+                          : 'New Task'
+                        }
                       </CardTitle>
                     </div>
                     <Button type="button" variant="ghost" size="sm" className="h-6 w-6 p-0 text-gray-400 hover:text-red-600 hover:bg-red-50" onClick={() => removeTask(task.id)}>
@@ -323,11 +515,12 @@ export default function CreateSiteReport() {
                   <CardContent className="p-4 space-y-4">
                     <div className="grid md:grid-cols-4 gap-4 items-start">
                       <div className="md:col-span-2 space-y-1">
-                        <Label className="text-[10px] font-bold text-gray-400 uppercase">Item / Work</Label>
-                        <SearchableItemDialog 
+                        <Label className="text-[10px] font-bold text-gray-400 uppercase">Items / Work</Label>
+                        <MultiSearchableItemDialog 
                           items={projectItems} 
-                          selectedId={task.item_id} 
-                          onSelect={(val) => updateTask(task.id, 'item_id', val)} 
+                          selectedItems={task.selected_items || []} 
+                          onAddItem={(itemId) => updateTask(task.id, 'add_item', itemId)} 
+                          onRemoveItem={(itemId) => updateTask(task.id, 'remove_item', itemId)} 
                         />
                       </div>
                       <div className="md:col-span-1 space-y-1">
@@ -403,6 +596,50 @@ export default function CreateSiteReport() {
                       </div>
                     </div>
 
+                    {/* Materials Section - Compact Single Line Entries */}
+                    <div className="space-y-2 pt-2 border-t border-gray-100">
+                      <div className="flex items-center justify-between mb-1">
+                        <Label className="text-[10px] font-bold text-gray-400 uppercase flex items-center gap-1.5">
+                          <Package className="h-3 w-3" /> Materials Used
+                        </Label>
+                        <Button type="button" variant="ghost" size="sm" onClick={() => addMaterial(task.id)} className="h-6 text-[9px] font-black uppercase text-gray-500 hover:text-gray-900 border border-gray-200">
+                          + Add
+                        </Button>
+                      </div>
+                      <div className="space-y-1">
+                        {(task.materials || []).map((m: any, mIdx: number) => (
+                          <div key={mIdx} className="flex gap-2 items-center p-1 px-2 bg-gray-50/50 rounded border border-gray-100 group">
+                            <Input className="h-7 border-none bg-transparent text-xs w-full shadow-none focus-visible:ring-0 p-0" placeholder="Material Name (e.g. Cement)" value={m.material_name} onChange={(e) => {
+                              const nM = [...(task.materials || [])];
+                              nM[mIdx].material_name = e.target.value;
+                              updateTask(task.id, 'materials', nM);
+                            }}/>
+                            <div className="flex items-center gap-1.5 border-l border-gray-200 pl-2">
+                              <span className="text-[9px] font-bold text-gray-400 uppercase">Qty</span>
+                              <Input type="number" step="any" min="0" className="h-6 w-16 border-gray-200 text-xs text-center p-0" value={m.quantity} onChange={(e) => {
+                                const nM = [...(task.materials || [])];
+                                nM[mIdx].quantity = parseFloat(e.target.value);
+                                updateTask(task.id, 'materials', nM);
+                              }}/>
+                            </div>
+                            <div className="flex items-center gap-1.5 border-l border-gray-200 pl-2">
+                              <span className="text-[9px] font-bold text-gray-400 uppercase">Unit</span>
+                              <Input className="h-6 w-16 border-gray-200 text-xs text-center p-0" placeholder="bags" value={m.unit} onChange={(e) => {
+                                const nM = [...(task.materials || [])];
+                                nM[mIdx].unit = e.target.value;
+                                updateTask(task.id, 'materials', nM);
+                              }}/>
+                            </div>
+                            <Button type="button" variant="ghost" size="sm" className="h-6 w-6 p-0 text-gray-300 hover:text-red-600 opacity-0 group-hover:opacity-100 transition-opacity" onClick={() => {
+                              updateTask(task.id, 'materials', (task.materials || []).filter((_:any, i:number) => i !== mIdx));
+                            }}>
+                              <X className="h-3 w-3" />
+                            </Button>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+
                     {/* Issues Section - Compact Single Line */}
                     <div className="space-y-2 pt-2 border-t border-gray-100">
                       <div className="flex items-center justify-between mb-1">
@@ -434,6 +671,43 @@ export default function CreateSiteReport() {
                           </div>
                         ))}
                       </div>
+                    </div>
+
+                    {/* Media Upload */}
+                    <div className="space-y-2 pt-2 border-t border-gray-100">
+                      <div className="flex items-center justify-between mb-1">
+                        <Label className="text-[10px] font-bold text-gray-400 uppercase flex items-center gap-1.5">
+                          <Camera className="h-3 w-3" /> Evidence
+                        </Label>
+                        <label className="inline-flex items-center gap-1 text-[9px] font-black uppercase text-gray-500 hover:text-gray-900 border border-gray-200 rounded px-2 py-1 cursor-pointer">
+                          + Upload
+                          <input
+                            type="file"
+                            accept="image/*"
+                            multiple
+                            className="hidden"
+                            onChange={(e) => handleTaskImageUpload(task.id, e)}
+                          />
+                        </label>
+                      </div>
+                      {task.media && task.media.length > 0 ? (
+                        <div className="grid grid-cols-4 gap-2">
+                          {task.media.map((m: any, mIdx: number) => (
+                            <div key={mIdx} className="relative aspect-square rounded border border-gray-200 overflow-hidden bg-gray-100">
+                              <img src={m.file_url || m.url} alt={m.file_name || `media-${mIdx}`} className="w-full h-full object-cover" />
+                              <button
+                                type="button"
+                                onClick={() => removeTaskImage(task.id, mIdx)}
+                                className="absolute top-1 right-1 z-10 bg-black/50 text-white rounded-full p-1 text-[9px]"
+                              >
+                                <X className="h-3 w-3" />
+                              </button>
+                            </div>
+                          ))}
+                        </div>
+                      ) : (
+                        <div className="text-xs text-gray-500">No images added yet.</div>
+                      )}
                     </div>
                   </CardContent>
                 </Card>

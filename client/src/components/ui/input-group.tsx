@@ -70,7 +70,14 @@ function InputGroupAddon({
         if ((e.target as HTMLElement).closest("button")) {
           return
         }
-        e.currentTarget.parentElement?.querySelector("input")?.focus()
+        const inputEl = e.currentTarget.parentElement?.querySelector("input")
+        if (inputEl && typeof (inputEl as HTMLInputElement)?.focus === "function") {
+          try {
+            (inputEl as HTMLInputElement).focus()
+          } catch (err) {
+            console.warn("Failed to focus input-group text field", err)
+          }
+        }
       }}
       {...props}
     />

@@ -15,6 +15,7 @@ import {
   Loader2,
   Clock,
   Hammer,
+  Building2,
 } from "lucide-react";
 import { PermissionDialog } from "@/components/admin/PermissionDialog";
 import { ALL_SIDEBAR_MODULES } from "@/lib/permissions";
@@ -26,6 +27,7 @@ interface UserEntry {
   full_name: string | null;
   created_at: string;
   modules?: string[];
+  projects?: string[];
   assigned_at?: string;
   last_active?: string;
 }
@@ -287,6 +289,12 @@ export default function AdminAccessControl() {
                           {getModuleLabel(m)}
                         </Badge>
                       ))}
+                      {user.projects && user.projects.length > 0 && (
+                        <Badge variant="outline" className="flex gap-1 text-[10px] bg-indigo-50 text-indigo-700 border-indigo-200 items-center py-0.5 px-2">
+                          <Building2 className="h-3 w-3" />
+                          {user.projects.length} Project{user.projects.length > 1 ? 's' : ''}
+                        </Badge>
+                      )}
                     </div>
 
                   </div>

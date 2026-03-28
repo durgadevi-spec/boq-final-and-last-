@@ -1625,17 +1625,31 @@ export default function AdminDashboard() {
     "create_product_category"
   );
 
+  const hasCategorySubCheck = Array.from(customModules).some(m => m.startsWith("create_product_category_"));
+  const canAddCategories = hasPerm(user?.role === "purchase_team" || user?.role === "pre_sales" || user?.role === "product_manager", "create_product_category_add") || (!hasCategorySubCheck && canManageCategories);
+  const canEditCategories = hasPerm(user?.role === "purchase_team" || user?.role === "pre_sales" || user?.role === "product_manager", "create_product_category_edit") || (!hasCategorySubCheck && canManageCategories);
+  const canDeleteCategories = hasPerm(user?.role === "purchase_team" || user?.role === "pre_sales" || user?.role === "product_manager", "create_product_category_delete") || (!hasCategorySubCheck && canManageCategories);
+
   const canManageSubcategories = hasPerm(
     user?.role === "pre_sales",
     "create_product_subcategory"
   );
 
+  const hasSubcategorySubCheck = Array.from(customModules).some(m => m.startsWith("create_product_subcategory_"));
+  const canAddSubcategories = hasPerm(user?.role === "pre_sales", "create_product_subcategory_add") || (!hasSubcategorySubCheck && canManageSubcategories);
+  const canEditSubcategories = hasPerm(user?.role === "pre_sales", "create_product_subcategory_edit") || (!hasSubcategorySubCheck && canManageSubcategories);
+  const canDeleteSubcategories = hasPerm(user?.role === "pre_sales", "create_product_subcategory_delete") || (!hasSubcategorySubCheck && canManageSubcategories);
+
   const canCreateProduct = hasPerm(
     user?.role === "pre_sales",
     "create_product_product"
   );
-
   const canManageProducts = canCreateProduct;
+
+  const hasProductSubCheck = Array.from(customModules).some(m => m.startsWith("create_product_product_"));
+  const canAddProducts = hasPerm(user?.role === "pre_sales", "create_product_product_add") || (!hasProductSubCheck && canCreateProduct);
+  const canEditProducts = hasPerm(user?.role === "pre_sales", "create_product_product_edit") || (!hasProductSubCheck && canCreateProduct);
+  const canDeleteProducts = hasPerm(user?.role === "pre_sales", "create_product_product_delete") || (!hasProductSubCheck && canCreateProduct);
 
   const [activeTab, setActiveTab] = useState<string>(computeTab());
 
@@ -2249,430 +2263,443 @@ export default function AdminDashboard() {
           {/* === CREATE PRODUCT TAB (Admin/Software Team can manage, Purchase Team can view) === */}
           {canViewCategories && (
             <TabsContent value="create-product" className="mt-4">
-              <Tabs defaultValue="categories">
-                <TabsList className="rounded-xl bg-muted/50 p-1.5 mb-6 w-full max-w-2xl grid grid-cols-3">
-                  <TabsTrigger value="categories" className="text-sm md:text-base font-medium data-[state=active]:font-bold data-[state=active]:bg-purple-100 data-[state=active]:text-purple-900 py-2">Categories</TabsTrigger>
-                  <TabsTrigger value="subcategories" className="text-sm md:text-base font-medium data-[state=active]:font-bold data-[state=active]:bg-green-100 data-[state=active]:text-green-900 py-2">Subcategories</TabsTrigger>
-                  <TabsTrigger value="products" className="text-sm md:text-base font-medium data-[state=active]:font-bold data-[state=active]:bg-blue-100 data-[state=active]:text-blue-900 py-2">Products</TabsTrigger>
+              <Tabs defaultValue={canManageCategories ? "categories" : canManageSubcategories ? "subcategories" : canCreateProduct ? "products" : "none"}>
+                <TabsList className="rounded-xl bg-muted/50 p-1.5 mb-6 w-full max-w-2xl flex">
+                  {canManageCategories && <TabsTrigger value="categories" className="flex-1 text-sm md:text-base font-medium data-[state=active]:font-bold data-[state=active]:bg-purple-100 data-[state=active]:text-purple-900 py-2">Categories</TabsTrigger>}
+                  {canManageSubcategories && <TabsTrigger value="subcategories" className="flex-1 text-sm md:text-base font-medium data-[state=active]:font-bold data-[state=active]:bg-green-100 data-[state=active]:text-green-900 py-2">Subcategories</TabsTrigger>}
+                  {canCreateProduct && <TabsTrigger value="products" className="flex-1 text-sm md:text-base font-medium data-[state=active]:font-bold data-[state=active]:bg-blue-100 data-[state=active]:text-blue-900 py-2">Products</TabsTrigger>}
                 </TabsList>
 
-                <TabsContent value="categories">
-                  {/* Create Categories Section */}
-                  <Card className="border-purple-200 bg-purple-50">
-                    <CardHeader>
-                      <div className="flex items-center justify-between">
-                        <div>
-                          <CardTitle className="text-purple-900">Create Categories</CardTitle>
-                          <CardDescription className="text-purple-800">Add new product categories</CardDescription>
-                        </div>
-                        {canCreateProduct && (<>
-                          <Dialog>
-                            <DialogTrigger asChild>
-                              <Button className="bg-purple-600 hover:bg-purple-700">
-                                <Plus className="h-4 w-4 mr-2" /> Add Category
-                              </Button>
-                            </DialogTrigger>
-                            <DialogContent>
-                              <DialogHeader>
-                                <DialogTitle>Add New Category</DialogTitle>
-                              </DialogHeader>
-                              <div className="space-y-4">
-                                <div className="space-y-2">
-                                  <Label>Category Name <Required /></Label>
-                                  <Input
-                                    value={newCategory}
-                                    onChange={(e) => setNewCategory(e.target.value)}
-                                    placeholder="e.g. Flooring, Roofing, Doors"
-                                  />
-                                </div>
-                                <Button
-                                  onClick={handleAddCategory}
-                                  className="w-full bg-purple-600 hover:bg-purple-700"
-                                >
+                {canManageCategories && (
+                  <TabsContent value="categories">
+                    {/* Create Categories Section */}
+                    <Card className="border-purple-200 bg-purple-50">
+                      <CardHeader>
+                        <div className="flex items-center justify-between">
+                          <div>
+                            <CardTitle className="text-purple-900">Create Categories</CardTitle>
+                            <CardDescription className="text-purple-800">Add new product categories</CardDescription>
+                          </div>
+                          {canAddCategories && (<>
+                            <Dialog>
+                              <DialogTrigger asChild>
+                                <Button className="bg-purple-600 hover:bg-purple-700">
                                   <Plus className="h-4 w-4 mr-2" /> Add Category
                                 </Button>
-                              </div>
-                            </DialogContent>
-                          </Dialog>
-                        </>)}
-                      </div>
-                    </CardHeader>
-                    <CardContent>
-                      {showAddSubInline && (
-                        <div className="space-y-2 p-3 border rounded mb-4 bg-white">
-                          <Label>Select Category <Required /></Label>
-                          <Select
-                            value={selectedCategoryForSubCategory}
-                            onValueChange={setSelectedCategoryForSubCategory}
-                          >
-                            <SelectTrigger>
-                              <SelectValue placeholder="Choose a category..." />
-                            </SelectTrigger>
-                            <SelectContent className="max-h-44">
-                              {categories.length === 0 ? (
-                                <div className="p-2 text-sm text-muted-foreground">No categories available</div>
-                              ) : (
-                                categories.map((cat: string) => (
-                                  <SelectItem key={cat} value={cat}>{cat}</SelectItem>
-                                ))
-                              )}
-                            </SelectContent>
-                          </Select>
-                          <div className="space-y-2">
-                            <Label>Subcategory Name <Required /></Label>
-                            <Input value={newSubCategory} onChange={(e) => setNewSubCategory(e.target.value)} placeholder="e.g. Commercial, Residential" />
-                          </div>
-                          <Button onClick={async () => { await handleAddSubCategory(); if (newSubCategory.trim()) { setShowAddSubInline(false); } }} className="bg-green-600 hover:bg-green-700">Add Subcategory</Button>
+                              </DialogTrigger>
+                              <DialogContent>
+                                <DialogHeader>
+                                  <DialogTitle>Add New Category</DialogTitle>
+                                </DialogHeader>
+                                <div className="space-y-4">
+                                  <div className="space-y-2">
+                                    <Label>Category Name <Required /></Label>
+                                    <Input
+                                      value={newCategory}
+                                      onChange={(e) => setNewCategory(e.target.value)}
+                                      placeholder="e.g. Flooring, Roofing, Doors"
+                                    />
+                                  </div>
+                                  <Button
+                                    onClick={handleAddCategory}
+                                    className="w-full bg-purple-600 hover:bg-purple-700"
+                                  >
+                                    <Plus className="h-4 w-4 mr-2" /> Add Category
+                                  </Button>
+                                </div>
+                              </DialogContent>
+                            </Dialog>
+                          </>)}
                         </div>
-                      )}
-                      <div className="mb-4">
-                        <Input
-                          value={searchCategories}
-                          onChange={(e) => setSearchCategories(e.target.value)}
-                          placeholder="Search categories..."
-                        />
-                      </div>
-                      <div className="space-y-3 max-h-[400px] overflow-y-auto pr-2">
-                        {categories.length === 0 ? (
-                          <p className="text-center text-muted-foreground py-6">No categories created yet</p>
-                        ) : (
-                          categories
-                            .filter(cat => fuzzySearch(searchCategories, cat))
-                            .map((cat: string, idx: number) => {
-                              const subCats = getSubCategoriesForCategory(cat);
-                              return (
-                                <div key={idx} className="p-4 border rounded-lg bg-white hover:border-purple-400 transition">
-                                  <div className="flex items-center justify-between">
-                                    <div className="flex items-center gap-3">
-                                      <Package className="h-5 w-5 text-purple-600" />
-                                      <div>
-                                        <span className="font-medium">{cat}</span>
-                                        {subCats.length > 0 && (
-                                          <span className="text-sm text-muted-foreground ml-2">
-                                            ({subCats.length} subcategories)
-                                          </span>
-                                        )}
+                      </CardHeader>
+                      <CardContent>
+                        {showAddSubInline && (
+                          <div className="space-y-2 p-3 border rounded mb-4 bg-white">
+                            <Label>Select Category <Required /></Label>
+                            <Select
+                              value={selectedCategoryForSubCategory}
+                              onValueChange={setSelectedCategoryForSubCategory}
+                            >
+                              <SelectTrigger>
+                                <SelectValue placeholder="Choose a category..." />
+                              </SelectTrigger>
+                              <SelectContent className="max-h-44">
+                                {categories.length === 0 ? (
+                                  <div className="p-2 text-sm text-muted-foreground">No categories available</div>
+                                ) : (
+                                  categories.map((cat: string) => (
+                                    <SelectItem key={cat} value={cat}>{cat}</SelectItem>
+                                  ))
+                                )}
+                              </SelectContent>
+                            </Select>
+                            <div className="space-y-2">
+                              <Label>Subcategory Name <Required /></Label>
+                              <Input value={newSubCategory} onChange={(e) => setNewSubCategory(e.target.value)} placeholder="e.g. Commercial, Residential" />
+                            </div>
+                            <Button onClick={async () => { await handleAddSubCategory(); if (newSubCategory.trim()) { setShowAddSubInline(false); } }} className="bg-green-600 hover:bg-green-700">Add Subcategory</Button>
+                          </div>
+                        )}
+                        <div className="mb-4">
+                          <Input
+                            value={searchCategories}
+                            onChange={(e) => setSearchCategories(e.target.value)}
+                            placeholder="Search categories..."
+                          />
+                        </div>
+                        <div className="space-y-3 max-h-[400px] overflow-y-auto pr-2">
+                          {categories.length === 0 ? (
+                            <p className="text-center text-muted-foreground py-6">No categories created yet</p>
+                          ) : (
+                            categories
+                              .filter(cat => fuzzySearch(searchCategories, cat))
+                              .map((cat: string, idx: number) => {
+                                const subCats = getSubCategoriesForCategory(cat);
+                                return (
+                                  <div key={idx} className="p-4 border rounded-lg bg-white hover:border-purple-400 transition">
+                                    <div className="flex items-center justify-between">
+                                      <div className="flex items-center gap-3">
+                                        <Package className="h-5 w-5 text-purple-600" />
+                                        <div>
+                                          <span className="font-medium">{cat}</span>
+                                          {subCats.length > 0 && (
+                                            <span className="text-sm text-muted-foreground ml-2">
+                                              ({subCats.length} subcategories)
+                                            </span>
+                                          )}
+                                        </div>
                                       </div>
+                                      {(canEditCategories || canDeleteCategories) && (
+                                        <div className="flex gap-2">
+                                          {canEditCategories && (
+                                            <Button size="sm" variant="outline" onClick={() => {
+                                              setEditingCategory(cat);
+                                              setEditingCategoryValue(cat);
+                                            }}>
+                                              Edit
+                                            </Button>
+                                          )}
+                                          {canDeleteCategories && (
+                                            <Button size="sm" variant="destructive" onClick={() => requestDeleteCategory(cat)}>
+                                              <Trash2 className="h-4 w-4" />
+                                            </Button>
+                                          )}
+                                        </div>
+                                      )}
                                     </div>
-                                    {canManageCategories && (
-                                      <div className="flex gap-2">
-                                        <Button size="sm" variant="outline" onClick={() => {
-                                          setEditingCategory(cat);
-                                          setEditingCategoryValue(cat);
-                                        }}>
-                                          Edit
-                                        </Button>
-                                        <Button size="sm" variant="destructive" onClick={() => requestDeleteCategory(cat)}>
-                                          <Trash2 className="h-4 w-4" />
-                                        </Button>
+                                    {editingCategory === cat && (
+                                      <div className="mt-3 p-3 bg-gray-100 rounded border col-span-full">
+                                        <div className="flex gap-2">
+                                          <Input
+                                            value={editingCategoryValue}
+                                            onChange={(e) => setEditingCategoryValue(e.target.value)}
+                                            placeholder="Category name"
+                                            className="text-sm"
+                                          />
+                                          <Button size="sm" onClick={async () => {
+                                            const oldName = editingCategory;
+                                            const newName = editingCategoryValue.trim();
+                                            if (!newName) {
+                                              toast({ title: 'Error', description: 'Category name cannot be empty', variant: 'destructive' });
+                                              return;
+                                            }
+                                            try {
+                                              await apiFetch(`/categories/${encodeURIComponent(oldName)}`, {
+                                                method: 'PUT',
+                                                body: JSON.stringify({ name: newName }),
+                                              });
+                                              setCategories((prev: string[]) => prev.map((c: string) => c === oldName ? newName : c));
+                                              setSubCategories((prev: any[]) => prev.map((s: any) => s.category === oldName ? { ...s, category: newName } : s));
+                                              setEditingCategory(null);
+                                              setEditingCategoryValue("");
+                                              toast({ title: 'Success', description: `Category updated to ${newName}` });
+                                            } catch (err) {
+                                              console.error('update category error', err);
+                                              toast({ title: 'Error', description: 'Failed to update category', variant: 'destructive' });
+                                            }
+                                          }}>Save</Button>
+                                          <Button size="sm" variant="ghost" onClick={() => {
+                                            setEditingCategory(null);
+                                            setEditingCategoryValue("");
+                                          }}>Cancel</Button>
+                                        </div>
                                       </div>
                                     )}
                                   </div>
-                                  {editingCategory === cat && (
-                                    <div className="mt-3 p-3 bg-gray-100 rounded border col-span-full">
-                                      <div className="flex gap-2">
-                                        <Input
-                                          value={editingCategoryValue}
-                                          onChange={(e) => setEditingCategoryValue(e.target.value)}
-                                          placeholder="Category name"
-                                          className="text-sm"
-                                        />
-                                        <Button size="sm" onClick={async () => {
-                                          const oldName = editingCategory;
-                                          const newName = editingCategoryValue.trim();
-                                          if (!newName) {
-                                            toast({ title: 'Error', description: 'Category name cannot be empty', variant: 'destructive' });
-                                            return;
-                                          }
-                                          try {
-                                            await apiFetch(`/categories/${encodeURIComponent(oldName)}`, {
-                                              method: 'PUT',
-                                              body: JSON.stringify({ name: newName }),
-                                            });
-                                            setCategories((prev: string[]) => prev.map((c: string) => c === oldName ? newName : c));
-                                            setSubCategories((prev: any[]) => prev.map((s: any) => s.category === oldName ? { ...s, category: newName } : s));
-                                            setEditingCategory(null);
-                                            setEditingCategoryValue("");
-                                            toast({ title: 'Success', description: `Category updated to ${newName}` });
-                                          } catch (err) {
-                                            console.error('update category error', err);
-                                            toast({ title: 'Error', description: 'Failed to update category', variant: 'destructive' });
-                                          }
-                                        }}>Save</Button>
-                                        <Button size="sm" variant="ghost" onClick={() => {
-                                          setEditingCategory(null);
-                                          setEditingCategoryValue("");
-                                        }}>Cancel</Button>
-                                      </div>
-                                    </div>
-                                  )}
-                                </div>
-                              );
-                            })
-                        )}
-                      </div>
-                    </CardContent>
-                  </Card>
-                </TabsContent>
-
-                <TabsContent value="subcategories">
-                  {/* === CREATE PRODUCT TAB - Subcategories Section === */}
-                  <Card className="border-green-200 bg-green-50">
-                    <CardHeader>
-                      <div className="flex items-center justify-between">
-                        <div>
-                          <CardTitle className="text-green-900">Create Subcategories</CardTitle>
-                          <CardDescription className="text-green-800">Add subcategories to your categories</CardDescription>
+                                );
+                              })
+                          )}
                         </div>
-                        {canCreateProduct && (<>
-                          <Dialog>
-                            <DialogTrigger asChild>
-                              <Button className="bg-green-600 hover:bg-green-700">
-                                <Plus className="h-4 w-4 mr-2" /> Add Subcategory
-                              </Button>
-                            </DialogTrigger>
-                            <DialogContent>
-                              <DialogHeader>
-                                <DialogTitle></DialogTitle>
-                              </DialogHeader>
-                              <div className="space-y-4">
-                                <div className="space-y-2">
-                                  <Label>Select Category <Required /></Label>
-                                  <Select
-                                    value={selectedCategoryForSubCategory}
-                                    onValueChange={setSelectedCategoryForSubCategory}
-                                  >
-                                    <SelectTrigger>
-                                      <SelectValue placeholder="Choose a category..." />
-                                    </SelectTrigger>
-                                    <SelectContent className="max-h-64">
-                                      {categories.length === 0 ? (
-                                        <div className="p-2 text-sm text-muted-foreground">No categories available</div>
-                                      ) : (
-                                        categories.map((cat: string) => (
-                                          <SelectItem key={cat} value={cat}>
-                                            {cat}
-                                          </SelectItem>
-                                        ))
-                                      )}
-                                    </SelectContent>
-                                  </Select>
-                                </div>
-                                <div className="space-y-2">
-                                  <Label>Subcategory Name <Required /></Label>
-                                  <Input
-                                    value={newSubCategory}
-                                    onChange={(e) => setNewSubCategory(e.target.value)}
-                                    placeholder="e.g. Commercial, Residential"
-                                  />
-                                </div>
-                                <Button
-                                  onClick={handleAddSubCategory}
-                                  className="w-full bg-green-600 hover:bg-green-700"
-                                >
+                      </CardContent>
+                    </Card>
+                  </TabsContent>
+                )}
+
+                {canManageSubcategories && (
+                  <TabsContent value="subcategories">
+                    {/* === CREATE PRODUCT TAB - Subcategories Section === */}
+                    <Card className="border-green-200 bg-green-50">
+                      <CardHeader>
+                        <div className="flex items-center justify-between">
+                          <div>
+                            <CardTitle className="text-green-900">Create Subcategories</CardTitle>
+                            <CardDescription className="text-green-800">Add subcategories to your categories</CardDescription>
+                          </div>
+                          {canAddSubcategories && (<>
+                            <Dialog>
+                              <DialogTrigger asChild>
+                                <Button className="bg-green-600 hover:bg-green-700">
                                   <Plus className="h-4 w-4 mr-2" /> Add Subcategory
                                 </Button>
-                              </div>
-                            </DialogContent>
-                          </Dialog>
-
-                        </>)}
-                      </div>
-                    </CardHeader>
-                    <CardContent>
-                      <div className="mb-4 flex flex-col md:flex-row gap-4">
-                        <div className="flex-1">
-                          <Input
-                            value={searchSubCategories}
-                            onChange={(e) => setSearchSubCategories(e.target.value)}
-                            placeholder="Search subcategories..."
-                          />
-                        </div>
-                        <div className="w-full md:w-64">
-                          <Select
-                            value={filterSubCategoryByCategory}
-                            onValueChange={setFilterSubCategoryByCategory}
-                          >
-                            <SelectTrigger>
-                              <SelectValue placeholder="Filter by Category" />
-                            </SelectTrigger>
-                            <SelectContent className="max-h-64">
-                              <SelectItem value="all">All Categories</SelectItem>
-                              <SelectItem value="uncategorized" className="text-destructive font-medium italic">Uncategorized</SelectItem>
-                              {categories.map((cat: string) => (
-                                <SelectItem key={cat} value={cat}>{cat}</SelectItem>
-                              ))}
-                            </SelectContent>
-                          </Select>
-                        </div>
-                      </div>
-                      <div className="space-y-3 max-h-[400px] overflow-y-auto pr-2">
-                        {subCategories.length === 0 ? (
-                          <p className="text-center text-muted-foreground py-6">No subcategories created yet</p>
-                        ) : (
-                          subCategories
-                            .filter(sub => {
-                              const matchesSearch = fuzzySearch(searchSubCategories, sub.name);
-                              const matchesCategory = filterSubCategoryByCategory === "all" ||
-                                (filterSubCategoryByCategory === "uncategorized" ? !sub.category : sub.category === filterSubCategoryByCategory);
-                              return matchesSearch && matchesCategory;
-                            })
-                            .map((sub: any) => (
-                              <div key={sub.id} className="p-4 border rounded-lg bg-white hover:border-green-400 transition">
-                                <div className="flex items-center justify-between">
-                                  <div className="flex items-center gap-3">
-                                    <Layers className="h-5 w-5 text-green-600" />
-                                    <div>
-                                      <span className="font-medium">{sub.name}</span>
-                                      <span className="text-sm text-muted-foreground ml-2">
-                                        (Category: {sub.category})
-                                      </span>
-                                    </div>
+                              </DialogTrigger>
+                              <DialogContent>
+                                <DialogHeader>
+                                  <DialogTitle></DialogTitle>
+                                </DialogHeader>
+                                <div className="space-y-4">
+                                  <div className="space-y-2">
+                                    <Label>Select Category <Required /></Label>
+                                    <Select
+                                      value={selectedCategoryForSubCategory}
+                                      onValueChange={setSelectedCategoryForSubCategory}
+                                    >
+                                      <SelectTrigger>
+                                        <SelectValue placeholder="Choose a category..." />
+                                      </SelectTrigger>
+                                      <SelectContent className="max-h-64">
+                                        {categories.length === 0 ? (
+                                          <div className="p-2 text-sm text-muted-foreground">No categories available</div>
+                                        ) : (
+                                          categories.map((cat: string) => (
+                                            <SelectItem key={cat} value={cat}>
+                                              {cat}
+                                            </SelectItem>
+                                          ))
+                                        )}
+                                      </SelectContent>
+                                    </Select>
                                   </div>
-                                  {canManageSubcategories && (
-                                    <div className="flex gap-2">
-                                      <Button size="sm" variant="outline" onClick={() => {
-                                        setEditingSubCategoryId(sub.id);
-                                        setEditingSubCategoryName(sub.name);
-                                        setEditingSubCategoryCategory(sub.category);
-                                      }}>
-                                        Edit
-                                      </Button>
-                                      <Button size="sm" variant="destructive" onClick={() => requestDeleteSubCategory(sub)}>
-                                        <Trash2 className="h-4 w-4" />
-                                      </Button>
-                                    </div>
-                                  )}
-                                  {editingSubCategoryId === sub.id && (
-                                    <div className="mt-3 p-3 bg-gray-100 rounded border col-span-full w-full space-y-3">
-                                      <div>
-                                        <Label className="text-sm">Category</Label>
-                                        <Select
-                                          value={editingSubCategoryCategory}
-                                          onValueChange={setEditingSubCategoryCategory}
-                                        >
-                                          <SelectTrigger>
-                                            <SelectValue placeholder="Choose a category..." />
-                                          </SelectTrigger>
-                                          <SelectContent className="max-h-64">
-                                            {categories.map((cat: string) => (
-                                              <SelectItem key={cat} value={cat}>
-                                                {cat}
-                                              </SelectItem>
-                                            ))}
-                                          </SelectContent>
-                                        </Select>
-                                      </div>
-                                      <div>
-                                        <Label className="text-sm">Subcategory Name</Label>
-                                        <Input
-                                          value={editingSubCategoryName}
-                                          onChange={(e) => setEditingSubCategoryName(e.target.value)}
-                                          placeholder="Subcategory name"
-                                          className="text-sm"
-                                        />
-                                      </div>
-                                      <div className="flex gap-2">
-                                        <Button size="sm" onClick={async () => {
-                                          const newName = editingSubCategoryName.trim();
-                                          if (!newName) {
-                                            toast({ title: 'Error', description: 'Subcategory name cannot be empty', variant: 'destructive' });
-                                            return;
-                                          }
-                                          if (!editingSubCategoryCategory) {
-                                            toast({ title: 'Error', description: 'Please select a category', variant: 'destructive' });
-                                            return;
-                                          }
-                                          try {
-                                            const res = await apiFetch(`/subcategories/${sub.id}`, {
-                                              method: 'PUT',
-                                              body: JSON.stringify({ name: newName, category: editingSubCategoryCategory }),
-                                            });
-                                            if (res.ok) {
-                                              setSubCategories(prev => prev.map(s => s.id === sub.id ? { ...s, name: newName, category: editingSubCategoryCategory } : s));
-                                              setEditingSubCategoryId(null);
-                                              setEditingSubCategoryName("");
-                                              setEditingSubCategoryCategory("");
-                                              toast({ title: 'Success', description: `Subcategory updated` });
-                                            }
-                                          } catch (err) {
-                                            console.error('update subcategory error', err);
-                                            toast({ title: 'Error', description: 'Failed to update subcategory', variant: 'destructive' });
-                                          }
-                                        }}>Save</Button>
-                                        <Button size="sm" variant="ghost" onClick={() => {
-                                          setEditingSubCategoryId(null);
-                                          setEditingSubCategoryName("");
-                                          setEditingSubCategoryCategory("");
-                                        }}>Cancel</Button>
-                                      </div>
-                                    </div>
-                                  )}
-                                </div>
-                              </div>
-                            ))
-                        )}
-                      </div>
-                    </CardContent>
-                  </Card>
-                </TabsContent>
-
-                <TabsContent value="products">
-                  {/* Create Products Section */}
-                  <Card className="border-blue-200 bg-blue-50">
-                    <CardHeader>
-                      <div className="flex items-center justify-between">
-                        <div>
-                          <CardTitle className="text-blue-900">Create Products</CardTitle>
-                          <CardDescription className="text-blue-800">Add new products and assign subcategories</CardDescription>
-                        </div>
-                        {canCreateProduct && (<>
-                          <Dialog open={showAddProductDialog} onOpenChange={setShowAddProductDialog}>
-                            <DialogTrigger asChild>
-                              <Button className="bg-blue-600 hover:bg-blue-700">
-                                <Plus className="h-4 w-4 mr-2" /> Add Product
-                              </Button>
-                            </DialogTrigger>
-                            <DialogContent>
-                              <DialogHeader>
-                                <DialogTitle>Add New Product</DialogTitle>
-                              </DialogHeader>
-                              <div className="space-y-4">
-                                <div className="space-y-2">
-                                  <Label>Product Name <Required /></Label>
-                                  <Input
-                                    value={newProduct.name}
-                                    onChange={(e) =>
-                                      setNewProduct((prev) => ({ ...prev, name: e.target.value }))
-                                    }
-                                    placeholder="e.g. Ceramic Tiles, Wooden Door"
-                                  />
-                                </div>
-                                <div className="space-y-2">
-                                  <Label>Select Subcategory <Required /></Label>
-                                  <Select
-                                    value={newProduct.subcategory}
-                                    onValueChange={(value) =>
-                                      setNewProduct((prev) => ({ ...prev, subcategory: value }))
-                                    }
+                                  <div className="space-y-2">
+                                    <Label>Subcategory Name <Required /></Label>
+                                    <Input
+                                      value={newSubCategory}
+                                      onChange={(e) => setNewSubCategory(e.target.value)}
+                                      placeholder="e.g. Commercial, Residential"
+                                    />
+                                  </div>
+                                  <Button
+                                    onClick={handleAddSubCategory}
+                                    className="w-full bg-green-600 hover:bg-green-700"
                                   >
-                                    <SelectTrigger>
-                                      <SelectValue placeholder="Choose a subcategory..." />
-                                    </SelectTrigger>
-                                    <SelectContent className="max-h-64">
-                                      {subCategories.length === 0 ? (
-                                        <div className="p-2 text-sm text-muted-foreground">No subcategories available</div>
-                                      ) : (
-                                        subCategories.map((sub: any) => (
-                                          <SelectItem key={sub.id} value={sub.name}>
-                                            {sub.name} <span className="text-xs text-muted-foreground">({sub.category})</span>
-                                          </SelectItem>
-                                        ))
-                                      )}
-                                    </SelectContent>
-                                  </Select>
+                                    <Plus className="h-4 w-4 mr-2" /> Add Subcategory
+                                  </Button>
                                 </div>
-                                {/*
+                              </DialogContent>
+                            </Dialog>
+
+                          </>)}
+                        </div>
+                      </CardHeader>
+                      <CardContent>
+                        <div className="mb-4 flex flex-col md:flex-row gap-4">
+                          <div className="flex-1">
+                            <Input
+                              value={searchSubCategories}
+                              onChange={(e) => setSearchSubCategories(e.target.value)}
+                              placeholder="Search subcategories..."
+                            />
+                          </div>
+                          <div className="w-full md:w-64">
+                            <Select
+                              value={filterSubCategoryByCategory}
+                              onValueChange={setFilterSubCategoryByCategory}
+                            >
+                              <SelectTrigger>
+                                <SelectValue placeholder="Filter by Category" />
+                              </SelectTrigger>
+                              <SelectContent className="max-h-64">
+                                <SelectItem value="all">All Categories</SelectItem>
+                                <SelectItem value="uncategorized" className="text-destructive font-medium italic">Uncategorized</SelectItem>
+                                {categories.map((cat: string) => (
+                                  <SelectItem key={cat} value={cat}>{cat}</SelectItem>
+                                ))}
+                              </SelectContent>
+                            </Select>
+                          </div>
+                        </div>
+                        <div className="space-y-3 max-h-[400px] overflow-y-auto pr-2">
+                          {subCategories.length === 0 ? (
+                            <p className="text-center text-muted-foreground py-6">No subcategories created yet</p>
+                          ) : (
+                            subCategories
+                              .filter(sub => {
+                                const matchesSearch = fuzzySearch(searchSubCategories, sub.name);
+                                const matchesCategory = filterSubCategoryByCategory === "all" ||
+                                  (filterSubCategoryByCategory === "uncategorized" ? !sub.category : sub.category === filterSubCategoryByCategory);
+                                return matchesSearch && matchesCategory;
+                              })
+                              .map((sub: any) => (
+                                <div key={sub.id} className="p-4 border rounded-lg bg-white hover:border-green-400 transition">
+                                  <div className="flex items-center justify-between">
+                                    <div className="flex items-center gap-3">
+                                      <Layers className="h-5 w-5 text-green-600" />
+                                      <div>
+                                        <span className="font-medium">{sub.name}</span>
+                                        <span className="text-sm text-muted-foreground ml-2">
+                                          (Category: {sub.category})
+                                        </span>
+                                      </div>
+                                    </div>
+                                    {(canEditSubcategories || canDeleteSubcategories) && (
+                                      <div className="flex gap-2">
+                                        {canEditSubcategories && (
+                                          <Button size="sm" variant="outline" onClick={() => {
+                                            setEditingSubCategoryId(sub.id);
+                                            setEditingSubCategoryName(sub.name);
+                                            setEditingSubCategoryCategory(sub.category);
+                                          }}>
+                                            Edit
+                                          </Button>
+                                        )}
+                                        {canDeleteSubcategories && (
+                                          <Button size="sm" variant="destructive" onClick={() => requestDeleteSubCategory(sub)}>
+                                            <Trash2 className="h-4 w-4" />
+                                          </Button>
+                                        )}
+                                      </div>
+                                    )}
+                                    {editingSubCategoryId === sub.id && (
+                                      <div className="mt-3 p-3 bg-gray-100 rounded border col-span-full w-full space-y-3">
+                                        <div>
+                                          <Label className="text-sm">Category</Label>
+                                          <Select
+                                            value={editingSubCategoryCategory}
+                                            onValueChange={setEditingSubCategoryCategory}
+                                          >
+                                            <SelectTrigger>
+                                              <SelectValue placeholder="Choose a category..." />
+                                            </SelectTrigger>
+                                            <SelectContent className="max-h-64">
+                                              {categories.map((cat: string) => (
+                                                <SelectItem key={cat} value={cat}>
+                                                  {cat}
+                                                </SelectItem>
+                                              ))}
+                                            </SelectContent>
+                                          </Select>
+                                        </div>
+                                        <div>
+                                          <Label className="text-sm">Subcategory Name</Label>
+                                          <Input
+                                            value={editingSubCategoryName}
+                                            onChange={(e) => setEditingSubCategoryName(e.target.value)}
+                                            placeholder="Subcategory name"
+                                            className="text-sm"
+                                          />
+                                        </div>
+                                        <div className="flex gap-2">
+                                          <Button size="sm" onClick={async () => {
+                                            const newName = editingSubCategoryName.trim();
+                                            if (!newName) {
+                                              toast({ title: 'Error', description: 'Subcategory name cannot be empty', variant: 'destructive' });
+                                              return;
+                                            }
+                                            if (!editingSubCategoryCategory) {
+                                              toast({ title: 'Error', description: 'Please select a category', variant: 'destructive' });
+                                              return;
+                                            }
+                                            try {
+                                              const res = await apiFetch(`/subcategories/${sub.id}`, {
+                                                method: 'PUT',
+                                                body: JSON.stringify({ name: newName, category: editingSubCategoryCategory }),
+                                              });
+                                              if (res.ok) {
+                                                setSubCategories(prev => prev.map(s => s.id === sub.id ? { ...s, name: newName, category: editingSubCategoryCategory } : s));
+                                                setEditingSubCategoryId(null);
+                                                setEditingSubCategoryName("");
+                                                setEditingSubCategoryCategory("");
+                                                toast({ title: 'Success', description: `Subcategory updated` });
+                                              }
+                                            } catch (err) {
+                                              console.error('update subcategory error', err);
+                                              toast({ title: 'Error', description: 'Failed to update subcategory', variant: 'destructive' });
+                                            }
+                                          }}>Save</Button>
+                                          <Button size="sm" variant="ghost" onClick={() => {
+                                            setEditingSubCategoryId(null);
+                                            setEditingSubCategoryName("");
+                                            setEditingSubCategoryCategory("");
+                                          }}>Cancel</Button>
+                                        </div>
+                                      </div>
+                                    )}
+                                  </div>
+                                </div>
+                              ))
+                          )}
+                        </div>
+                      </CardContent>
+                    </Card>
+                  </TabsContent>
+                )}
+
+                {canCreateProduct && (
+                  <TabsContent value="products">
+                    {/* Create Products Section */}
+                    <Card className="border-blue-200 bg-blue-50">
+                      <CardHeader>
+                        <div className="flex items-center justify-between">
+                          <div>
+                            <CardTitle className="text-blue-900">Create Products</CardTitle>
+                            <CardDescription className="text-blue-800">Add new products and assign subcategories</CardDescription>
+                          </div>
+                          {canAddProducts && (<>
+                            <Dialog open={showAddProductDialog} onOpenChange={setShowAddProductDialog}>
+                              <DialogTrigger asChild>
+                                <Button className="bg-blue-600 hover:bg-blue-700">
+                                  <Plus className="h-4 w-4 mr-2" /> Add Product
+                                </Button>
+                              </DialogTrigger>
+                              <DialogContent>
+                                <DialogHeader>
+                                  <DialogTitle>Add New Product</DialogTitle>
+                                </DialogHeader>
+                                <div className="space-y-4">
+                                  <div className="space-y-2">
+                                    <Label>Product Name <Required /></Label>
+                                    <Input
+                                      value={newProduct.name}
+                                      onChange={(e) =>
+                                        setNewProduct((prev) => ({ ...prev, name: e.target.value }))
+                                      }
+                                      placeholder="e.g. Ceramic Tiles, Wooden Door"
+                                    />
+                                  </div>
+                                  <div className="space-y-2">
+                                    <Label>Select Subcategory <Required /></Label>
+                                    <Select
+                                      value={newProduct.subcategory}
+                                      onValueChange={(value) =>
+                                        setNewProduct((prev) => ({ ...prev, subcategory: value }))
+                                      }
+                                    >
+                                      <SelectTrigger>
+                                        <SelectValue placeholder="Choose a subcategory..." />
+                                      </SelectTrigger>
+                                      <SelectContent className="max-h-64">
+                                        {subCategories.length === 0 ? (
+                                          <div className="p-2 text-sm text-muted-foreground">No subcategories available</div>
+                                        ) : (
+                                          subCategories.map((sub: any) => (
+                                            <SelectItem key={sub.id} value={sub.name}>
+                                              {sub.name} <span className="text-xs text-muted-foreground">({sub.category})</span>
+                                            </SelectItem>
+                                          ))
+                                        )}
+                                      </SelectContent>
+                                    </Select>
+                                  </div>
+                                  {/*
 <div className="flex items-center justify-between">
   <small className="text-xs text-muted-foreground"></small>
   <Button
@@ -2685,368 +2712,375 @@ export default function AdminDashboard() {
 </div>
 */}
 
-                                {showAddSubInline && (
-                                  <div className="space-y-2 p-3 border rounded">
-                                    <Label>Select Category <Required /></Label>
-                                    <Select
-                                      value={selectedCategoryForSubCategory}
-                                      onValueChange={setSelectedCategoryForSubCategory}
-                                    >
-                                      <SelectTrigger>
-                                        <SelectValue placeholder="Choose a category..." />
-                                      </SelectTrigger>
-                                      <SelectContent className="max-h-44">
-                                        {categories.length === 0 ? (
-                                          <div className="p-2 text-sm text-muted-foreground">No categories available</div>
-                                        ) : (
-                                          categories.map((cat: string) => (
-                                            <SelectItem key={cat} value={cat}>{cat}</SelectItem>
-                                          ))
-                                        )}
-                                      </SelectContent>
-                                    </Select>
-                                    <div className="space-y-2">
-                                      <Label>Subcategory Name <Required /></Label>
-                                      <Input value={newSubCategory} onChange={(e) => setNewSubCategory(e.target.value)} placeholder="e.g. Commercial, Residential" />
-                                    </div>
-                                    <Button onClick={async () => {
-                                      await handleAddSubCategory();
-                                      // if created, set it as selected in product select
-                                      if (newSubCategory.trim()) {
-                                        setNewProduct(prev => ({ ...prev, subcategory: newSubCategory.trim() }));
-                                        setShowAddSubInline(false);
-                                      }
-                                    }} className="w-full bg-green-600 hover:bg-green-700">Add Subcategory</Button>
-                                  </div>
-                                )}
-
-                                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                                  <div className="space-y-2">
-                                    <Label>HSN Code</Label>
-                                    <Input value={newProduct.hsnCode} onChange={(e) => setNewProduct({ ...newProduct, hsnCode: e.target.value })} placeholder="Enter HSN code" />
-                                  </div>
-                                  <div className="space-y-2">
-                                    <Label>SAC Code</Label>
-                                    <Input value={newProduct.sacCode} onChange={(e) => setNewProduct({ ...newProduct, sacCode: e.target.value })} placeholder="Enter SAC code" />
-                                  </div>
-                                </div>
-                                <div className="space-y-2">
-                                  <div className="flex items-center justify-between">
-                                    <Label>Product Images & Icon</Label>
-                                    <Button
-                                      variant="ghost"
-                                      size="sm"
-                                      className="h-8 text-xs text-primary font-bold hover:bg-primary/10"
-                                      onClick={() => {
-                                        if (!newProduct.subcategory) {
-                                          toast({ title: "Subcategory Required", description: "Please select a subcategory first to filter templates.", variant: "destructive" });
-                                          return;
+                                  {showAddSubInline && (
+                                    <div className="space-y-2 p-3 border rounded">
+                                      <Label>Select Category <Required /></Label>
+                                      <Select
+                                        value={selectedCategoryForSubCategory}
+                                        onValueChange={setSelectedCategoryForSubCategory}
+                                      >
+                                        <SelectTrigger>
+                                          <SelectValue placeholder="Choose a category..." />
+                                        </SelectTrigger>
+                                        <SelectContent className="max-h-44">
+                                          {categories.length === 0 ? (
+                                            <div className="p-2 text-sm text-muted-foreground">No categories available</div>
+                                          ) : (
+                                            categories.map((cat: string) => (
+                                              <SelectItem key={cat} value={cat}>{cat}</SelectItem>
+                                            ))
+                                          )}
+                                        </SelectContent>
+                                      </Select>
+                                      <div className="space-y-2">
+                                        <Label>Subcategory Name <Required /></Label>
+                                        <Input value={newSubCategory} onChange={(e) => setNewSubCategory(e.target.value)} placeholder="e.g. Commercial, Residential" />
+                                      </div>
+                                      <Button onClick={async () => {
+                                        await handleAddSubCategory();
+                                        // if created, set it as selected in product select
+                                        if (newSubCategory.trim()) {
+                                          setNewProduct(prev => ({ ...prev, subcategory: newSubCategory.trim() }));
+                                          setShowAddSubInline(false);
                                         }
-                                        setProductForTemplate({ ...newProduct, id: 'temp' } as any);
-                                        setShowTemplateSelector(true);
-                                      }}
-                                    >
-                                      <Layers className="h-3 w-3 mr-1.5" /> Select Template Icon
-                                    </Button>
-                                  </div>
-                                  <div className="flex items-center gap-4 p-4 bg-slate-50 rounded-xl border-2 border-dashed border-slate-200">
-                                    <div
-                                      className="h-20 w-20 rounded-2xl bg-white border-2 border-slate-100 shadow-sm flex items-center justify-center overflow-hidden cursor-pointer hover:border-primary/50 transition-all group shrink-0"
-                                      onClick={() => {
-                                        if (!newProduct.subcategory) {
-                                          toast({ title: "Subcategory Required", description: "Please select a subcategory first to filter templates.", variant: "destructive" });
-                                          return;
-                                        }
-                                        setProductForTemplate({ ...newProduct, id: 'temp' } as any);
-                                        setShowTemplateSelector(true);
-                                      }}
-                                    >
-                                      {parseImages(newProduct.image).length > 0 ? (
-                                        <img src={parseImages(newProduct.image)[0]} alt="" className="max-w-full max-h-full object-contain" />
-                                      ) : (
-                                        <div className="flex flex-col items-center gap-1 text-slate-300 group-hover:text-primary transition-colors">
-                                          <ImageIcon className="h-8 w-8" />
-                                          <span className="text-[10px] font-bold uppercase tracking-tighter">Icon</span>
-                                        </div>
-                                      )}
-                                    </div>
-                                    <div className="flex-1 space-y-2">
-                                      <Input
-                                        type="file"
-                                        accept="image/*"
-                                        multiple
-                                        className="h-9 text-xs file:bg-primary/5 file:text-primary file:border-none file:mr-2 file:px-3 file:py-1 file:rounded-md file:font-bold hover:file:bg-primary/10 transition-all"
-                                        onChange={(e) => handleImageUpload(e, (newImagesJson) => {
-                                          const newImages = JSON.parse(newImagesJson);
-                                          const existing = parseImages(newProduct.image);
-                                          setNewProduct({ ...newProduct, image: JSON.stringify([...existing, ...newImages]) });
-                                        })}
-                                      />
-                                      <p className="text-[10px] text-muted-foreground italic">Uploaded images or templates will appear here.</p>
-                                    </div>
-                                  </div>
-                                  <ImageGallery
-                                    images={newProduct.image}
-                                    onRemove={(idx) => {
-                                      const images = parseImages(newProduct.image);
-                                      images.splice(idx, 1);
-                                      setNewProduct({ ...newProduct, image: images.length > 0 ? JSON.stringify(images) : null as any });
-                                    }}
-                                    onPreview={(url) => setSelectedPreviewImage(url)}
-                                  />
-                                </div>
-                                <Button
-                                  onClick={async () => {
-                                    await handleAddProduct();
-                                    if (newProduct.name.trim() && newProduct.subcategory) {
-                                      setShowAddProductDialog(false);
-                                    }
-                                  }}
-                                  className="w-full bg-blue-600 hover:bg-blue-700"
-                                >
-                                  <Plus className="h-4 w-4 mr-2" /> Add Product
-                                </Button>
-                              </div>
-                            </DialogContent>
-                          </Dialog>
-                        </>)}
-                      </div>
-                    </CardHeader>
-                    <CardContent>
-                      <div className="mb-4 flex flex-col md:flex-row gap-4">
-                        <div className="flex-1">
-                          <Input
-                            value={searchProducts}
-                            onChange={(e) => setSearchProducts(e.target.value)}
-                            placeholder="Search products..."
-                          />
-                        </div>
-                        <div className="w-full md:w-48">
-                          <Select
-                            value={filterProductByCategory}
-                            onValueChange={(val) => {
-                              setFilterProductByCategory(val);
-                              setFilterProductBySubCategory("all");
-                            }}
-                          >
-                            <SelectTrigger>
-                              <SelectValue placeholder="Filter by Category" />
-                            </SelectTrigger>
-                            <SelectContent className="max-h-64">
-                              <SelectItem value="all">All Categories</SelectItem>
-                              <SelectItem value="uncategorized" className="text-destructive font-medium italic">Uncategorized</SelectItem>
-                              {categories.map((cat: string) => (
-                                <SelectItem key={cat} value={cat}>{cat}</SelectItem>
-                              ))}
-                            </SelectContent>
-                          </Select>
-                        </div>
-                        <div className="w-full md:w-48">
-                          <Select
-                            value={filterProductBySubCategory}
-                            onValueChange={setFilterProductBySubCategory}
-                          >
-                            <SelectTrigger>
-                              <SelectValue placeholder="Filter by Subcategory" />
-                            </SelectTrigger>
-                            <SelectContent className="max-h-64">
-                              <SelectItem value="all">All Subcategories</SelectItem>
-                              <SelectItem value="uncategorized" className="text-destructive font-medium italic">Uncategorized</SelectItem>
-                              {subCategories
-                                .filter(sub => filterProductByCategory === "all" || (filterProductByCategory === "uncategorized" ? !sub.category : sub.category === filterProductByCategory))
-                                .map((sub: any) => (
-                                  <SelectItem key={sub.id} value={sub.name}>{sub.name}</SelectItem>
-                                ))}
-                            </SelectContent>
-                          </Select>
-                        </div>
-                      </div>
-                      <div className="space-y-3 max-h-[400px] overflow-y-auto pr-2">
-                        {products.length === 0 ? (
-                          <p className="text-center text-muted-foreground py-6">No products created yet</p>
-                        ) : (
-                          products
-                            .filter(prod => {
-                              const matchesSearch = fuzzySearch(searchProducts, prod.name);
-
-                              let matchesSubCategory = filterProductBySubCategory === "all";
-                              if (filterProductBySubCategory === "uncategorized") {
-                                matchesSubCategory = !prod.subcategory;
-                              } else if (filterProductBySubCategory !== "all") {
-                                matchesSubCategory = prod.subcategory === filterProductBySubCategory;
-                              }
-
-                              const prodSub = subCategories.find(s => s.name === prod.subcategory);
-                              let matchesCategory = filterProductByCategory === "all";
-                              if (filterProductByCategory === "uncategorized") {
-                                matchesCategory = !prod.subcategory || (prodSub && !prodSub.category);
-                              } else if (filterProductByCategory !== "all") {
-                                matchesCategory = !!(prodSub && prodSub.category === filterProductByCategory);
-                              }
-
-                              return matchesSearch && matchesSubCategory && matchesCategory;
-                            })
-                            .map((product: any) => (
-                              <div key={product.id} className="p-4 border rounded-lg bg-white hover:border-blue-400 transition">
-                                <div className="flex items-center justify-between">
-                                  <div className="flex items-center gap-3 flex-1">
-                                    <div
-                                      className="h-14 w-14 border rounded-lg bg-gray-100 overflow-hidden flex items-center justify-center shrink-0 cursor-pointer hover:border-blue-500 hover:bg-white transition-all group shadow-sm"
-                                      onClick={() => {
-                                        setProductForTemplate(product);
-                                        setShowTemplateSelector(true);
-                                      }}
-                                      title="Click to select or change template icon"
-                                    >
-                                      {product.image ? (
-                                        <img
-                                          src={parseImages(product.image)[0]}
-                                          alt=""
-                                          className="max-w-full max-h-full object-contain group-hover:scale-110 transition-transform"
-                                        />
-                                      ) : (
-                                        <Package className="h-6 w-6 text-blue-600 group-hover:rotate-12 transition-transform" />
-                                      )}
-                                    </div>
-                                    <div className="flex-1">
-                                      <span className="font-medium block">{product.name}</span>
-                                      <span className="text-sm text-muted-foreground">
-                                        Subcategories: {product.subcategory || "-"}
-                                      </span>
-                                      {product.taxCodeType && product.taxCodeValue && (
-                                        <div className="text-sm text-muted-foreground mt-1">
-                                          {product.taxCodeType.toUpperCase()}: {product.taxCodeValue}
-                                        </div>
-                                      )}
-                                    </div>
-                                  </div>
-                                  {canManageProducts && (
-                                    <div className="flex gap-2">
-                                      <Button size="sm" variant="ghost" onClick={() => handleCloneProduct(product)} title="Clone Product">
-                                        <Copy className="h-4 w-4" />
-                                      </Button>
-                                      <Button size="sm" variant="outline" onClick={() => {
-                                        setEditingProduct(mapProduct(product));
-                                      }}>
-                                        Edit
-                                      </Button>
-                                      <Button size="sm" variant="destructive" onClick={() => handleDeleteProduct(product.id)}>
-                                        <Trash2 className="h-4 w-4" />
-                                      </Button>
+                                      }} className="w-full bg-green-600 hover:bg-green-700">Add Subcategory</Button>
                                     </div>
                                   )}
-                                </div>
-                              </div>
-                            ))
-                        )}
-                      </div>
-                    </CardContent>
-                  </Card>
 
-                  {/* Edit Product Dialog */}
-                  {editingProduct && (
-                    <Dialog open={!!editingProduct} onOpenChange={(open) => !open && setEditingProduct(null)}>
-                      <DialogContent>
-                        <DialogHeader>
-                          <DialogTitle>Edit Product</DialogTitle>
-                        </DialogHeader>
-                        <div className="space-y-4">
-                          <div className="space-y-2">
-                            <Label>Product Name <Required /></Label>
+                                  <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                                    <div className="space-y-2">
+                                      <Label>HSN Code</Label>
+                                      <Input value={newProduct.hsnCode} onChange={(e) => setNewProduct({ ...newProduct, hsnCode: e.target.value })} placeholder="Enter HSN code" />
+                                    </div>
+                                    <div className="space-y-2">
+                                      <Label>SAC Code</Label>
+                                      <Input value={newProduct.sacCode} onChange={(e) => setNewProduct({ ...newProduct, sacCode: e.target.value })} placeholder="Enter SAC code" />
+                                    </div>
+                                  </div>
+                                  <div className="space-y-2">
+                                    <div className="flex items-center justify-between">
+                                      <Label>Product Images & Icon</Label>
+                                      <Button
+                                        variant="ghost"
+                                        size="sm"
+                                        className="h-8 text-xs text-primary font-bold hover:bg-primary/10"
+                                        onClick={() => {
+                                          if (!newProduct.subcategory) {
+                                            toast({ title: "Subcategory Required", description: "Please select a subcategory first to filter templates.", variant: "destructive" });
+                                            return;
+                                          }
+                                          setProductForTemplate({ ...newProduct, id: 'temp' } as any);
+                                          setShowTemplateSelector(true);
+                                        }}
+                                      >
+                                        <Layers className="h-3 w-3 mr-1.5" /> Select Template Icon
+                                      </Button>
+                                    </div>
+                                    <div className="flex items-center gap-4 p-4 bg-slate-50 rounded-xl border-2 border-dashed border-slate-200">
+                                      <div
+                                        className="h-20 w-20 rounded-2xl bg-white border-2 border-slate-100 shadow-sm flex items-center justify-center overflow-hidden cursor-pointer hover:border-primary/50 transition-all group shrink-0"
+                                        onClick={() => {
+                                          if (!newProduct.subcategory) {
+                                            toast({ title: "Subcategory Required", description: "Please select a subcategory first to filter templates.", variant: "destructive" });
+                                            return;
+                                          }
+                                          setProductForTemplate({ ...newProduct, id: 'temp' } as any);
+                                          setShowTemplateSelector(true);
+                                        }}
+                                      >
+                                        {parseImages(newProduct.image).length > 0 ? (
+                                          <img src={parseImages(newProduct.image)[0]} alt="" className="max-w-full max-h-full object-contain" />
+                                        ) : (
+                                          <div className="flex flex-col items-center gap-1 text-slate-300 group-hover:text-primary transition-colors">
+                                            <ImageIcon className="h-8 w-8" />
+                                            <span className="text-[10px] font-bold uppercase tracking-tighter">Icon</span>
+                                          </div>
+                                        )}
+                                      </div>
+                                      <div className="flex-1 space-y-2">
+                                        <Input
+                                          type="file"
+                                          accept="image/*"
+                                          multiple
+                                          className="h-9 text-xs file:bg-primary/5 file:text-primary file:border-none file:mr-2 file:px-3 file:py-1 file:rounded-md file:font-bold hover:file:bg-primary/10 transition-all"
+                                          onChange={(e) => handleImageUpload(e, (newImagesJson) => {
+                                            const newImages = JSON.parse(newImagesJson);
+                                            const existing = parseImages(newProduct.image);
+                                            setNewProduct({ ...newProduct, image: JSON.stringify([...existing, ...newImages]) });
+                                          })}
+                                        />
+                                        <p className="text-[10px] text-muted-foreground italic">Uploaded images or templates will appear here.</p>
+                                      </div>
+                                    </div>
+                                    <ImageGallery
+                                      images={newProduct.image}
+                                      onRemove={(idx) => {
+                                        const images = parseImages(newProduct.image);
+                                        images.splice(idx, 1);
+                                        setNewProduct({ ...newProduct, image: images.length > 0 ? JSON.stringify(images) : null as any });
+                                      }}
+                                      onPreview={(url) => setSelectedPreviewImage(url)}
+                                    />
+                                  </div>
+                                  <Button
+                                    onClick={async () => {
+                                      await handleAddProduct();
+                                      if (newProduct.name.trim() && newProduct.subcategory) {
+                                        setShowAddProductDialog(false);
+                                      }
+                                    }}
+                                    className="w-full bg-blue-600 hover:bg-blue-700"
+                                  >
+                                    <Plus className="h-4 w-4 mr-2" /> Add Product
+                                  </Button>
+                                </div>
+                              </DialogContent>
+                            </Dialog>
+                          </>)}
+                        </div>
+                      </CardHeader>
+                      <CardContent>
+                        <div className="mb-4 flex flex-col md:flex-row gap-4">
+                          <div className="flex-1">
                             <Input
-                              value={editingProduct.name}
-                              onChange={(e) =>
-                                setEditingProduct((prev: any) => ({ ...prev, name: e.target.value }))
-                              }
-                              placeholder="e.g. Ceramic Tiles, Wooden Door"
+                              value={searchProducts}
+                              onChange={(e) => setSearchProducts(e.target.value)}
+                              placeholder="Search products..."
                             />
                           </div>
-                          <div className="space-y-2">
-                            <Label>Select Subcategory <Required /></Label>
+                          <div className="w-full md:w-48">
                             <Select
-                              value={editingProduct.subcategory}
-                              onValueChange={(value) =>
-                                setEditingProduct((prev: any) => ({ ...prev, subcategory: value }))
-                              }
+                              value={filterProductByCategory}
+                              onValueChange={(val) => {
+                                setFilterProductByCategory(val);
+                                setFilterProductBySubCategory("all");
+                              }}
                             >
-                              <SelectTrigger className="max-h-64 overflow-y-auto">
-                                <SelectValue placeholder="Select subcategory" />
+                              <SelectTrigger>
+                                <SelectValue placeholder="Filter by Category" />
                               </SelectTrigger>
                               <SelectContent className="max-h-64">
-                                {subCategories.map((sub: any) => (
-                                  <SelectItem key={sub.id} value={sub.name}>
-                                    {sub.name} ({sub.category})
-                                  </SelectItem>
+                                <SelectItem value="all">All Categories</SelectItem>
+                                <SelectItem value="uncategorized" className="text-destructive font-medium italic">Uncategorized</SelectItem>
+                                {categories.map((cat: string) => (
+                                  <SelectItem key={cat} value={cat}>{cat}</SelectItem>
                                 ))}
                               </SelectContent>
                             </Select>
                           </div>
-                          <div className="space-y-2">
-                            <Label>Tax Codes</Label>
-                            <div className="grid grid-cols-2 gap-4">
-                              <div className="space-y-2">
-                                <Label>HSN Code</Label>
-                                <Input
-                                  value={editingProduct.hsnCode || ''}
-                                  onChange={(e) => setEditingProduct((prev: any) => ({ ...prev, hsnCode: e.target.value }))}
-                                  placeholder="Enter HSN code"
-                                />
-                              </div>
-                              <div className="space-y-2">
-                                <Label>SAC Code</Label>
-                                <Input
-                                  value={editingProduct.sacCode || ''}
-                                  onChange={(e) => setEditingProduct((prev: any) => ({ ...prev, sacCode: e.target.value }))}
-                                  placeholder="Enter SAC code"
-                                />
-                              </div>
-                            </div>
-                            <div className="space-y-2">
-                              <Label>Product Images</Label>
-                              <Input
-                                type="file"
-                                accept="image/*"
-                                multiple
-                                onChange={(e) => handleImageUpload(e, (newImagesJson) => {
-                                  const newImages = JSON.parse(newImagesJson);
-                                  const existing = parseImages(editingProduct ? editingProduct.image : "");
-                                  setEditingProduct((prev: any) => ({ ...prev, image: JSON.stringify([...existing, ...newImages]) }));
-                                })}
-                              />
-                              <ImageGallery
-                                images={editingProduct.image}
-                                onRemove={(idx) => {
-                                  const images = parseImages(editingProduct.image);
-                                  images.splice(idx, 1);
-                                  setEditingProduct((prev: any) => ({ ...prev, image: images.length > 0 ? JSON.stringify(images) : null }));
-                                }}
-                                onPreview={(url) => setSelectedPreviewImage(url)}
-                              />
-                            </div>
-                            <div className="flex gap-2 justify-end">
-                              <Button variant="outline" onClick={() => setEditingProduct(null)}>
-                                Cancel
-                              </Button>
-                              <Button
-                                onClick={() => {
-                                  if (editingProduct.name.trim() && editingProduct.subcategory) {
-                                    handleUpdateProduct();
-                                    setEditingProduct(null);
-                                  } else {
-                                    toast({ title: 'Error', description: 'Please fill in all fields', variant: 'destructive' });
-                                  }
-                                }}
-                                className="bg-blue-600 hover:bg-blue-700"
-                              >
-                                Save Changes
-                              </Button>
-                            </div>
+                          <div className="w-full md:w-48">
+                            <Select
+                              value={filterProductBySubCategory}
+                              onValueChange={setFilterProductBySubCategory}
+                            >
+                              <SelectTrigger>
+                                <SelectValue placeholder="Filter by Subcategory" />
+                              </SelectTrigger>
+                              <SelectContent className="max-h-64">
+                                <SelectItem value="all">All Subcategories</SelectItem>
+                                <SelectItem value="uncategorized" className="text-destructive font-medium italic">Uncategorized</SelectItem>
+                                {subCategories
+                                  .filter(sub => filterProductByCategory === "all" || (filterProductByCategory === "uncategorized" ? !sub.category : sub.category === filterProductByCategory))
+                                  .map((sub: any) => (
+                                    <SelectItem key={sub.id} value={sub.name}>{sub.name}</SelectItem>
+                                  ))}
+                              </SelectContent>
+                            </Select>
                           </div>
                         </div>
-                      </DialogContent>
-                    </Dialog>
-                  )}
-                </TabsContent>
+                        <div className="space-y-3 max-h-[400px] overflow-y-auto pr-2">
+                          {products.length === 0 ? (
+                            <p className="text-center text-muted-foreground py-6">No products created yet</p>
+                          ) : (
+                            products
+                              .filter(prod => {
+                                const matchesSearch = fuzzySearch(searchProducts, prod.name);
+
+                                let matchesSubCategory = filterProductBySubCategory === "all";
+                                if (filterProductBySubCategory === "uncategorized") {
+                                  matchesSubCategory = !prod.subcategory;
+                                } else if (filterProductBySubCategory !== "all") {
+                                  matchesSubCategory = prod.subcategory === filterProductBySubCategory;
+                                }
+
+                                const prodSub = subCategories.find(s => s.name === prod.subcategory);
+                                let matchesCategory = filterProductByCategory === "all";
+                                if (filterProductByCategory === "uncategorized") {
+                                  matchesCategory = !prod.subcategory || (prodSub && !prodSub.category);
+                                } else if (filterProductByCategory !== "all") {
+                                  matchesCategory = !!(prodSub && prodSub.category === filterProductByCategory);
+                                }
+
+                                return matchesSearch && matchesSubCategory && matchesCategory;
+                              })
+                              .map((product: any) => (
+                                <div key={product.id} className="p-4 border rounded-lg bg-white hover:border-blue-400 transition">
+                                  <div className="flex items-center justify-between">
+                                    <div className="flex items-center gap-3 flex-1">
+                                      <div
+                                        className="h-14 w-14 border rounded-lg bg-gray-100 overflow-hidden flex items-center justify-center shrink-0 cursor-pointer hover:border-blue-500 hover:bg-white transition-all group shadow-sm"
+                                        onClick={() => {
+                                          setProductForTemplate(product);
+                                          setShowTemplateSelector(true);
+                                        }}
+                                        title="Click to select or change template icon"
+                                      >
+                                        {product.image ? (
+                                          <img
+                                            src={parseImages(product.image)[0]}
+                                            alt=""
+                                            className="max-w-full max-h-full object-contain group-hover:scale-110 transition-transform"
+                                          />
+                                        ) : (
+                                          <Package className="h-6 w-6 text-blue-600 group-hover:rotate-12 transition-transform" />
+                                        )}
+                                      </div>
+                                      <div className="flex-1">
+                                        <span className="font-medium block">{product.name}</span>
+                                        <span className="text-sm text-muted-foreground">
+                                          Subcategories: {product.subcategory || "-"}
+                                        </span>
+                                        {product.taxCodeType && product.taxCodeValue && (
+                                          <div className="text-sm text-muted-foreground mt-1">
+                                            {product.taxCodeType.toUpperCase()}: {product.taxCodeValue}
+                                          </div>
+                                        )}
+                                      </div>
+                                    </div>
+                                    {(canAddProducts || canEditProducts || canDeleteProducts) && (
+                                      <div className="flex gap-2">
+                                        {canAddProducts && (
+                                          <Button size="sm" variant="ghost" onClick={() => handleCloneProduct(product)} title="Clone Product">
+                                            <Copy className="h-4 w-4" />
+                                          </Button>
+                                        )}
+                                        {canEditProducts && (
+                                          <Button size="sm" variant="outline" onClick={() => {
+                                            setEditingProduct(mapProduct(product));
+                                          }}>
+                                            Edit
+                                          </Button>
+                                        )}
+                                        {canDeleteProducts && (
+                                          <Button size="sm" variant="destructive" onClick={() => handleDeleteProduct(product.id)}>
+                                            <Trash2 className="h-4 w-4" />
+                                          </Button>
+                                        )}
+                                      </div>
+                                    )}
+                                  </div>
+                                </div>
+                              ))
+                          )}
+                        </div>
+                      </CardContent>
+                    </Card>
+
+                    {/* Edit Product Dialog */}
+                    {editingProduct && (
+                      <Dialog open={!!editingProduct} onOpenChange={(open) => !open && setEditingProduct(null)}>
+                        <DialogContent>
+                          <DialogHeader>
+                            <DialogTitle>Edit Product</DialogTitle>
+                          </DialogHeader>
+                          <div className="space-y-4">
+                            <div className="space-y-2">
+                              <Label>Product Name <Required /></Label>
+                              <Input
+                                value={editingProduct.name}
+                                onChange={(e) =>
+                                  setEditingProduct((prev: any) => ({ ...prev, name: e.target.value }))
+                                }
+                                placeholder="e.g. Ceramic Tiles, Wooden Door"
+                              />
+                            </div>
+                            <div className="space-y-2">
+                              <Label>Select Subcategory <Required /></Label>
+                              <Select
+                                value={editingProduct.subcategory}
+                                onValueChange={(value) =>
+                                  setEditingProduct((prev: any) => ({ ...prev, subcategory: value }))
+                                }
+                              >
+                                <SelectTrigger className="max-h-64 overflow-y-auto">
+                                  <SelectValue placeholder="Select subcategory" />
+                                </SelectTrigger>
+                                <SelectContent className="max-h-64">
+                                  {subCategories.map((sub: any) => (
+                                    <SelectItem key={sub.id} value={sub.name}>
+                                      {sub.name} ({sub.category})
+                                    </SelectItem>
+                                  ))}
+                                </SelectContent>
+                              </Select>
+                            </div>
+                            <div className="space-y-2">
+                              <Label>Tax Codes</Label>
+                              <div className="grid grid-cols-2 gap-4">
+                                <div className="space-y-2">
+                                  <Label>HSN Code</Label>
+                                  <Input
+                                    value={editingProduct.hsnCode || ''}
+                                    onChange={(e) => setEditingProduct((prev: any) => ({ ...prev, hsnCode: e.target.value }))}
+                                    placeholder="Enter HSN code"
+                                  />
+                                </div>
+                                <div className="space-y-2">
+                                  <Label>SAC Code</Label>
+                                  <Input
+                                    value={editingProduct.sacCode || ''}
+                                    onChange={(e) => setEditingProduct((prev: any) => ({ ...prev, sacCode: e.target.value }))}
+                                    placeholder="Enter SAC code"
+                                  />
+                                </div>
+                              </div>
+                              <div className="space-y-2">
+                                <Label>Product Images</Label>
+                                <Input
+                                  type="file"
+                                  accept="image/*"
+                                  multiple
+                                  onChange={(e) => handleImageUpload(e, (newImagesJson) => {
+                                    const newImages = JSON.parse(newImagesJson);
+                                    const existing = parseImages(editingProduct ? editingProduct.image : "");
+                                    setEditingProduct((prev: any) => ({ ...prev, image: JSON.stringify([...existing, ...newImages]) }));
+                                  })}
+                                />
+                                <ImageGallery
+                                  images={editingProduct.image}
+                                  onRemove={(idx) => {
+                                    const images = parseImages(editingProduct.image);
+                                    images.splice(idx, 1);
+                                    setEditingProduct((prev: any) => ({ ...prev, image: images.length > 0 ? JSON.stringify(images) : null }));
+                                  }}
+                                  onPreview={(url) => setSelectedPreviewImage(url)}
+                                />
+                              </div>
+                              <div className="flex gap-2 justify-end">
+                                <Button variant="outline" onClick={() => setEditingProduct(null)}>
+                                  Cancel
+                                </Button>
+                                <Button
+                                  onClick={() => {
+                                    if (editingProduct.name.trim() && editingProduct.subcategory) {
+                                      handleUpdateProduct();
+                                      setEditingProduct(null);
+                                    } else {
+                                      toast({ title: 'Error', description: 'Please fill in all fields', variant: 'destructive' });
+                                    }
+                                  }}
+                                  className="bg-blue-600 hover:bg-blue-700"
+                                >
+                                  Save Changes
+                                </Button>
+                              </div>
+                            </div>
+                          </div>
+                        </DialogContent>
+                      </Dialog>
+                    )}
+                  </TabsContent>
+                )}
               </Tabs>
             </TabsContent>
           )}

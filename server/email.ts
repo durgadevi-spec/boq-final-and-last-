@@ -182,7 +182,8 @@ export async function sendSketchPlanEmail(
 export async function sendSiteReportEmail(
   to: string | string[],
   report: any,
-  tasks: any[]
+  tasks: any[],
+  isClientGroup: boolean = false
 ) {
   if (!resend) {
     throw new Error("RESEND_API_KEY not configured");
@@ -235,7 +236,14 @@ export async function sendSiteReportEmail(
             
             ${task.labour && task.labour.length > 0 ? `
               <div style="margin-bottom: 15px;">
-                <h4 style="margin: 0 0 8px 0; font-size: 13px; color: #64748b; text-transform: uppercase; letter-spacing: 0.5px;">Labour Allocation</h4>
+                <h4 style="margin: 0 0 8px 0; font-size: 13px; color: #64748b; text-transform: uppercase; letter-spacing: 0.5px;">Labour</h4>
+                ${isClientGroup ? `
+                  <div style="font-size: 13px; color: #475569;">
+                    <div style="background-color: #eff6ff; padding: 10px 14px; border-radius: 6px; border: 1px solid #bfdbfe; display: inline-block;">
+                      <strong style="color: #1e40af;">Labour Count:</strong> <span style="font-size: 15px; font-weight: bold; color: #1e40af;">${task.labour.reduce((sum: number, l: any) => sum + (Number(l.count) || 0), 0)}</span>
+                    </div>
+                  </div>
+                ` : `
                 <table style="width: 100%; border-collapse: collapse; font-size: 13px;">
                   <tr style="background-color: #f8fafc;">
                     <th style="text-align: left; padding: 6px; border: 1px solid #e2e8f0;">Labour/Skill</th>
@@ -253,6 +261,27 @@ export async function sendSiteReportEmail(
                       <td style="text-align: center; padding: 6px; border: 1px solid #e2e8f0;">${lIn} to ${lOut}</td>
                     </tr>
                   `}).join('')}
+                </table>
+                `}
+              </div>
+            ` : ''}
+
+            ${task.materials && task.materials.length > 0 && !isClientGroup ? `
+              <div style="margin-bottom: 15px;">
+                <h4 style="margin: 0 0 8px 0; font-size: 13px; color: #64748b; text-transform: uppercase; letter-spacing: 0.5px;">Materials Used</h4>
+                <table style="width: 100%; border-collapse: collapse; font-size: 13px;">
+                  <tr style="background-color: #f8fafc;">
+                    <th style="text-align: left; padding: 6px; border: 1px solid #e2e8f0;">Material Name</th>
+                    <th style="text-align: center; padding: 6px; border: 1px solid #e2e8f0;">Qty</th>
+                    <th style="text-align: center; padding: 6px; border: 1px solid #e2e8f0;">Unit</th>
+                  </tr>
+                  ${task.materials.map((m: any) => `
+                    <tr>
+                      <td style="padding: 6px; border: 1px solid #e2e8f0;">${m.material_name || m.materialName || 'N/A'}</td>
+                      <td style="text-align: center; padding: 6px; border: 1px solid #e2e8f0;">${m.quantity || m.qty || 0}</td>
+                      <td style="text-align: center; padding: 6px; border: 1px solid #e2e8f0;">${m.unit || '-'}</td>
+                    </tr>
+                  `).join('')}
                 </table>
               </div>
             ` : ''}
@@ -272,8 +301,8 @@ export async function sendSiteReportEmail(
                 <div style="display: flex; flex-wrap: wrap; gap: 10px;">
                   ${task.media.map((m: any) => `
                     <div style="font-size: 12px; color: #2563eb;">
-                      <a href="${m.fileUrl}" target="_blank" style="text-decoration: none; color: #2563eb; background: #eff6ff; padding: 5px 10px; border-radius: 4px; border: 1px solid #dbeafe;">
-                        View ${m.fileType === 'video' ? 'Video' : 'Photo'}
+                      <a href="${m.fileUrl || m.file_url}" target="_blank" style="text-decoration: none; color: #2563eb; background: #eff6ff; padding: 5px 10px; border-radius: 4px; border: 1px solid #dbeafe;">
+                        View ${m.fileType === 'video' || m.file_type === 'video' ? 'Video' : 'Photo'}
                       </a>
                     </div>
                   `).join('')}

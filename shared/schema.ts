@@ -7,6 +7,7 @@ import {
   integer,
   decimal,
   uuid,
+  boolean,
 } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
@@ -43,6 +44,15 @@ export const users = pgTable("users", {
   updatedAt: timestamp("updated_at", { withTimezone: true })
     .notNull()
     .default(sql`now()`),
+
+  currentProjectId: varchar("current_project_id", { length: 100 }),
+});
+
+export const userProjectPermissions = pgTable("user_project_permissions", {
+  id: uuid("id").primaryKey().default(sql`gen_random_uuid()`),
+  userId: varchar("user_id", { length: 36 }).notNull(),
+  projectId: varchar("project_id", { length: 100 }).notNull(),
+  createdAt: timestamp("created_at", { withTimezone: true }).default(sql`now()`),
 });
 
 export const estimatorStep9Cart = pgTable("estimator_step9_cart", {
@@ -91,6 +101,7 @@ export const userRoleEnum = z.enum([
   "contractor",
   "pre_sales",
   "product_manager",
+  "site_engineer",
 ]);
 
 export const approvalStatusEnum = z.enum([
@@ -317,6 +328,7 @@ export const emailGroups = pgTable("email_groups", {
   id: uuid("id").primaryKey().default(sql`gen_random_uuid()`),
   name: text("name").notNull(),
   userId: text("user_id").notNull(),
+  isClientGroup: boolean("is_client_group").default(false),
   createdAt: timestamp("created_at", { withTimezone: true }).default(sql`now()`),
 });
 

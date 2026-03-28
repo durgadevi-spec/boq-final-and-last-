@@ -1231,5 +1231,22 @@
     "status": "trashed",
     "archivedAt": "2026-03-26T12:56:54.716Z",
     "trashedAt": "2026-03-26T12:56:54.724Z"
+  },
+  {
+    "id": "1b76813d-d3b9-4ceb-b7ca-09f09536069a",
+    "module": "categories",
+    "originId": "demo",
+    "data": {
+      "id": "1cec0a01-7536-4ae5-ae1e-6383922ad53b",
+      "name": "demo",
+      "created_at": "2026-03-26T23:45:41.579Z",
+      "created_by": "3e4deb57-e202-46fc-be0d-7ebd930cce3d",
+      "is_archived": false,
+      "is_trashed": false,
+      "trashed_at": null
+    },
+    "status": "trashed",
+    "archivedAt": "2026-03-27T05:15:53.425Z",
+    "trashedAt": "2026-03-27T05:15:53.427Z"
   }
 ]

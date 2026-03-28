@@ -48,6 +48,7 @@ export default function SiteReports() {
   const [newGroupName, setNewGroupName] = useState("");
   const [newEmails, setNewEmails] = useState<string[]>([]);
   const [emailInput, setEmailInput] = useState("");
+  const [isClientGroup, setIsClientGroup] = useState(false);
   const [creatingGroup, setCreatingGroup] = useState(false);
 
   const fetchReports = async () => {
@@ -115,12 +116,13 @@ export default function SiteReports() {
     try {
       const res = await apiFetch("/api/email-groups", {
         method: "POST",
-        body: JSON.stringify({ name: newGroupName, members: newEmails })
+        body: JSON.stringify({ name: newGroupName, members: newEmails, isClientGroup })
       });
       if (res.ok) {
         toast({ title: "Success", description: "Email group created." });
         setNewGroupName("");
         setNewEmails([]);
+        setIsClientGroup(false);
         fetchGroups();
       }
     } catch (error) {
@@ -209,6 +211,18 @@ export default function SiteReports() {
                           ))}
                         </div>
                       )}
+                      <div className="flex items-center space-x-2 mt-3">
+                        <input
+                          type="checkbox"
+                          id="isClientGroup"
+                          checked={isClientGroup}
+                          onChange={(e) => setIsClientGroup(e.target.checked)}
+                          className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
+                        />
+                        <Label htmlFor="isClientGroup" className="text-xs text-gray-700">
+                          This is a client group (simplified email content)
+                        </Label>
+                      </div>
                       <Button 
                         className="w-full mt-2 h-9 bg-gray-900" 
                         disabled={creatingGroup || !newGroupName || newEmails.length === 0}

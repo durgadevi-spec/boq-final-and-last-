@@ -123,6 +123,14 @@ export async function registerRoutes(
     console.warn("[repair] Could not link orphaned materials:", (err as any)?.message || err);
   }
 
+  // Ensure email_groups table has is_client_group column (migration for older schemas)
+  try {
+    await query(`ALTER TABLE email_groups ADD COLUMN IF NOT EXISTS is_client_group BOOLEAN DEFAULT FALSE`);
+    console.log("[migration] email_groups.is_client_group column ensured");
+  } catch (err: unknown) {
+    console.warn("[migration] Could not add is_client_group column to email_groups:", (err as any)?.message || err);
+  }
+
   // Ensure messages table exists (create if missing) to avoid runtime errors in dev
   try {
     await query(`
@@ -168,7 +176,7 @@ export async function registerRoutes(
       )
     `);
     await query(`CREATE INDEX IF NOT EXISTS idx_alerts_created_at ON alerts (created_at)`);
-    
+
     // Ensure sketch_plan_locks table exists
     await query(`
       CREATE TABLE IF NOT EXISTS sketch_plan_locks (
@@ -1120,6 +1128,17 @@ export async function registerRoutes(
     `);
 
     await query(`
+      CREATE TABLE IF NOT EXISTS site_report_materials (
+        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        task_id UUID NOT NULL REFERENCES site_report_tasks(id) ON DELETE CASCADE,
+        material_name TEXT NOT NULL,
+        quantity DECIMAL NOT NULL DEFAULT 1,
+        unit TEXT,
+        created_at TIMESTAMPTZ DEFAULT NOW()
+      )
+    `);
+
+    await query(`
       CREATE TABLE IF NOT EXISTS email_groups (
         id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
         name TEXT NOT NULL,
@@ -1840,11 +1859,11 @@ export async function registerRoutes(
          WHERE m.approved IS TRUE 
          ORDER BY m.created_at DESC`,
       );
-      
+
       const archivedIds = archiveService.getArchivedItemIds('materials');
       const trashedIds = archiveService.getTrashedItemIds('materials');
       const filtered = result.rows.filter(r => !archivedIds.includes(r.id) && !trashedIds.includes(r.id));
-      
+
       res.json({ materials: filtered });
     } catch (err) {
       // eslint-disable-next-line no-console
@@ -2100,7 +2119,7 @@ export async function registerRoutes(
         if (shopRes.rows.length === 0) {
           return res.status(404).json({ message: "Shop not found" });
         }
-        
+
         const archived = archiveService.archiveItem('shops', id, shopRes.rows[0]);
         if (req.query.action === 'trash' && archived) {
           archiveService.trashArchiveItem(archived.id);
@@ -4192,9 +4211,23 @@ export async function registerRoutes(
     authMiddleware,
     async (req: Request, res: Response) => {
       try {
-        const result = await query(
-          `SELECT id, name, client, budget, location, client_address, gst_no, project_value, project_status, status, created_at, updated_at FROM boq_projects ORDER BY created_at DESC`,
-        );
+        const user = (req as any).user;
+        const { all } = req.query;
+        let queryStr = `SELECT id, name, client, budget, location, client_address, gst_no, project_value, project_status, status, created_at, updated_at FROM boq_projects`;
+        const params: any[] = [];
+
+        const privilegedRoles = ['admin', 'software_team'];
+
+        // Only allow admins to bypass project restrictions
+        if (privilegedRoles.includes(user?.role)) {
+          // Privileged roles see all projects
+        } else {
+          queryStr += ` WHERE id IN (SELECT project_id FROM user_project_permissions WHERE user_id = $1)`;
+          params.push(user.id);
+        }
+
+        queryStr += ` ORDER BY created_at DESC`;
+        const result = await query(queryStr, params);
 
         const archivedIds = archiveService.getArchivedItemIds('boq_projects');
         const trashedIds = archiveService.getTrashedItemIds('boq_projects');
@@ -4389,7 +4422,7 @@ export async function registerRoutes(
               if (typeof tableData === 'string') {
                 try { tableData = JSON.parse(tableData); } catch (e) { return; }
               }
-              
+
               if (tableData && tableData.step11_items && Array.isArray(tableData.step11_items)) {
                 tableData.step11_items.forEach((item: any, index: number) => {
                   allItems.push({
@@ -4826,14 +4859,26 @@ export async function registerRoutes(
     "/api/bom-approvals",
     authMiddleware,
     requireRole("admin", "software_team", "purchase_team", "product_manager", "pre_sales"),
-    async (_req: Request, res: Response) => {
+    async (req: Request, res: Response) => {
       try {
+        const user = (req as any).user;
         // Ensure is_cleared column exists
         await query("ALTER TABLE boq_versions ADD COLUMN IF NOT EXISTS is_cleared BOOLEAN DEFAULT FALSE");
 
-        const result = await query(
-          "SELECT * FROM boq_versions WHERE status != 'draft' AND ((is_cleared IS FALSE OR is_cleared IS NULL) OR status = 'edit_requested') ORDER BY created_at DESC"
-        );
+        let queryStr = "SELECT * FROM boq_versions WHERE status != 'draft' AND ((is_cleared IS FALSE OR is_cleared IS NULL) OR status = 'edit_requested')";
+        const params: any[] = [];
+
+        // Admin/purchase/product/pre_sales/software_team should see all approvals; enforce project permissions only on other roles.
+        const allowedToSeeAll = ["admin", "software_team", "purchase_team", "product_manager", "pre_sales"].includes(user.role);
+
+        if (!allowedToSeeAll) {
+          queryStr += ` AND project_id IN (SELECT project_id FROM user_project_permissions WHERE user_id = $1)`;
+          params.push(user.id);
+        }
+
+        queryStr += " ORDER BY created_at DESC";
+
+        const result = await query(queryStr, params);
         res.json({ approvals: result.rows });
       } catch (err) {
         console.error("GET /api/bom-approvals error:", err);
@@ -5043,12 +5088,12 @@ export async function registerRoutes(
     try {
       const { id } = req.params;
       const { snapshot } = req.body;
-      
+
       // Updates the specific version with the current template's data
-      await query("UPDATE boq_versions SET last_template_snapshot = $1 WHERE id = $2", 
+      await query("UPDATE boq_versions SET last_template_snapshot = $1 WHERE id = $2",
         [JSON.stringify(snapshot), id]
       );
-      
+
       res.json({ message: "Snapshot saved" });
     } catch (err) {
       console.error("POST /api/boq-versions/:id/template-snapshot error", err);
@@ -5484,7 +5529,7 @@ export async function registerRoutes(
         if (itemRes.rows.length === 0) {
           return res.status(404).json({ message: "BOQ item not found" });
         }
-        
+
         const itemData = itemRes.rows[0];
         const projectId = itemData.project_id;
 
@@ -5551,7 +5596,7 @@ export async function registerRoutes(
       const { id } = req.params;
       const getTpl = await query("SELECT * FROM boq_templates WHERE id = $1", [id]);
       if (getTpl.rows.length === 0) return res.status(404).json({ message: "Template not found" });
-      
+
       const archived = archiveService.archiveItem('boq_templates', id, getTpl.rows[0]);
       if (req.query.action === 'trash' && archived) {
         archiveService.trashArchiveItem(archived.id);
@@ -5609,7 +5654,7 @@ export async function registerRoutes(
       const { id } = req.params;
       const getTpl = await query("SELECT * FROM bom_templates WHERE id = $1", [id]);
       if (getTpl.rows.length === 0) return res.status(404).json({ message: "Template not found" });
-      
+
       const archived = archiveService.archiveItem('bom_templates', id, getTpl.rows[0]);
       if (req.query.action === 'trash' && archived) {
         archiveService.trashArchiveItem(archived.id);
@@ -7474,6 +7519,9 @@ export async function registerRoutes(
         queryStr += ` AND status = $${params.length}`;
       }
 
+      params.push(user.id);
+      queryStr += ` AND project_id IN (SELECT project_id FROM user_project_permissions WHERE user_id = $${params.length})`;
+
       queryStr += ` ORDER BY created_at DESC`;
 
       const result = await query(queryStr, params);
@@ -7824,6 +7872,7 @@ export async function registerRoutes(
   app.get("/api/purchase-orders", authMiddleware, async (req: Request, res: Response) => {
     try {
       const { status } = req.query;
+      const user = (req as any).user;
       let queryStr = `
         SELECT po.*, po.total as total_amount, p.name as project_name,
         COALESCE(po.vendor_name, s.name, po.vendor_id) as vendor_name
@@ -7832,10 +7881,18 @@ export async function registerRoutes(
         LEFT JOIN shops s ON(po.vendor_id:: text = s.id:: text OR TRIM(s.name) = TRIM(po.vendor_name))
         `;
       const params: any[] = [];
+      const whereConditions: string[] = [];
 
       if (status) {
-        queryStr += ` WHERE po.status = $1`;
+        whereConditions.push(`po.status = $${params.length + 1}`);
         params.push(status);
+      }
+
+      whereConditions.push(`po.project_id IN (SELECT project_id FROM user_project_permissions WHERE user_id = $${params.length + 1})`);
+      params.push(user.id);
+
+      if (whereConditions.length > 0) {
+        queryStr += ` WHERE ` + whereConditions.join(" AND ");
       }
 
       queryStr += ` ORDER BY po.created_at DESC`;
@@ -8247,6 +8304,29 @@ ${list.rows.map((row: any) => `- ${row.name}`).join('\n')}`;
     console.warn('[dynamic-access] Could not create user_sidebar_permissions:', (err as any)?.message || err);
   }
 
+  // Ensure user_project_permissions table exists
+  try {
+    await query(`
+      CREATE TABLE IF NOT EXISTS user_project_permissions (
+        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        user_id VARCHAR(36) NOT NULL,
+        project_id VARCHAR(100) NOT NULL,
+        created_at TIMESTAMPTZ DEFAULT NOW(),
+        UNIQUE(user_id, project_id)
+      )
+    `);
+    await query(`CREATE INDEX IF NOT EXISTS idx_upp_user_id ON user_project_permissions(user_id)`);
+  } catch (err: unknown) {
+    console.warn('[dynamic-access] Could not create user_project_permissions:', (err as any)?.message || err);
+  }
+
+  // Ensure current_project_id column exists in users table
+  try {
+    await query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS current_project_id VARCHAR(100)`);
+  } catch (err: unknown) {
+    console.warn('[dynamic-access] Could not add current_project_id to users:', (err as any)?.message || err);
+  }
+
   /**
    * GET /api/admin/dynamic-access/pending-users
    * Returns users NOT yet in user_management_registry (excluding admin role)
@@ -8284,6 +8364,9 @@ ${list.rows.map((row: any) => `- ${row.name}`).join('\n')}`;
       for (const u of users) {
         const perms = await query(`SELECT module_name FROM user_sidebar_permissions WHERE user_id = $1 ORDER BY module_name`, [u.id]);
         u.modules = perms.rows.map((r: any) => r.module_name);
+
+        const projects = await query(`SELECT project_id FROM user_project_permissions WHERE user_id = $1`, [u.id]);
+        u.projects = projects.rows.map((r: any) => r.project_id);
       }
       res.json({ users });
     } catch (err) {
@@ -8342,6 +8425,23 @@ ${list.rows.map((row: any) => `- ${row.name}`).join('\n')}`;
         }
       }
 
+      // Handle projects if provided
+      const { projects } = req.body as { projects?: string[] };
+      if (projects !== undefined) {
+        await query(`DELETE FROM user_project_permissions WHERE user_id = $1`, [userId]);
+        if (Array.isArray(projects) && projects.length > 0) {
+          for (const pid of projects) {
+            if (pid && typeof pid === 'string') {
+              await query(`
+                INSERT INTO user_project_permissions (user_id, project_id)
+                VALUES ($1, $2)
+                ON CONFLICT (user_id, project_id) DO NOTHING
+              `, [userId, pid]);
+            }
+          }
+        }
+      }
+
       res.json({ message: 'Permissions saved successfully' });
     } catch (err) {
       console.error('/api/admin/dynamic-access/assign error:', err);
@@ -8363,14 +8463,54 @@ ${list.rows.map((row: any) => `- ${row.name}`).join('\n')}`;
       const userId = req.user.id;
       const registry = await query(`SELECT id FROM user_management_registry WHERE user_id = $1`, [userId]);
       if (registry.rows.length === 0) {
-        res.json({ isCustomManaged: false, modules: [] });
+        // Even if not custom managed for modules, we want to return project info
+        const projectsRes = await query(`SELECT project_id FROM user_project_permissions WHERE user_id = $1`, [userId]);
+        const userRes = await query(`SELECT current_project_id FROM users WHERE id = $1`, [userId]);
+        res.json({
+          isCustomManaged: false,
+          modules: [],
+          projects: projectsRes.rows.map((r: any) => r.project_id),
+          currentProjectId: userRes.rows[0]?.current_project_id || null
+        });
         return;
       }
       const perms = await query(`SELECT module_name FROM user_sidebar_permissions WHERE user_id = $1 ORDER BY module_name`, [userId]);
-      res.json({ isCustomManaged: true, modules: perms.rows.map((r: any) => r.module_name) });
+      const projectsRes = await query(`SELECT project_id FROM user_project_permissions WHERE user_id = $1`, [userId]);
+      const userRes = await query(`SELECT current_project_id FROM users WHERE id = $1`, [userId]);
+
+      res.json({
+        isCustomManaged: true,
+        modules: perms.rows.map((r: any) => r.module_name),
+        projects: projectsRes.rows.map((r: any) => r.project_id),
+        currentProjectId: userRes.rows[0]?.current_project_id || null
+      });
     } catch (err) {
       console.error('/api/my-permissions error:', err);
       res.status(500).json({ message: 'Failed to load permissions' });
+    }
+  });
+
+  /**
+   * POST /api/set-active-project
+   * Saves the current active project for the user
+   */
+  app.post('/api/set-active-project', authMiddleware, async (req: Request, res: Response) => {
+    try {
+      if (!req.user) return res.status(401).json({ message: 'Unauthorized' });
+      const { projectId } = req.body;
+      const userId = req.user.id;
+
+      // Verify that the user has permission for this project (unless admin/software_team)
+      const check = await query(`SELECT 1 FROM user_project_permissions WHERE user_id = $1 AND project_id = $2`, [userId, projectId]);
+      if (check.rows.length === 0 && projectId !== null) {
+        return res.status(403).json({ message: 'No permission for this project' });
+      }
+
+      await query(`UPDATE users SET current_project_id = $1 WHERE id = $2`, [projectId, userId]);
+      res.json({ message: 'Active project updated', currentProjectId: projectId });
+    } catch (err) {
+      console.error('/api/set-active-project error:', err);
+      res.status(500).json({ message: 'Failed to update active project' });
     }
   });
 
@@ -8418,7 +8558,7 @@ ${list.rows.map((row: any) => `- ${row.name}`).join('\n')}`;
         LEFT JOIN materials m ON spi.material_id::text = m.id::text
         LEFT JOIN products p ON spi.material_id::text = p.id::text
         WHERE spi.plan_id = $1 
-        ORDER BY spi.created_at ASC, spi.id ASC`, 
+        ORDER BY spi.created_at ASC, spi.id ASC`,
         [id]
       );
       const imagesRes = await query(
@@ -8429,7 +8569,7 @@ ${list.rows.map((row: any) => `- ${row.name}`).join('\n')}`;
         "SELECT id, file_url, file_name, file_type FROM sketch_plan_attachments WHERE plan_id = $1",
         [id]
       );
- 
+
       res.json({
         plan: planRes.rows[0],
         items: itemsRes.rows || [],
@@ -8466,13 +8606,13 @@ ${list.rows.map((row: any) => `- ${row.name}`).join('\n')}`;
               `INSERT INTO sketch_plan_items (id, plan_id, item_name, description, length, width, height, qty, unit, remarks, material_id, dimension_unit) 
                VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)`,
               [
-                itemId, id, item.item_name, item.description, 
-                parseSafeNumeric(item.length), 
-                parseSafeNumeric(item.width), 
-                parseSafeNumeric(item.height), 
-                parseSafeNumeric(item.qty), 
-                item.unit, item.remarks, 
-                item.material_id || null, 
+                itemId, id, item.item_name, item.description,
+                parseSafeNumeric(item.length),
+                parseSafeNumeric(item.width),
+                parseSafeNumeric(item.height),
+                parseSafeNumeric(item.qty),
+                item.unit, item.remarks,
+                item.material_id || null,
                 item.dimension_unit || 'feet'
               ]
             );
@@ -8495,7 +8635,7 @@ ${list.rows.map((row: any) => `- ${row.name}`).join('\n')}`;
         // Plan-level images
         if (images && Array.isArray(images)) {
           for (const img of images) {
-            if (img.item_id) continue; 
+            if (img.item_id) continue;
             const imgUrl = typeof img === "string" ? img : (img.image_url || img.url);
             const imgName = typeof img === "string" ? null : (img.name || img.image_name);
             const imgId = `img-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
@@ -8558,13 +8698,13 @@ ${list.rows.map((row: any) => `- ${row.name}`).join('\n')}`;
               `INSERT INTO sketch_plan_items (id, plan_id, item_name, description, length, width, height, qty, unit, remarks, material_id, dimension_unit) 
                VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)`,
               [
-                itemId, id, item.item_name, item.description, 
-                parseSafeNumeric(item.length), 
-                parseSafeNumeric(item.width), 
-                parseSafeNumeric(item.height), 
-                parseSafeNumeric(item.qty), 
-                item.unit, item.remarks, 
-                item.material_id || null, 
+                itemId, id, item.item_name, item.description,
+                parseSafeNumeric(item.length),
+                parseSafeNumeric(item.width),
+                parseSafeNumeric(item.height),
+                parseSafeNumeric(item.qty),
+                item.unit, item.remarks,
+                item.material_id || null,
                 item.dimension_unit || 'feet'
               ]
             );
@@ -8626,17 +8766,17 @@ ${list.rows.map((row: any) => `- ${row.name}`).join('\n')}`;
   });
 
   // DELETE /api/sketch-plans/:id - Delete sketch plan
-    app.delete("/api/sketch-plans/:id", authMiddleware, async (req: Request, res: Response) => {
-      try {
-        const { id } = req.params;
-        const planRes = await query("SELECT * FROM sketch_plans WHERE id = $1", [id]);
-        if (planRes.rows.length === 0) return res.status(404).json({ message: "Plan not found" });
-        
-        const archived = archiveService.archiveItem('sketch_plans', id, planRes.rows[0]);
-        if (req.query.action === 'trash' && archived) {
-          archiveService.trashArchiveItem(archived.id);
-        }
-        res.json({ message: "Sketch plan deleted successfully" });
+  app.delete("/api/sketch-plans/:id", authMiddleware, async (req: Request, res: Response) => {
+    try {
+      const { id } = req.params;
+      const planRes = await query("SELECT * FROM sketch_plans WHERE id = $1", [id]);
+      if (planRes.rows.length === 0) return res.status(404).json({ message: "Plan not found" });
+
+      const archived = archiveService.archiveItem('sketch_plans', id, planRes.rows[0]);
+      if (req.query.action === 'trash' && archived) {
+        archiveService.trashArchiveItem(archived.id);
+      }
+      res.json({ message: "Sketch plan deleted successfully" });
     } catch (err) {
       console.error("DELETE /api/sketch-plans/:id error", err);
       res.status(500).json({ message: "Failed to delete sketch plan" });
@@ -8648,7 +8788,7 @@ ${list.rows.map((row: any) => `- ${row.name}`).join('\n')}`;
     try {
       const { id } = req.params;
       const lockId = `spl-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
-      
+
       // Upsert lock status
       await query(
         `INSERT INTO sketch_plan_locks (id, plan_id, is_locked, updated_at)
@@ -8656,7 +8796,7 @@ ${list.rows.map((row: any) => `- ${row.name}`).join('\n')}`;
          ON CONFLICT (plan_id) DO UPDATE SET is_locked = TRUE, updated_at = NOW()`,
         [lockId, id]
       );
-      
+
       res.json({ message: "Plan locked successfully" });
     } catch (err) {
       console.error("POST /api/sketch-plans/:id/lock error", err);
@@ -8670,14 +8810,14 @@ ${list.rows.map((row: any) => `- ${row.name}`).join('\n')}`;
       const { id } = req.params;
       const { reason } = req.body;
       const lockId = `spl-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
-      
+
       await query(
         `INSERT INTO sketch_plan_locks (id, plan_id, request_status, request_reason, updated_at)
          VALUES ($1, $2, 'pending', $3, NOW())
          ON CONFLICT (plan_id) DO UPDATE SET request_status = 'pending', request_reason = $3, updated_at = NOW()`,
         [lockId, id, reason || "No reason provided"]
       );
-      
+
       res.json({ message: "Unlock request submitted" });
     } catch (err) {
       console.error("POST /api/sketch-plans/:id/request-unlock error", err);
@@ -8690,7 +8830,7 @@ ${list.rows.map((row: any) => `- ${row.name}`).join('\n')}`;
     try {
       const { id } = req.params;
       const { action } = req.body; // 'approve' or 'reject'
-      
+
       if (action === 'approve') {
         await query(
           `UPDATE sketch_plan_locks 
@@ -8781,33 +8921,7 @@ ${list.rows.map((row: any) => `- ${row.name}`).join('\n')}`;
     }
   });
 
-  // GET /api/site-reports/:id - Get a single report with its tasks, labour, media, and issues
-  app.get("/api/site-reports/:id", authMiddleware, async (req: Request, res: Response) => {
-    try {
-      const { id } = req.params;
-      const reportRes = await query("SELECT * FROM site_reports WHERE id = $1", [id]);
-      if (reportRes.rows.length === 0) return res.status(404).json({ message: "Report not found" });
 
-      const tasksRes = await query("SELECT * FROM site_report_tasks WHERE site_report_id = $1", [id]);
-      const tasks = tasksRes.rows;
-
-      for (const task of tasks) {
-        const labourRes = await query("SELECT * FROM site_report_labours WHERE task_id = $1", [task.id]);
-        task.labour = labourRes.rows;
-
-        const mediaRes = await query("SELECT * FROM site_report_media WHERE task_id = $1", [task.id]);
-        task.media = mediaRes.rows;
-
-        const issuesRes = await query("SELECT * FROM site_report_issues WHERE task_id = $1", [task.id]);
-        task.issues = issuesRes.rows;
-      }
-
-      res.json({ report: reportRes.rows[0], tasks });
-    } catch (err) {
-      console.error("GET /api/site-reports/:id error:", err);
-      res.status(500).json({ message: "Failed to fetch site report" });
-    }
-  });
 
   // POST /api/site-reports - Create a new report (shell)
   app.post("/api/site-reports", authMiddleware, async (req: Request, res: Response) => {
@@ -8854,6 +8968,32 @@ ${list.rows.map((row: any) => `- ${row.name}`).join('\n')}`;
               );
             }
           }
+
+          if (task.materials && Array.isArray(task.materials)) {
+            for (const mat of task.materials) {
+              await query(
+                `INSERT INTO site_report_materials (task_id, material_name, quantity, unit)
+                 VALUES ($1, $2, $3, $4)`,
+                [taskId, mat.material_name || '', mat.quantity || 1, mat.unit || '']
+              );
+            }
+          }
+
+          if (task.media && Array.isArray(task.media)) {
+            for (const m of task.media) {
+              const fileUrl = m.file_url || m.url || m.fileUrl;
+              const fileType = m.file_type || m.type || 'image/jpeg';
+              const fileName = m.file_name || m.name || 'image';
+
+              if (fileUrl) {
+                await query(
+                  `INSERT INTO site_report_media (task_id, file_url, file_type, file_name)
+                   VALUES ($1, $2, $3, $4)`,
+                  [taskId, fileUrl, fileType, fileName]
+                );
+              }
+            }
+          }
         }
       }
 
@@ -8871,7 +9011,7 @@ ${list.rows.map((row: any) => `- ${row.name}`).join('\n')}`;
     try {
       const { id } = req.params;
       console.log(`[DEBUG] Fetching report details for ID: ${id}`);
-      
+
       const reportRes = await query("SELECT * FROM site_reports WHERE id = $1", [id]);
       if (reportRes.rows.length === 0) {
         console.log(`[DEBUG] Report ${id} not found`);
@@ -8896,7 +9036,7 @@ ${list.rows.map((row: any) => `- ${row.name}`).join('\n')}`;
           inTime: l.in_time,
           outTime: l.out_time
         }));
-        
+
         const mediaRes = await query("SELECT * FROM site_report_media WHERE task_id = $1", [task.id]);
         task.media = mediaRes.rows.map((m: any) => ({
           ...m,
@@ -8907,7 +9047,14 @@ ${list.rows.map((row: any) => `- ${row.name}`).join('\n')}`;
 
         const issuesRes = await query("SELECT * FROM site_report_issues WHERE task_id = $1", [task.id]);
         task.issues = issuesRes.rows;
-        console.log(`[DEBUG] Task ${task.id} has ${task.labour.length} labour entries and ${task.issues.length} issues`);
+
+        const materialsRes = await query("SELECT * FROM site_report_materials WHERE task_id = $1", [task.id]);
+        task.materials = materialsRes.rows.map((m: any) => ({
+          ...m,
+          materialName: m.material_name,
+        }));
+
+        console.log(`[DEBUG] Task ${task.id} has ${task.labour.length} labour entries, ${task.issues.length} issues, and ${task.materials.length} materials`);
       }
 
       report.tasks = tasks;
@@ -9022,15 +9169,28 @@ ${list.rows.map((row: any) => `- ${row.name}`).join('\n')}`;
   // POST /api/email-groups - Create group
   app.post("/api/email-groups", authMiddleware, async (req: Request, res: Response) => {
     try {
-      const { name, members } = req.body;
+      const { name, members, isClientGroup } = req.body;
       const userId = (req as any).user?.id;
 
       await query("BEGIN");
 
-      const groupRes = await query(
-        "INSERT INTO email_groups (name, user_id) VALUES ($1, $2) RETURNING *",
-        [name, userId]
-      );
+      let groupRes;
+      try {
+        groupRes = await query(
+          "INSERT INTO email_groups (name, user_id, is_client_group) VALUES ($1, $2, $3) RETURNING *",
+          [name, userId, isClientGroup || false]
+        );
+      } catch (insertErr: any) {
+        // If is_client_group column is not present in old schema, fallback to legacy insert.
+        if (insertErr.code === '42703' || /column .* does not exist/i.test(insertErr.message)) {
+          groupRes = await query(
+            "INSERT INTO email_groups (name, user_id) VALUES ($1, $2) RETURNING *",
+            [name, userId]
+          );
+        } else {
+          throw insertErr;
+        }
+      }
       const group = groupRes.rows[0];
 
       if (members && Array.isArray(members)) {
@@ -9065,7 +9225,7 @@ ${list.rows.map((row: any) => `- ${row.name}`).join('\n')}`;
     try {
       const { id } = req.params;
       const { status, summary } = req.body;
-      
+
       const updateFields: string[] = [];
       const values: any[] = [];
       let paramCount = 1;
@@ -9113,7 +9273,7 @@ ${list.rows.map((row: any) => `- ${row.name}`).join('\n')}`;
   app.post("/api/site-reports/:id/send-email", authMiddleware, async (req: Request, res: Response) => {
     try {
       const { id } = req.params;
-      const { email_group_id, additional_emails } = req.body;
+      const { email_group_id, additional_emails, is_client_group } = req.body;
 
       // Fetch report and tasks (same logic as GET /api/site-reports/:id)
       const reportRes = await query("SELECT * FROM site_reports WHERE id = $1", [id]);
@@ -9130,11 +9290,39 @@ ${list.rows.map((row: any) => `- ${row.name}`).join('\n')}`;
         task.media = mediaRes.rows;
         const issuesRes = await query("SELECT * FROM site_report_issues WHERE task_id = $1", [task.id]);
         task.issues = issuesRes.rows;
+        
+        const materialsRes = await query("SELECT * FROM site_report_materials WHERE task_id = $1", [task.id]);
+        task.materials = materialsRes.rows;
       }
 
-      // Collect recipient emails
+      // Determine if it's a client group (simplified template)
+      let isClientGroup = false;
+      
+      // 1. Check if explicitly passed in request body (e.g. for single email to client)
+      if (is_client_group === true || is_client_group === 'true') {
+        isClientGroup = true;
+      }
+      
+      // 2. Collect recipient emails from group
       let recipients: string[] = [];
       if (email_group_id) {
+        // If not already determined true from body, check the group's setting in DB
+        if (!isClientGroup) {
+          try {
+            const groupRes = await query("SELECT is_client_group FROM email_groups WHERE id = $1", [email_group_id]);
+            if (groupRes.rows.length > 0) {
+              isClientGroup = !!groupRes.rows[0].is_client_group;
+            }
+          } catch (groupErr: any) {
+            // Fallback for deployments where schema isn't migrated yet.
+            if (groupErr.code === '42703' || /column .* does not exist/i.test(groupErr.message)) {
+              isClientGroup = false;
+            } else {
+              throw groupErr;
+            }
+          }
+        }
+
         const membersRes = await query("SELECT email FROM email_group_members WHERE group_id = $1", [email_group_id]);
         recipients = membersRes.rows.map(r => r.email);
       }
@@ -9147,7 +9335,12 @@ ${list.rows.map((row: any) => `- ${row.name}`).join('\n')}`;
       }
 
       // Send email
-      await sendSiteReportEmail(recipients, report, tasks);
+      console.log("[EMAIL_DEBUG] recipients:", recipients);
+      console.log("[EMAIL_DEBUG] is_client_group from body:", is_client_group);
+      console.log("[EMAIL_DEBUG] final isClientGroup flag:", isClientGroup);
+      console.log("[EMAIL_DEBUG] reportId:", id);
+      
+      await sendSiteReportEmail(recipients, report, tasks, isClientGroup);
 
       // Update report status to submitted if it was draft
       if (report.status === 'draft') {
@@ -9155,9 +9348,10 @@ ${list.rows.map((row: any) => `- ${row.name}`).join('\n')}`;
       }
 
       res.json({ message: "Report sent successfully", recipients });
-    } catch (err) {
+    } catch (err: any) {
+      await query("ROLLBACK");
       console.error("POST /api/site-reports/:id/send-email error:", err);
-      res.status(500).json({ message: "Failed to send report email" });
+      res.status(500).json({ message: "Failed to send report email", error: err.message || String(err) });
     }
   });
 

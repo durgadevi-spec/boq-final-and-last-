@@ -2,7 +2,7 @@ import React, { createContext, useContext, useState, ReactNode, useEffect } from
 import { getJSON, postJSON, apiFetch } from "./api";
 import { useAuth } from "./auth-context";
 
-export type Role = "admin" | "supplier" | "user" | "purchase_team" | "software_team" | "pre_sales" | "contractor" | "product_manager";
+export type Role = "admin" | "supplier" | "user" | "purchase_team" | "software_team" | "pre_sales" | "contractor" | "product_manager" | "site_engineer";
 
 export interface User {
   id: string;
@@ -56,6 +56,10 @@ interface DataContextType {
   deleteMessage?: (id: string) => Promise<void>;
   refreshMaterials: () => Promise<void>;
   refreshPendingApprovals: () => Promise<void>;
+  assignedProjects: string[];
+  currentProjectId: string | null;
+  setActiveProject: (projectId: string | null) => Promise<void>;
+  refreshPermissions: () => Promise<void>;
 }
 
 const DataContext = createContext<DataContextType | undefined>(undefined);
@@ -80,14 +84,51 @@ export function DataProvider({ children }: { children: ReactNode }) {
   const [flushAttemptCount, setFlushAttemptCount] = useState(0);
   const [lastFlushTime, setLastFlushTime] = useState(0);
 
+  const [assignedProjects, setAssignedProjects] = useState<string[]>([]);
+  const [currentProjectId, setCurrentProjectId] = useState<string | null>(null);
+
   /* =========================
      SYNC AUTH USER WITH DATA STORE USER
   ========================= */
   useEffect(() => {
     if (authContext?.user) {
       setUser(authContext.user as User);
+      refreshPermissions();
     }
   }, [authContext?.user]);
+
+  const refreshPermissions = async () => {
+    try {
+      const res = await apiFetch("/api/my-permissions");
+      if (res.ok) {
+        const data = await res.json();
+        setAssignedProjects(data.projects || []);
+        setCurrentProjectId(data.currentProjectId || null);
+      }
+    } catch (e) {
+      console.warn('refreshPermissions failed', e);
+    }
+  };
+
+  const setActiveProject = async (projectId: string | null) => {
+    try {
+      const res = await apiFetch("/api/set-active-project", {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ projectId })
+      });
+      if (res.ok) {
+        setCurrentProjectId(projectId);
+        // Refresh project-dependent data
+        await Promise.all([
+          refreshMaterials(),
+          refreshPendingApprovals()
+        ]);
+      }
+    } catch (e) {
+      console.warn('setActiveProject failed', e);
+    }
+  };
 
   // Helper function to normalize server material keys (snake_case) to client camelCase
   const normalizeMaterial = (mat: any) => ({
@@ -487,6 +528,10 @@ export function DataProvider({ children }: { children: ReactNode }) {
     deleteMessage,
     refreshMaterials,
     refreshPendingApprovals,
+    assignedProjects,
+    currentProjectId,
+    setActiveProject,
+    refreshPermissions,
   };
 
   return (
