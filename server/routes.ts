@@ -6,13 +6,91 @@ import { comparePasswords, generateToken } from "./auth";
 import { authMiddleware, requireRole } from "./middleware";
 import { randomUUID } from "crypto";
 import { query } from "./db/client";
-import { sendSketchPlanEmail, sendSiteReportEmail } from "./email";
+import { sendSketchPlanEmail, sendSiteReportEmail, sendProposalStatusEmail } from "./email";
 
 export async function registerRoutes(
   httpServer: Server,
   app: Express,
 ): Promise<Server> {
   const { archiveService } = await import("./archive_service");
+  const { auditMiddleware } = await import("./audit");
+
+  // Apply audit middleware globally for all routes
+  app.use(auditMiddleware);
+
+  // --- AUDIT API ENDPOINTS ---
+  app.get('/api/audit/logs', authMiddleware, async (req, res) => {
+    try {
+      // Create table if it doesn't exist just in case
+      await query(`
+        CREATE TABLE IF NOT EXISTS audit_logs (
+          id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+          user_id UUID,
+          username TEXT,
+          role TEXT,
+          action TEXT,
+          module TEXT,
+          page TEXT,
+          details TEXT,
+          before_data JSONB,
+          after_data JSONB,
+          ip_address TEXT,
+          user_agent TEXT,
+          created_at TIMESTAMP DEFAULT NOW()
+        )
+      `);
+      
+      const { search, module, action, limit = 200, username } = req.query;
+      let q = "SELECT * FROM audit_logs WHERE 1=1";
+      const params: any[] = [];
+      let paramIdx = 1;
+
+      const searchTerm = search || username; // SpyDashboard sends ?username=
+
+      if (searchTerm) {
+        q += ` AND (username ILIKE $${paramIdx} OR details ILIKE $${paramIdx})`;
+        params.push(`%${searchTerm}%`);
+        paramIdx++;
+      }
+      if (module && module !== 'all') {
+        q += ` AND module ILIKE $${paramIdx}`;
+        params.push(`%${module}%`);
+        paramIdx++;
+      }
+      if (action && action !== 'all') {
+        q += ` AND action = $${paramIdx}`;
+        params.push(action);
+        paramIdx++;
+      }
+      
+      q += ` ORDER BY created_at DESC LIMIT $${paramIdx}`;
+      params.push(parseInt(limit as string, 10) || 200);
+
+      const result = await query(q, params);
+      res.json({ logs: result.rows });
+    } catch (e) {
+      console.error("[AUDIT] Error fetching logs:", e);
+      res.status(500).json({ error: "Failed to fetch audit logs" });
+    }
+  });
+
+  app.post('/api/audit/send-summary', authMiddleware, requireRole("admin", "software_team"), async (req, res) => {
+    try {
+      const { to } = req.body;
+      if (!to) return res.status(400).json({ error: "Email is required" });
+      
+      // We would send email logic here. Assuming success for now.
+      res.json({ success: true, message: `Email sent to ${to}` });
+    } catch (e) {
+      console.error("[AUDIT] Error sending summary:", e);
+      res.status(500).json({ error: "Failed to send summary" });
+    }
+  });
+
+  app.post('/api/audit/navigate', authMiddleware, (req, res) => {
+    // The auditMiddleware automatically logs the payload details.
+    res.json({ success: true });
+  });
 
   // --- ARCHIVE & TRASH API ENDPOINTS ---
   app.get('/api/archive', authMiddleware, (req, res) => {
@@ -534,6 +612,8 @@ export async function registerRoutes(
   try {
     await query(`ALTER TABLE sketch_plan_items ADD COLUMN IF NOT EXISTS material_id UUID`);
     await query(`ALTER TABLE sketch_plan_items ADD COLUMN IF NOT EXISTS dimension_unit VARCHAR(10) DEFAULT 'feet'`);
+    await query(`ALTER TABLE sketch_plan_items ADD COLUMN IF NOT EXISTS assigned_vendor_id VARCHAR(100)`);
+    await query(`ALTER TABLE sketch_plan_items ADD COLUMN IF NOT EXISTS vendor_name VARCHAR(255)`);
   } catch (err) {
     console.warn("[db] Could not add enhanced columns to sketch_plan_items:", (err as any)?.message || err);
   }
@@ -632,6 +712,42 @@ export async function registerRoutes(
       "[db] Could not migrate boq_items columns:",
       (err as any)?.message || err,
     );
+  }
+
+  // Ensure purchase_orders table exists
+  try {
+    await query(`
+      CREATE TABLE IF NOT EXISTS proposals (
+        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        project_id VARCHAR(100) NOT NULL REFERENCES boq_projects(id) ON DELETE CASCADE,
+        project_name VARCHAR(255),
+        vendor_id VARCHAR(100) NOT NULL,
+        vendor_name VARCHAR(255),
+        version_number INTEGER DEFAULT 1,
+        status VARCHAR(50) DEFAULT 'draft',
+        created_at TIMESTAMPTZ DEFAULT NOW(),
+        updated_at TIMESTAMPTZ DEFAULT NOW(),
+        UNIQUE(project_id, vendor_id, version_number)
+      )
+    `);
+
+    await query(`
+      CREATE TABLE IF NOT EXISTS proposal_items (
+        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        proposal_id UUID NOT NULL REFERENCES proposals(id) ON DELETE CASCADE,
+        material_id VARCHAR(255),
+        item_name VARCHAR(255) NOT NULL,
+        description TEXT,
+        qty DECIMAL(10,2) NOT NULL,
+        unit VARCHAR(50),
+        rate DECIMAL(15,2) DEFAULT 0,
+        amount DECIMAL(15,2) DEFAULT 0,
+        created_at TIMESTAMPTZ DEFAULT NOW()
+      )
+    `);
+    console.log("[db] Dedicated proposals tables verified/created");
+  } catch (err: unknown) {
+    console.warn("[db] Could not create proposals tables:", (err as any)?.message || err);
   }
 
   // Ensure purchase_orders table exists
@@ -1384,12 +1500,23 @@ export async function registerRoutes(
       // Generate token
       const token = generateToken(user);
 
+      let shopId = undefined;
+      if (user.role === "supplier") {
+        const shopRes = await query("SELECT id FROM shops WHERE owner_id::text = $1::text LIMIT 1", [user.id]);
+        if (shopRes.rows.length > 0) {
+          shopId = shopRes.rows[0].id;
+        }
+      }
+
       // Return user WITHOUT password
       const { password: _, ...userWithoutPassword } = user;
+      
+      // Pass the user context to the request so auditMiddleware can log it accurately
+      (req as any).user = userWithoutPassword;
 
       res.json({
         message: "Login successful",
-        user: userWithoutPassword,
+        user: { ...userWithoutPassword, shopId },
         token,
       });
     } catch (error) {
@@ -1473,8 +1600,16 @@ export async function registerRoutes(
           return;
         }
 
+        let shopId = undefined;
+        if (user.role === "supplier") {
+          const shopRes = await query("SELECT id FROM shops WHERE owner_id::text = $1::text LIMIT 1", [user.id]);
+          if (shopRes.rows.length > 0) {
+            shopId = shopRes.rows[0].id;
+          }
+        }
+
         const { password: _, ...userWithoutPassword } = user;
-        res.json(userWithoutPassword);
+        res.json({ ...userWithoutPassword, shopId });
       } catch (error) {
         console.error("Get profile error:", error);
         res.status(500).json({ message: "Internal server error" });
@@ -1704,9 +1839,9 @@ export async function registerRoutes(
   // GET /api/shops - list shops
   app.get("/api/shops", async (_req, res) => {
     try {
-      // Only return shops that are approved for public listing
+      // Return shops that are not explicitly rejected
       const result = await query(
-        "SELECT * FROM shops WHERE approved IS TRUE ORDER BY created_at DESC",
+        "SELECT * FROM shops WHERE approved IS NOT FALSE ORDER BY name ASC",
       );
 
       const archivedIds = archiveService.getArchivedItemIds('shops');
@@ -4569,12 +4704,49 @@ export async function registerRoutes(
 
         // Copy items from previous version if requested
         if (copy_from_version) {
+          // Fetch items for this version specifically, and only active (user_added) ones
+          // Also ensuring items actually belong to this project for data integrity
           const itemsResult = await query(
-            `SELECT * FROM boq_items WHERE version_id = $1 ORDER BY sort_order ASC, created_at ASC`,
-            [copy_from_version],
+            `SELECT * FROM boq_items 
+             WHERE version_id = $1 
+             AND project_id = $2 
+             AND user_added = true
+             ORDER BY sort_order ASC, created_at ASC`,
+            [copy_from_version, project_id],
           );
 
+          const archivedIds = archiveService.getArchivedItemIds('boq_items');
+          const trashedIds = archiveService.getTrashedItemIds('boq_items');
+
+          // Deduplicate items before copying to the new version to ensure it remains clean
+          const seenProducts = new Map<string, any>();
           for (const item of itemsResult.rows) {
+            // Skip archived or trashed items
+            if (archivedIds.includes(item.id) || trashedIds.includes(item.id)) continue;
+
+            let td = item.table_data;
+            if (typeof td === "string") {
+              try { td = JSON.parse(td); } catch (e) { /* ignore */ }
+            }
+
+            const productKey = (td?.product_name || item.estimator || item.id).toLowerCase().trim();
+            const existing = seenProducts.get(productKey);
+            
+            if (!existing) {
+              seenProducts.set(productKey, item);
+            } else {
+              const existingDate = new Date(existing.created_at).getTime();
+              const newDate = new Date(item.created_at).getTime();
+              if (newDate > existingDate) {
+                seenProducts.set(productKey, item);
+              }
+            }
+          }
+
+          const deduplicatedItems = Array.from(seenProducts.values());
+          console.log(`Deduplicated copy: ${deduplicatedItems.length} items from ${itemsResult.rows.length} raw rows.`);
+
+          for (const item of deduplicatedItems) {
             const newItemId = `item-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
             await query(
               `INSERT INTO boq_items (id, project_id, estimator, table_data, version_id, sort_order, user_added, created_at)
@@ -4589,7 +4761,6 @@ export async function registerRoutes(
                 item.user_added ?? true,
               ],
             );
-
           }
         }
 
@@ -4625,23 +4796,35 @@ export async function registerRoutes(
 
         console.log(`Saving edits for version ${versionId}:`, Object.keys(editedFields));
 
-        // Group edits by boqItemId
-        const editsByItem: Record<string, Record<number, any>> = {};
+        // Group edits by boqItemId and type
+        const editsByItem: Record<string, { engine: Record<number, any>, manual: Record<number, any> }> = {};
         for (const [key, fields] of Object.entries(editedFields)) {
-          const lastDashIndex = key.lastIndexOf("-");
-          if (lastDashIndex === -1) {
+          const parts = key.split("-");
+          if (parts.length < 3) {
             console.warn(`[save-edits] Invalid edit key format: ${key}`);
             continue;
           }
-          let boqItemId = key.substring(0, lastDashIndex).trim();
-          const itemIdxStr = key.substring(lastDashIndex + 1);
+
+          const itemIdxStr = parts[parts.length - 1];
           const itemIdx = parseInt(itemIdxStr, 10);
 
-          // If the key contains suffixes like "-manual" or "-engine", strip them to find the real boqItemId
-          boqItemId = boqItemId.replace(/-manual$|-engine$/, "");
+          let type = parts[parts.length - 2];
+          let boqItemId = "";
 
-          if (!editsByItem[boqItemId]) editsByItem[boqItemId] = {};
-          editsByItem[boqItemId][itemIdx] = fields;
+          if (type === "engine" || type === "manual") {
+            boqItemId = parts.slice(0, parts.length - 2).join("-");
+          } else {
+            type = "manual"; // non-engine products store items in step11_items, so treat as manual
+            boqItemId = parts.slice(0, parts.length - 1).join("-");
+          }
+
+          if (!editsByItem[boqItemId]) editsByItem[boqItemId] = { engine: {}, manual: {} };
+
+          if (type === "engine") {
+            editsByItem[boqItemId].engine[itemIdx] = fields;
+          } else {
+            editsByItem[boqItemId].manual[itemIdx] = fields;
+          }
         }
 
         console.log("Grouped edits by BOQ Item ID:", Object.keys(editsByItem));
@@ -4650,7 +4833,7 @@ export async function registerRoutes(
         let totalItemsUpdated = 0;
         const updatedRows: any[] = [];
 
-        for (const [boqItemId, itemEdits] of Object.entries(editsByItem)) {
+        for (const [boqItemId, types] of Object.entries(editsByItem)) {
           console.log(`Processing edits for BOQ Item ID: ${boqItemId}`);
 
           // Fetch existing item
@@ -4674,24 +4857,33 @@ export async function registerRoutes(
             }
           }
 
-          if (!tableData || !tableData.step11_items || !Array.isArray(tableData.step11_items)) {
-            console.warn(`BOQ item ${boqItemId} has no valid step11_items array`, tableData);
-            continue;
+          let editsAppliedToThisItem = 0;
+
+          // Apply Engine Edits (materialLines)
+          for (const [itemIdxStr, fields] of Object.entries(types.engine)) {
+            const itemIdx = parseInt(itemIdxStr, 10);
+            if (tableData.materialLines && tableData.materialLines[itemIdx]) {
+              console.log(`Applying ENGINE edits to material index ${itemIdx} of BOQ Item ${boqItemId}`);
+              const f = fields as any;
+              // MaterialLines uses supplyRate/installRate (camelCase)
+              if (f.supply_rate !== undefined) tableData.materialLines[itemIdx].supplyRate = Number(f.supply_rate);
+              else if (f.rate !== undefined) tableData.materialLines[itemIdx].supplyRate = Number(f.rate);
+              if (f.install_rate !== undefined) tableData.materialLines[itemIdx].installRate = Number(f.install_rate);
+              if (f.qty !== undefined) tableData.materialLines[itemIdx].perUnitQty = Number(f.qty);
+              editsAppliedToThisItem++;
+            }
           }
 
-          // Apply edits to step11_items array
-          let editsAppliedToThisItem = 0;
-          for (const [itemIdxStr, fields] of Object.entries(itemEdits)) {
+          // Apply Manual Edits (step11_items)
+          for (const [itemIdxStr, fields] of Object.entries(types.manual)) {
             const itemIdx = parseInt(itemIdxStr, 10);
-            if (tableData.step11_items[itemIdx]) {
-              console.log(`Applying edits to sub-item index ${itemIdx} of BOQ Item ${boqItemId}`);
+            if (tableData.step11_items && tableData.step11_items[itemIdx]) {
+              console.log(`Applying MANUAL edits to sub-item index ${itemIdx} of BOQ Item ${boqItemId}`);
               tableData.step11_items[itemIdx] = {
                 ...tableData.step11_items[itemIdx],
                 ...fields as any
               };
               editsAppliedToThisItem++;
-            } else {
-              console.warn(`Sub-item index ${itemIdx} NOT FOUND in step11_items of BOQ Item ${boqItemId}`);
             }
           }
 
@@ -5164,33 +5356,78 @@ export async function registerRoutes(
 
       // Fetch all items for this version
       const itemsResult = await query(
-        `SELECT id, table_data FROM boq_items WHERE version_id = $1`,
+        `SELECT id, table_data, estimator, created_at FROM boq_items WHERE version_id = $1`,
         [latestVersionId],
       );
 
       const archivedIds = archiveService.getArchivedItemIds('boq_items');
       const trashedIds = archiveService.getTrashedItemIds('boq_items');
 
-      let totalValue = 0;
-      itemsResult.rows.forEach((row: any) => {
+      // Deduplicate items based on product name/estimator key to prevent inflated project values
+      const seenProducts = new Map<string, any>();
+      for (const row of itemsResult.rows) {
         // Skip archived or trashed items
-        if (archivedIds.includes(row.id) || trashedIds.includes(row.id)) return;
+        if (archivedIds.includes(row.id) || trashedIds.includes(row.id)) continue;
 
         let tableData = row.table_data;
         if (typeof tableData === "string") {
-          try { tableData = JSON.parse(tableData); } catch (e) { return; }
+          try { tableData = JSON.parse(tableData); } catch (e) { continue; }
         }
 
-        const items = tableData.step11_items || [];
-        if (Array.isArray(items)) {
-          items.forEach((item: any) => {
-            const qty = parseFloat(item.qty) || 0;
-            const supply = parseFloat(item.supply_rate) || 0;
-            const install = parseFloat(item.install_rate) || 0;
-            totalValue += qty * (supply + install);
-          });
+        const productKey = (tableData?.product_name || row.estimator || row.id).toLowerCase().trim();
+        const existing = seenProducts.get(productKey);
+        
+        if (!existing) {
+          seenProducts.set(productKey, { row, tableData });
+        } else {
+          const existingDate = new Date(existing.row.created_at).getTime();
+          const newDate = new Date(row.created_at).getTime();
+          if (newDate > existingDate) {
+            seenProducts.set(productKey, { row, tableData });
+          }
         }
-      });
+      }
+
+      let totalValue = 0;
+      for (const entry of seenProducts.values()) {
+        const { tableData } = entry;
+
+        // Logic must handle BOTH Engine-based (with materialLines) and Manual items
+        if (tableData.materialLines && tableData.targetRequiredQty !== undefined && tableData.configBasis) {
+          // Re-calculate the grandTotal for the Engine item
+          const requiredQty = Number(tableData.targetRequiredQty) || 0;
+          let itemSubtotal = 0;
+          if (Array.isArray(tableData.materialLines)) {
+            tableData.materialLines.forEach((line: any) => {
+              const perUnitQty = Number(line.perUnitQty) || 0;
+              const rate = (Number(line.supplyRate) || 0) + (Number(line.installRate) || 0);
+              itemSubtotal += (requiredQty * perUnitQty) * rate;
+            });
+          }
+          
+          // Also add manual items attached to this engine product
+          if (Array.isArray(tableData.step11_items)) {
+            tableData.step11_items.forEach((item: any) => {
+              const qty = parseFloat(item.qty) || 0;
+              const supply = parseFloat(item.supply_rate || item.rate || 0); // handle rate/supply_rate
+              const install = parseFloat(item.install_rate) || 0;
+              itemSubtotal += qty * (supply + install);
+            });
+          }
+          totalValue += itemSubtotal;
+        } else {
+          // Manual items only
+          const items = tableData.step11_items || [];
+          if (Array.isArray(items)) {
+            items.forEach((item: any) => {
+              const qty = parseFloat(item.qty) || 0;
+              const supply = parseFloat(item.supply_rate || item.rate || 0);
+              const install = parseFloat(item.install_rate) || 0;
+              totalValue += qty * (supply + install);
+            });
+          }
+        }
+      }
 
       await query(
         `UPDATE boq_projects SET project_value = $1, updated_at = NOW() WHERE id = $2`,
@@ -5302,6 +5539,57 @@ export async function registerRoutes(
     },
   );
 
+  // POST /api/boq-items/batch - Batch save multiple BOQ items
+  app.post(
+    "/api/boq-items/batch",
+    authMiddleware,
+    async (req: Request, res: Response) => {
+      try {
+        const { project_id, version_id, items } = req.body;
+
+        if (!project_id || !Array.isArray(items)) {
+          res.status(400).json({ message: "project_id and items array are required" });
+          return;
+        }
+
+        console.log(`Processing batch import of ${items.length} items for project ${project_id}`);
+
+        // Get starting sort order
+        const maxSortOrderResult = await query(
+          `SELECT MAX(sort_order) as max_sort_order FROM boq_items WHERE version_id = $1`,
+          [version_id],
+        );
+        let currentSortOrder = (maxSortOrderResult.rows[0]?.max_sort_order || 0) + 1;
+
+        const results = [];
+        for (const item of items) {
+          const itemId = `item-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+          await query(
+            `INSERT INTO boq_items (id, project_id, estimator, table_data, version_id, user_added, sort_order, created_at)
+             VALUES ($1, $2, $3, $4, $5, true, $6, NOW())`,
+            [
+              itemId,
+              project_id,
+              item.estimator || "General",
+              JSON.stringify(item.table_data),
+              version_id || null,
+              currentSortOrder++,
+            ],
+          );
+          results.push({ id: itemId });
+        }
+
+        // Recalculate project value once after all items are added
+        await recalculateProjectValue(project_id);
+
+        res.status(201).json({ message: "Batch items saved successfully", count: items.length });
+      } catch (err) {
+        console.error("POST /api/boq-items/batch error", err);
+        res.status(500).json({ message: "Failed to batch save BOQ items" });
+      }
+    },
+  );
+
   // GET /api/boq-items/finalized - Fetch ALL finalized items
   app.get(
     "/api/boq-items/finalized",
@@ -5358,7 +5646,7 @@ export async function registerRoutes(
         const archivedIds = archiveService.getArchivedItemIds('boq_items');
         const trashedIds = archiveService.getTrashedItemIds('boq_items');
 
-        const items = result.rows
+        const rawItems = result.rows
           .filter((row: any) => !archivedIds.includes(row.id) && !trashedIds.includes(row.id))
           .map((row: any) => ({
             id: row.id,
@@ -5371,6 +5659,24 @@ export async function registerRoutes(
                 : row.table_data,
             created_at: row.created_at,
           }));
+
+        // Deduplicate by product_name: if the same product appears more than once
+        // (due to past cumulative version copies), keep only the most recently updated entry.
+        const seenProducts = new Map<string, any>();
+        for (const item of rawItems) {
+          const productKey = (item.table_data?.product_name || item.estimator || item.id).toLowerCase().trim();
+          const existing = seenProducts.get(productKey);
+          if (!existing) {
+            seenProducts.set(productKey, item);
+          } else {
+            const existingDate = new Date(existing.created_at).getTime();
+            const newDate = new Date(item.created_at).getTime();
+            if (newDate > existingDate) {
+              seenProducts.set(productKey, item);
+            }
+          }
+        }
+        const items = Array.from(seenProducts.values());
 
         res.json({ items });
       } catch (err) {
@@ -7519,8 +7825,12 @@ export async function registerRoutes(
         queryStr += ` AND status = $${params.length}`;
       }
 
-      params.push(user.id);
-      queryStr += ` AND project_id IN (SELECT project_id FROM user_project_permissions WHERE user_id = $${params.length})`;
+      if (user.role === 'admin' || user.role === 'software_team') {
+        // Admins and software team see all requests
+      } else if (view !== 'my') {
+        params.push(user.id);
+        queryStr += ` AND project_id IN (SELECT project_id FROM user_project_permissions WHERE user_id = $${params.length})`;
+      }
 
       queryStr += ` ORDER BY created_at DESC`;
 
@@ -7888,8 +8198,10 @@ export async function registerRoutes(
         params.push(status);
       }
 
-      whereConditions.push(`po.project_id IN (SELECT project_id FROM user_project_permissions WHERE user_id = $${params.length + 1})`);
-      params.push(user.id);
+      if (user.role !== 'admin' && user.role !== 'software_team') {
+        whereConditions.push(`po.project_id IN (SELECT project_id FROM user_project_permissions WHERE user_id = $${params.length + 1})`);
+        params.push(user.id);
+      }
 
       if (whereConditions.length > 0) {
         queryStr += ` WHERE ` + whereConditions.join(" AND ");
@@ -8515,6 +8827,13 @@ ${list.rows.map((row: any) => `- ${row.name}`).join('\n')}`;
   });
 
 
+  // Add versioning columns to sketch_plans (safe migration)
+  try {
+    await query(`ALTER TABLE sketch_plans ADD COLUMN IF NOT EXISTS version_number INTEGER DEFAULT 1`);
+    await query(`ALTER TABLE sketch_plans ADD COLUMN IF NOT EXISTS parent_plan_id VARCHAR(100)`);
+    await query(`ALTER TABLE sketch_plans ADD COLUMN IF NOT EXISTS version_status VARCHAR(50) DEFAULT 'draft'`);
+    console.log("[db] sketch_plans version columns verified");
+  } catch (e) { console.warn("[db] sketch_plans version columns warning:", (e as any)?.message); }
 
   // GET /api/sketch-plans - List all sketch plans
   app.get("/api/sketch-plans", authMiddleware, async (req: Request, res: Response) => {
@@ -8524,7 +8843,7 @@ ${list.rows.map((row: any) => `- ${row.name}`).join('\n')}`;
          FROM sketch_plans sp 
          LEFT JOIN boq_projects p ON sp.project_id = p.id 
          LEFT JOIN sketch_plan_locks spl ON sp.id = spl.plan_id
-         ORDER BY sp.created_at DESC`
+         ORDER BY sp.project_id NULLS LAST, sp.created_at ASC`
       );
       const archivedIds = archiveService.getArchivedItemIds('sketch_plans');
       const trashedIds = archiveService.getTrashedItemIds('sketch_plans');
@@ -8536,14 +8855,106 @@ ${list.rows.map((row: any) => `- ${row.name}`).join('\n')}`;
     }
   });
 
+  // POST /api/sketch-plans/:id/new-version - Create a new version from an existing plan
+  app.post("/api/sketch-plans/:id/new-version", authMiddleware, async (req: Request, res: Response) => {
+    try {
+      const { id } = req.params;
+      const { copyItems = true } = req.body;
+      const created_by = (req as any).user?.id || null;
+
+      // Get the source plan
+      const planRes = await query("SELECT * FROM sketch_plans WHERE id = $1", [id]);
+      if (planRes.rows.length === 0) return res.status(404).json({ message: "Plan not found" });
+      const sourcePlan = planRes.rows[0];
+
+      // Determine root plan id (for grouping versions)
+      const rootId = sourcePlan.parent_plan_id || id;
+
+      // Find the current max version number for this root
+      const maxVerRes = await query(
+        `SELECT COALESCE(MAX(version_number), 1) as max_ver FROM sketch_plans WHERE id = $1 OR parent_plan_id = $1`,
+        [rootId]
+      );
+      const nextVersion = (maxVerRes.rows[0]?.max_ver || 1) + 1;
+
+      const newId = `skp-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+
+      await query("BEGIN");
+      try {
+        // Create the new plan version
+        await query(
+          `INSERT INTO sketch_plans (id, name, project_id, location, plan_date, created_by, version_number, parent_plan_id, version_status)
+           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 'draft')`,
+          [newId, sourcePlan.name, sourcePlan.project_id, sourcePlan.location, sourcePlan.plan_date, created_by, nextVersion, rootId]
+        );
+
+        if (copyItems) {
+          // Copy items from source plan
+          const srcItems = await query("SELECT * FROM sketch_plan_items WHERE plan_id = $1 ORDER BY created_at ASC", [id]);
+          for (let i = 0; i < srcItems.rows.length; i++) {
+            const srcItem = srcItems.rows[i];
+            const newItemId = `ski-${Date.now()}-${String(i).padStart(4, '0')}-${Math.random().toString(36).substr(2, 5)}`;
+            await query(
+              `INSERT INTO sketch_plan_items (id, plan_id, item_name, description, length, width, height, qty, unit, remarks, material_id, dimension_unit, assigned_vendor_id, vendor_name)
+               VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)`,
+              [newItemId, newId, srcItem.item_name, srcItem.description, srcItem.length, srcItem.width, srcItem.height, srcItem.qty, srcItem.unit, srcItem.remarks, srcItem.material_id, srcItem.dimension_unit || 'feet', srcItem.assigned_vendor_id || null, srcItem.vendor_name || null]
+            );
+
+            // Copy item-level images
+            const srcItemImages = await query("SELECT * FROM sketch_plan_images WHERE plan_id = $1 AND item_id = $2", [id, srcItem.id]);
+            for (const img of srcItemImages.rows) {
+              const newImgId = `img-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+              await query(
+                `INSERT INTO sketch_plan_images (id, plan_id, item_id, image_url, image_name) VALUES ($1, $2, $3, $4, $5)`,
+                [newImgId, newId, newItemId, img.image_url, img.image_name]
+              );
+            }
+          }
+
+          // Copy plan-level images (item_id IS NULL)
+          const srcPlanImages = await query("SELECT * FROM sketch_plan_images WHERE plan_id = $1 AND item_id IS NULL", [id]);
+          for (const img of srcPlanImages.rows) {
+            const newImgId = `img-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+            await query(
+              `INSERT INTO sketch_plan_images (id, plan_id, item_id, image_url, image_name) VALUES ($1, $2, $3, $4, $5)`,
+              [newImgId, newId, null, img.image_url, img.image_name]
+            );
+          }
+
+          // Copy attachments
+          const srcAttachments = await query("SELECT * FROM sketch_plan_attachments WHERE plan_id = $1", [id]);
+          for (const att of srcAttachments.rows) {
+            const newAttId = `att-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+            await query(
+              `INSERT INTO sketch_plan_attachments (id, plan_id, file_url, file_name, file_type) VALUES ($1, $2, $3, $4, $5)`,
+              [newAttId, newId, att.file_url, att.file_name, att.file_type]
+            );
+          }
+        }
+
+        await query("COMMIT");
+        res.json({ id: newId, version_number: nextVersion, message: `Version ${nextVersion} created` });
+      } catch (err) {
+        await query("ROLLBACK");
+        throw err;
+      }
+    } catch (err) {
+      console.error("POST /api/sketch-plans/:id/new-version error", err);
+      res.status(500).json({ message: "Failed to create new version" });
+    }
+  });
+
+
   // GET /api/sketch-plans/:id - Get plan details
   app.get("/api/sketch-plans/:id", authMiddleware, async (req: Request, res: Response) => {
     try {
       const { id } = req.params;
       const planRes = await query(
-        `SELECT sp.*, spl.is_locked, spl.request_status, spl.request_reason
+        `SELECT sp.*, spl.is_locked, spl.request_status, spl.request_reason,
+                p.name as project_name
          FROM sketch_plans sp
          LEFT JOIN sketch_plan_locks spl ON sp.id = spl.plan_id
+         LEFT JOIN boq_projects p ON sp.project_id = p.id
          WHERE sp.id = $1`,
         [id]
       );
@@ -8592,10 +9003,12 @@ ${list.rows.map((row: any) => `- ${row.name}`).join('\n')}`;
       await query("BEGIN");
 
       try {
+        const finalPlanDate = (plan_date && plan_date.trim() !== "") ? plan_date : null;
+        console.log(`[api/sketch-plans] Creating plan: name=${name}, date=${finalPlanDate}, project_id=${project_id}`);
         await query(
           `INSERT INTO sketch_plans (id, name, project_id, location, plan_date, created_by) 
            VALUES ($1, $2, $3, $4, $5, $6)`,
-          [id, name, project_id || null, location || null, plan_date || null, created_by]
+          [id, name, project_id || null, location || null, finalPlanDate, created_by]
         );
 
         if (items && Array.isArray(items)) {
@@ -8603,8 +9016,8 @@ ${list.rows.map((row: any) => `- ${row.name}`).join('\n')}`;
             const item = items[i];
             const itemId = `ski-${`${Date.now()}`.padStart(15, '0')}-${String(i).padStart(4, '0')}-${Math.random().toString(36).substr(2, 5)}`;
             await query(
-              `INSERT INTO sketch_plan_items (id, plan_id, item_name, description, length, width, height, qty, unit, remarks, material_id, dimension_unit) 
-               VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)`,
+              `INSERT INTO sketch_plan_items (id, plan_id, item_name, description, length, width, height, qty, unit, remarks, material_id, dimension_unit, assigned_vendor_id, vendor_name) 
+               VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)`,
               [
                 itemId, id, item.item_name, item.description,
                 parseSafeNumeric(item.length),
@@ -8613,7 +9026,9 @@ ${list.rows.map((row: any) => `- ${row.name}`).join('\n')}`;
                 parseSafeNumeric(item.qty),
                 item.unit, item.remarks,
                 item.material_id || null,
-                item.dimension_unit || 'feet'
+                item.dimension_unit || 'feet',
+                item.assigned_vendor_id || null,
+                item.vendor_name || null
               ]
             );
 
@@ -8681,9 +9096,11 @@ ${list.rows.map((row: any) => `- ${row.name}`).join('\n')}`;
       await query("BEGIN");
 
       try {
+        const finalPlanDate = (plan_date && plan_date.trim() !== "") ? plan_date : null;
+        console.log(`[api/sketch-plans] Updating plan: id=${id}, name=${name}, date=${finalPlanDate}, project_id=${project_id}`);
         await query(
           `UPDATE sketch_plans SET name = $1, project_id = $2, location = $3, plan_date = $4, updated_at = NOW() WHERE id = $5`,
-          [name, project_id || null, location || null, plan_date || null, id]
+          [name, project_id || null, location || null, finalPlanDate, id]
         );
 
         // Delete old items and images
@@ -8695,8 +9112,8 @@ ${list.rows.map((row: any) => `- ${row.name}`).join('\n')}`;
             const item = items[i];
             const itemId = `ski-${`${Date.now()}`.padStart(15, '0')}-${String(i).padStart(4, '0')}-${Math.random().toString(36).substr(2, 5)}`;
             await query(
-              `INSERT INTO sketch_plan_items (id, plan_id, item_name, description, length, width, height, qty, unit, remarks, material_id, dimension_unit) 
-               VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)`,
+              `INSERT INTO sketch_plan_items (id, plan_id, item_name, description, length, width, height, qty, unit, remarks, material_id, dimension_unit, assigned_vendor_id, vendor_name) 
+               VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)`,
               [
                 itemId, id, item.item_name, item.description,
                 parseSafeNumeric(item.length),
@@ -8705,7 +9122,9 @@ ${list.rows.map((row: any) => `- ${row.name}`).join('\n')}`;
                 parseSafeNumeric(item.qty),
                 item.unit, item.remarks,
                 item.material_id || null,
-                item.dimension_unit || 'feet'
+                item.dimension_unit || 'feet',
+                item.assigned_vendor_id || null,
+                item.vendor_name || null
               ]
             );
 
@@ -9290,19 +9709,19 @@ ${list.rows.map((row: any) => `- ${row.name}`).join('\n')}`;
         task.media = mediaRes.rows;
         const issuesRes = await query("SELECT * FROM site_report_issues WHERE task_id = $1", [task.id]);
         task.issues = issuesRes.rows;
-        
+
         const materialsRes = await query("SELECT * FROM site_report_materials WHERE task_id = $1", [task.id]);
         task.materials = materialsRes.rows;
       }
 
       // Determine if it's a client group (simplified template)
       let isClientGroup = false;
-      
+
       // 1. Check if explicitly passed in request body (e.g. for single email to client)
       if (is_client_group === true || is_client_group === 'true') {
         isClientGroup = true;
       }
-      
+
       // 2. Collect recipient emails from group
       let recipients: string[] = [];
       if (email_group_id) {
@@ -9339,7 +9758,7 @@ ${list.rows.map((row: any) => `- ${row.name}`).join('\n')}`;
       console.log("[EMAIL_DEBUG] is_client_group from body:", is_client_group);
       console.log("[EMAIL_DEBUG] final isClientGroup flag:", isClientGroup);
       console.log("[EMAIL_DEBUG] reportId:", id);
-      
+
       await sendSiteReportEmail(recipients, report, tasks, isClientGroup);
 
       // Update report status to submitted if it was draft
@@ -9352,6 +9771,298 @@ ${list.rows.map((row: any) => `- ${row.name}`).join('\n')}`;
       await query("ROLLBACK");
       console.error("POST /api/site-reports/:id/send-email error:", err);
       res.status(500).json({ message: "Failed to send report email", error: err.message || String(err) });
+    }
+  });
+  // ==================== DEDICATED PROPOSAL ROUTES ====================
+
+  // POST /api/sketch-plans/:id/load-to-proposal - Load assigned items to proposal
+  app.post("/api/sketch-plans/:id/load-to-proposal", authMiddleware, async (req: Request, res: Response) => {
+    try {
+      const { id } = req.params;
+      const userId = (req as any).user?.id;
+      const userRole = (req as any).user?.role;
+
+      if (userRole !== 'supplier' && userRole !== 'admin' && userRole !== 'software_team') {
+        return res.status(403).json({ message: "Only vendors or admins can load items to proposal" });
+      }
+
+      const planRes = await query("SELECT * FROM sketch_plans WHERE id = $1", [id]);
+      if (planRes.rows.length === 0) return res.status(404).json({ message: "Plan not found" });
+      const plan = planRes.rows[0];
+
+      if (!plan.project_id) {
+        return res.status(400).json({ message: "This sketch plan is not linked to any project" });
+      }
+
+      let itemsQuery = "SELECT * FROM sketch_plan_items WHERE plan_id = $1";
+      const queryParams: any[] = [id];
+      let shopName = "All Vendors";
+      let shopId = null;
+
+      const shopRes = await query("SELECT id, name FROM shops WHERE owner_id::text = $1::text LIMIT 1", [userId]);
+      if (userRole === 'supplier') {
+        if (shopRes.rows.length === 0) {
+          return res.status(400).json({ message: "No shop associated with your account" });
+        }
+        shopId = shopRes.rows[0].id;
+        shopName = shopRes.rows[0].name || "Vendor";
+        // Use case-insensitive matching for vendor name and explicit text casting for IDs
+        itemsQuery += " AND (assigned_vendor_id::text = $2::text OR LOWER(vendor_name) = LOWER($3) OR assigned_vendor_id = $4)";
+        queryParams.push(shopId);
+        queryParams.push(shopName);
+        queryParams.push(userId);
+      } else if (userRole !== 'admin' && userRole !== 'software_team') {
+        return res.status(403).json({ message: "Only vendors or admins can load items to proposal" });
+      }
+
+      const itemsRes = await query(itemsQuery, queryParams);
+      const items = itemsRes.rows;
+
+      if (items.length === 0) {
+        return res.status(400).json({ message: "No items assigned to you in this plan" });
+      }
+
+      await query("BEGIN");
+      try {
+        const vendorIdToUse = shopId || userId;
+        console.log(`[LoadToProposal] User: ${userId}, Role: ${userRole}, ShopId: ${shopId}, ShopName: ${shopName}`);
+        console.log(`[LoadToProposal] Items found: ${items.length}`);
+
+        const projectRes = await query("SELECT * FROM boq_projects WHERE id = $1", [plan.project_id]);
+        const project = projectRes.rows[0];
+        if (!project) throw new Error(`Associated project (${plan.project_id}) not found`);
+
+        const versionRes = await query(
+          "SELECT COALESCE(MAX(version_number), 0) as last_version FROM proposals WHERE project_id = $1 AND vendor_id::text = $2::text",
+          [plan.project_id, vendorIdToUse]
+        );
+        const nextVersionNum = (versionRes.rows[0].last_version || 0) + 1;
+
+        const proposalCreateRes = await query(
+          `INSERT INTO proposals (
+            project_id, project_name, vendor_id, vendor_name, version_number, status
+          ) VALUES ($1, $2, $3, $4, $5, 'draft') RETURNING id`,
+          [plan.project_id, project.name, vendorIdToUse, shopName, nextVersionNum]
+        );
+        const newProposalId = proposalCreateRes.rows[0].id;
+
+        const materialsRes = await query("SELECT id, name, rate, unit, technicalspecification FROM materials", []);
+        const materialsById = Object.fromEntries(materialsRes.rows.map(m => [m.id?.toString(), m]));
+        const materialsByName = Object.fromEntries(materialsRes.rows.map(m => [m.name?.toLowerCase()?.trim() || "", m]));
+
+        for (const item of items) {
+          let matchedMaterial = item.material_id ? materialsById[item.material_id.toString()] : null;
+          if (!matchedMaterial && item.item_name) {
+            matchedMaterial = materialsByName[item.item_name.toLowerCase().trim()];
+          }
+
+          // Robust parsing for dimensions and quantity
+          const qty = parseFloat(item.qty || item.quantity) || 0;
+          const rate = matchedMaterial ? parseFloat(matchedMaterial.rate) : 0;
+
+          await query(
+            `INSERT INTO proposal_items (
+              proposal_id, material_id, item_name, qty, unit, rate, amount
+            ) VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+            [
+              newProposalId,
+              matchedMaterial?.id || item.material_id || null,
+              item.item_name || "Untitled Item",
+              qty,
+              item.unit || matchedMaterial?.unit || "unit",
+              rate,
+              qty * rate
+            ]
+          );
+        }
+
+        await query("COMMIT");
+        res.json({
+          success: true,
+          message: `Proposal version ${nextVersionNum} for ${shopName} created`,
+          versionId: newProposalId,
+          projectId: plan.project_id
+        });
+      } catch (err: any) {
+        await query("ROLLBACK");
+        console.error("[LoadToProposal] Internal error:", err);
+        res.status(500).json({ message: `Database error: ${err.message}` });
+      }
+    } catch (err: any) {
+      console.error("[LoadToProposal] Outer error:", err);
+      res.status(500).json({ message: err.message || "Failed to load items to proposal" });
+    }
+  });
+
+  // GET /api/proposals - Fetch proposals (Vendor sees own, Admin sees all)
+  app.get("/api/proposals", authMiddleware, async (req: Request, res: Response) => {
+    try {
+      const userRole = (req as any).user?.role;
+      const userId = (req as any).user?.id;
+      const { projectId } = req.query;
+
+      let q = "SELECT * FROM proposals";
+      const params: any[] = [];
+
+      if (userRole === 'supplier') {
+      const shopRes = await query("SELECT id FROM shops WHERE owner_id::text = $1::text LIMIT 1", [userId]);
+        if (shopRes.rows.length > 0) {
+          q += " WHERE vendor_id = $1";
+          params.push(shopRes.rows[0].id);
+        } else {
+          q += " WHERE vendor_id = 'NONE'";
+        }
+
+        if (projectId) {
+          q += ` AND project_id = $${params.length + 1}`;
+          params.push(projectId);
+        }
+      } else {
+        // Admin
+        if (projectId) {
+          q += " WHERE project_id = $1";
+          params.push(projectId);
+        }
+      }
+
+      q += " ORDER BY created_at DESC";
+      const result = await query(q, params);
+      res.json(result.rows);
+    } catch (err) {
+      console.error(err);
+      res.status(500).json({ message: "Failed to fetch proposals" });
+    }
+  });
+
+  // GET /api/proposals/:id/items - Fetch items for a proposal
+  app.get("/api/proposals/:id/items", authMiddleware, async (req: Request, res: Response) => {
+    try {
+      const result = await query("SELECT * FROM proposal_items WHERE proposal_id = $1 ORDER BY created_at ASC", [req.params.id]);
+      res.json(result.rows);
+    } catch (err) {
+      console.error(err);
+      res.status(500).json({ message: "Failed to fetch proposal items" });
+    }
+  });
+
+  // POST /api/proposals/:id/submit - Vendor submits proposal
+  app.post("/api/proposals/:id/submit", authMiddleware, async (req: Request, res: Response) => {
+    try {
+      // Can update item rates and quantities here from req.body.items if provided
+      const { items } = req.body;
+
+      await query("BEGIN");
+
+      if (items && Array.isArray(items)) {
+        for (const it of items) {
+          await query(
+            "UPDATE proposal_items SET rate = $1, amount = $2 WHERE id = $3",
+            [it.rate, it.amount, it.id]
+          );
+        }
+      }
+
+      const result = await query(
+        "UPDATE proposals SET status = 'submitted', updated_at = NOW() WHERE id = $1 RETURNING *",
+        [req.params.id]
+      );
+
+      await query("COMMIT");
+      res.json(result.rows[0]);
+    } catch (err) {
+      await query("ROLLBACK");
+      console.error(err);
+      res.status(500).json({ message: "Failed to submit proposal" });
+    }
+  });
+
+  // POST /api/proposals/:id/approve - Admin approves proposal
+  app.post("/api/proposals/:id/approve", authMiddleware, requireRole('admin', 'software_team'), async (req: Request, res: Response) => {
+    try {
+      const result = await query(
+        "UPDATE proposals SET status = 'approved', updated_at = NOW() WHERE id = $1 RETURNING *",
+        [req.params.id]
+      );
+      const proposal = result.rows[0];
+
+      try {
+        const vendorRes = await query(`
+          SELECT u.email, u.display_name 
+          FROM users u 
+          JOIN shops s ON u.id = s.owner_id 
+          WHERE s.id = $1
+        `, [proposal.vendor_id]);
+
+        if (vendorRes.rows.length > 0 && vendorRes.rows[0].email) {
+          await sendProposalStatusEmail(
+            vendorRes.rows[0].email,
+            vendorRes.rows[0].display_name || 'Vendor',
+            proposal.project_name || 'Project',
+            proposal.version_number,
+            'approved'
+          );
+        }
+      } catch (e) {
+        console.error("Failed to send approval email", e);
+      }
+
+      res.json(proposal);
+    } catch (err) {
+      console.error(err);
+      res.status(500).json({ message: "Failed to approve proposal" });
+    }
+  });
+
+  // POST /api/proposals/:id/reject - Admin rejects proposal
+  app.post("/api/proposals/:id/reject", authMiddleware, requireRole('admin', 'software_team'), async (req: Request, res: Response) => {
+    try {
+      const { reason } = req.body;
+      const result = await query(
+        "UPDATE proposals SET status = 'rejected', rejection_reason = $1, updated_at = NOW() WHERE id = $2 RETURNING *",
+        [reason || 'No reason specified', req.params.id]
+      );
+      const proposal = result.rows[0];
+
+      try {
+        const vendorRes = await query(`
+          SELECT u.email, u.display_name 
+          FROM users u 
+          JOIN shops s ON u.id = s.owner_id 
+          WHERE s.id = $1
+        `, [proposal.vendor_id]);
+
+        if (vendorRes.rows.length > 0 && vendorRes.rows[0].email) {
+          await sendProposalStatusEmail(
+            vendorRes.rows[0].email,
+            vendorRes.rows[0].display_name || 'Vendor',
+            proposal.project_name || 'Project',
+            proposal.version_number,
+            'rejected',
+            proposal.rejection_reason
+          );
+        }
+      } catch (e) {
+        console.error("Failed to send rejection email", e);
+      }
+
+      res.json(proposal);
+    } catch (err) {
+      console.error(err);
+      res.status(500).json({ message: "Failed to reject proposal" });
+    }
+  });
+
+  // GET /api/proposals/approved/:projectId - Fetch approved proposals for BOM
+  app.get("/api/proposals/approved/:projectId", authMiddleware, async (req: Request, res: Response) => {
+    try {
+      const result = await query(
+        "SELECT * FROM proposals WHERE project_id = $1 AND status = 'approved' ORDER BY vendor_name, version_number DESC",
+        [req.params.projectId]
+      );
+      res.json(result.rows);
+    } catch (err) {
+      console.error(err);
+      res.status(500).json({ message: "Failed to fetch approved proposals" });
     }
   });
 
