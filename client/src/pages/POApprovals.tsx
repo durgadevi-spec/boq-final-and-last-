@@ -17,93 +17,100 @@ import {
 } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import {
-    Dialog,
-    DialogContent,
-    DialogHeader,
-    DialogTitle,
-    DialogDescription,
-    DialogFooter
-} from "@/components/ui/dialog";
-import { Textarea } from "@/components/ui/textarea";
+    Select,
+    SelectContent,
+    SelectItem,
+    SelectTrigger,
+    SelectValue,
+} from "@/components/ui/select";
 import {
-    CheckCircle2,
-    XCircle,
-    Loader2,
-    Eye,
+    AlertDialog,
+    AlertDialogAction,
+    AlertDialogCancel,
+    AlertDialogContent,
+    AlertDialogDescription,
+    AlertDialogFooter,
+    AlertDialogHeader,
+    AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
+import {
+    Search,
+    Plus,
+    Filter,
+    FileText,
+    Calendar,
     Building2,
-    Truck,
+    IndianRupee,
+    ChevronRight,
+    Loader2,
+    CheckCircle2,
     Clock,
-    User,
+    XCircle,
+    Truck,
+    Trash2,
 } from "lucide-react";
 import apiFetch from "@/lib/api";
 import { useToast } from "@/hooks/use-toast";
+import { useAuth } from "@/lib/auth-context";
 
-interface ApprovalItem {
+interface PurchaseOrder {
     id: string;
-    type: 'Annexure' | 'Request';
     po_number: string;
-    project_name: string;
-    vendor_name: string;
+    project_id: string;
+    vendor_id: string;
+    status: string;
     total_amount: string;
     created_at: string;
-    status: string;
+    project_name?: string;
+    vendor_name?: string;
 }
 
-export default function POApprovals() {
+interface Project {
+    id: string;
+    name: string;
+}
+
+export default function PurchaseOrders() {
     const [, setLocation] = useLocation();
     const { toast } = useToast();
-    const [approvals, setApprovals] = useState<ApprovalItem[]>([]);
+    const { user } = useAuth();
+    const [purchaseOrders, setPurchaseOrders] = useState<PurchaseOrder[]>([]);
+    const [projects, setProjects] = useState<Project[]>([]);
     const [loading, setLoading] = useState(true);
-    const [showApprovalDialog, setShowApprovalDialog] = useState(false);
-    const [selectedItem, setSelectedItem] = useState<ApprovalItem | null>(null);
-    const [approvalAction, setApprovalAction] = useState<"approve" | "reject">("approve");
-    const [comment, setComment] = useState("");
-    const [isSubmitting, setIsSubmitting] = useState(false);
+    const [searchQuery, setSearchQuery] = useState("");
+    const [statusFilter, setStatusFilter] = useState<string>("all");
+    const [projectFilter, setProjectFilter] = useState<string>("all");
+    const [deletingPo, setDeletingPo] = useState<PurchaseOrder | null>(null);
+
+    // Bulk Delete State
+    const [selectedPoIds, setSelectedPoIds] = useState<Set<string>>(new Set());
+    const [showBulkDeleteDialog, setShowBulkDeleteDialog] = useState(false);
+    const [isDeletingBulk, setIsDeletingBulk] = useState(false);
 
     useEffect(() => {
-        fetchApprovals();
+        fetchData();
     }, []);
 
-    const fetchApprovals = async () => {
+    const fetchData = async () => {
         try {
             setLoading(true);
-            const [poData, reqData] = await Promise.all([
-                apiFetch("/api/purchase-orders?status=pending_approval").then(r => r.ok ? r.json() : { purchaseOrders: [] }),
-                apiFetch("/api/po-requests?status=pending_approval").then(r => r.ok ? r.json() : { poRequests: [] })
+            const [poRes, projectRes] = await Promise.all([
+                apiFetch("/api/purchase-orders"),
+                apiFetch("/api/boq-projects")
             ]);
 
-            const mappedPos = (poData.purchaseOrders || []).map((po: any) => ({
-                id: po.id,
-                type: 'Annexure',
-                po_number: po.po_number,
-                project_name: po.project_name || "N/A",
-                vendor_name: po.vendor_name || "N/A",
-                total_amount: po.total_amount,
-                created_at: po.created_at,
-                status: po.status
-            }));
-
-            const mappedReqs = (reqData.poRequests || []).map((req: any) => ({
-                id: req.id,
-                type: 'Request',
-                po_number: `Anx-${req.id.slice(0, 4).toUpperCase()}-${req.id.slice(4, 8).toUpperCase()}`,
-                project_name: req.project_name || "N/A",
-                vendor_name: req.requester_name || "N/A",
-                total_amount: "0.00",
-                created_at: req.created_at,
-                status: req.status
-            }));
-
-            const combined = [...mappedPos, ...mappedReqs].sort((a, b) => 
-                new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
-            );
-
-            setApprovals(combined);
+            if (poRes.ok && projectRes.ok) {
+                const poData = await poRes.json();
+                const projectData = await projectRes.json();
+                setPurchaseOrders(poData.purchaseOrders || []);
+                setProjects(projectData.projects || []);
+            }
         } catch (error) {
             toast({
                 title: "Error",
-                description: "Failed to load pending approvals.",
+                description: "Failed to load Annexures.",
                 variant: "destructive",
             });
         } finally {
@@ -111,48 +118,185 @@ export default function POApprovals() {
         }
     };
 
-    const handleApproval = async () => {
-        if (!selectedItem) return;
-        setIsSubmitting(true);
+    const handleDelete = async () => {
+        if (!deletingPo) return;
         try {
-            const isRequest = selectedItem.type === 'Request';
-            const endpoint = isRequest 
-                ? `/api/po-requests/${selectedItem.id}/status`
-                : `/api/purchase-orders/${selectedItem.id}/approve`;
-            
-            const method = isRequest ? "PATCH" : "POST";
-            const body = isRequest 
-                ? { status: approvalAction === "approve" ? "approved" : "rejected" }
-                : { approve: approvalAction === "approve", comment };
-
-            const res = await apiFetch(endpoint, {
-                method,
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify(body),
+            const res = await apiFetch(`/api/purchase-orders/${deletingPo.id}`, {
+                method: "DELETE",
             });
-
             if (res.ok) {
                 toast({
-                    title: approvalAction === "approve" ? "Approved" : "Rejected",
-                    description: `${selectedItem.type} ${selectedItem.po_number} has been ${approvalAction === "approve" ? "approved" : "rejected"}.`,
+                    title: "Deleted",
+                    description: `Annexure ${deletingPo.po_number} has been deleted.`,
                 });
-                setShowApprovalDialog(false);
-                setComment("");
-                fetchApprovals();
+                setPurchaseOrders((prev) => prev.filter((po) => po.id !== deletingPo.id));
+            } else {
+                const data = await res.json();
+                toast({
+                    title: "Error",
+                    description: data.message || "Failed to delete Annexure.",
+                    variant: "destructive",
+                });
             }
         } catch (error) {
-            toast({ title: "Error", description: "Failed to process approval", variant: "destructive" });
+            toast({
+                title: "Error",
+                description: "Failed to delete Annexure.",
+                variant: "destructive",
+            });
         } finally {
-            setIsSubmitting(false);
+            setDeletingPo(null);
         }
     };
+
+    const toggleSelectAll = () => {
+        if (selectedPoIds.size === filteredPOs.length && filteredPOs.length > 0) {
+            setSelectedPoIds(new Set());
+        } else {
+            setSelectedPoIds(new Set(filteredPOs.map((po) => po.id)));
+        }
+    };
+
+    const toggleSelectPo = (id: string, e?: React.ChangeEvent) => {
+        if(e) e.stopPropagation();
+        setSelectedPoIds((prev) => {
+            const newSet = new Set(prev);
+            if (newSet.has(id)) newSet.delete(id);
+            else newSet.add(id);
+            return newSet;
+        });
+    };
+
+    const handleBulkDelete = async () => {
+        setIsDeletingBulk(true);
+        try {
+            const promises = Array.from(selectedPoIds).map(id => 
+                apiFetch(`/api/purchase-orders/${id}`, { method: "DELETE" })
+            );
+            await Promise.all(promises);
+            
+            toast({
+                title: "Deleted",
+                description: `Successfully deleted ${selectedPoIds.size} Annexures.`,
+            });
+            
+            setPurchaseOrders((prev) => prev.filter((po) => !selectedPoIds.has(po.id)));
+            setSelectedPoIds(new Set());
+            setShowBulkDeleteDialog(false);
+        } catch (error) {
+            toast({
+                title: "Error",
+                description: "Failed to delete some Annexures.",
+                variant: "destructive",
+            });
+        } finally {
+            setIsDeletingBulk(false);
+        }
+    };
+
+    const getStatusBadge = (status: string) => {
+        switch (status.toLowerCase()) {
+            case "draft":
+                return (
+                    <Badge variant="outline" className="bg-gray-100 text-gray-600 border-gray-200">
+                        <Clock size={12} className="mr-1" /> Draft
+                    </Badge>
+                );
+            case "pending_approval":
+                return (
+                    <Badge variant="outline" className="bg-blue-50 text-blue-600 border-blue-200">
+                        <Clock size={12} className="mr-1" /> Pending
+                    </Badge>
+                );
+            case "approved":
+                return (
+                    <Badge variant="outline" className="bg-green-50 text-green-600 border-green-200">
+                        <CheckCircle2 size={12} className="mr-1" /> Approved
+                    </Badge>
+                );
+            case "rejected":
+                return (
+                    <Badge variant="outline" className="bg-red-50 text-red-600 border-red-200">
+                        <XCircle size={12} className="mr-1" /> Rejected
+                    </Badge>
+                );
+            case "ordered":
+                return (
+                    <Badge variant="outline" className="bg-indigo-50 text-indigo-600 border-indigo-200">
+                        <FileText size={12} className="mr-1" /> Ordered
+                    </Badge>
+                );
+            case "delivered":
+                return (
+                    <Badge variant="outline" className="bg-emerald-50 text-emerald-600 border-emerald-200">
+                        <Truck size={12} className="mr-1" /> Delivered
+                    </Badge>
+                );
+            case "revised":
+                return (
+                    <Badge variant="outline" className="bg-slate-900 text-white border-slate-900 font-bold px-3">
+                        REVISED
+                    </Badge>
+                );
+            default:
+                return <Badge variant="outline">{status}</Badge>;
+        }
+    };
+
+    const [expandedGroups, setExpandedGroups] = useState<Set<string>>(new Set());
+
+    const toggleGroup = (baseNumber: string, e: React.MouseEvent) => {
+        e.stopPropagation();
+        setExpandedGroups((prev) => {
+            const newSet = new Set(prev);
+            if (newSet.has(baseNumber)) newSet.delete(baseNumber);
+            else newSet.add(baseNumber);
+            return newSet;
+        });
+    };
+
+    const getBasePoNumber = (poNumber: string) => {
+        return poNumber.replace(/-(R\d+|Deferred\d+)$/, "");
+    };
+
+    const filteredPOs = purchaseOrders.filter((po) => {
+        const matchesSearch =
+            po.po_number.toLowerCase().includes(searchQuery.toLowerCase()) ||
+            (po.project_name || "").toLowerCase().includes(searchQuery.toLowerCase()) ||
+            (po.vendor_name || "").toLowerCase().includes(searchQuery.toLowerCase());
+
+        const matchesStatus = statusFilter === "all" || po.status === statusFilter;
+        const matchesProject = projectFilter === "all" || po.project_id === projectFilter;
+
+        return matchesSearch && matchesStatus && matchesProject;
+    });
+
+    // Grouping Logic
+    const groupedPOs: Record<string, PurchaseOrder[]> = {};
+    filteredPOs.forEach(po => {
+        const base = getBasePoNumber(po.po_number);
+        if (!groupedPOs[base]) groupedPOs[base] = [];
+        groupedPOs[base].push(po);
+    });
+
+    // Sort POs within each group by creation date (newest first)
+    Object.keys(groupedPOs).forEach(base => {
+        groupedPOs[base].sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
+    });
+
+    // Get the representative PO for each group (the newest one or best matching status)
+    const sortedGroupBases = Object.keys(groupedPOs).sort((a, b) => {
+        const dateA = new Date(groupedPOs[a][0].created_at).getTime();
+        const dateB = new Date(groupedPOs[b][0].created_at).getTime();
+        return dateB - dateA;
+    });
 
     if (loading) {
         return (
             <Layout>
                 <div className="flex flex-col items-center justify-center min-h-[60vh]">
                     <Loader2 className="h-10 w-10 animate-spin text-primary mb-4" />
-                    <p className="text-muted-foreground">Loading pending approvals...</p>
+                    <p className="text-muted-foreground">Loading Annexures...</p>
                 </div>
             </Layout>
         );
@@ -161,126 +305,270 @@ export default function POApprovals() {
     return (
         <Layout>
             <div className="space-y-6">
-                <div>
-                    <h1 className="text-3xl font-bold tracking-tight">Annexure Approvals</h1>
-                    <p className="text-muted-foreground">Review and act on Annexures awaiting approval.</p>
+                <div className="flex justify-between items-center">
+                    <div>
+                        <h1 className="text-3xl font-bold tracking-tight">Annexures</h1>
+                        <p className="text-muted-foreground">Manage and track your procurement orders.</p>
+                    </div>
                 </div>
 
                 <Card className="border-slate-200 shadow-sm">
-                    <CardHeader className="bg-slate-50/50 border-b">
-                        <CardTitle className="text-lg font-semibold">Pending Requests ({approvals.length})</CardTitle>
+                    <CardHeader className="pb-3">
+                        <div className="flex flex-wrap gap-4 items-center justify-between">
+                            <div className="flex flex-1 min-w-[300px] gap-2">
+                                <div className="relative flex-1">
+                                    <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
+                                    <Input
+                                        placeholder="Search by Annexure No., project, or vendor..."
+                                        className="pl-9 h-9"
+                                        value={searchQuery}
+                                        onChange={(e) => setSearchQuery(e.target.value)}
+                                    />
+                                </div>
+                                <Select value={statusFilter} onValueChange={setStatusFilter}>
+                                    <SelectTrigger className="w-[180px] h-9">
+                                        <Filter className="h-4 w-4 mr-2" />
+                                        <SelectValue placeholder="Status" />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                        <SelectItem value="all">All Statuses</SelectItem>
+                                        <SelectItem value="draft">Draft</SelectItem>
+                                        <SelectItem value="pending_approval">Pending Approval</SelectItem>
+                                        <SelectItem value="approved">Approved</SelectItem>
+                                        <SelectItem value="ordered">Ordered</SelectItem>
+                                        <SelectItem value="delivered">Delivered</SelectItem>
+                                        <SelectItem value="rejected">Rejected</SelectItem>
+                                    </SelectContent>
+                                </Select>
+                                <Select value={projectFilter} onValueChange={setProjectFilter}>
+                                    <SelectTrigger className="w-[200px] h-9">
+                                        <Building2 className="h-4 w-4 mr-2" />
+                                        <SelectValue placeholder="Project" />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                        <SelectItem value="all">All Projects</SelectItem>
+                                        {projects.map((p) => (
+                                            <SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>
+                                        ))}
+                                    </SelectContent>
+                                </Select>
+                                {selectedPoIds.size > 0 && user?.role !== 'purchase_team' && (
+                                    <Button 
+                                        variant="destructive" 
+                                        onClick={() => setShowBulkDeleteDialog(true)}
+                                        className="h-9 ml-2"
+                                    >
+                                        <Trash2 className="h-4 w-4 mr-2" />
+                                        Delete Selected ({selectedPoIds.size})
+                                    </Button>
+                                )}
+                            </div>
+                        </div>
                     </CardHeader>
-                    <CardContent className="p-0">
-                        <Table>
-                            <TableHeader>
-                                <TableRow>
-                                    <TableHead className="font-bold">Annexure No.</TableHead>
-                                    <TableHead className="font-bold">Project</TableHead>
-                                    <TableHead className="font-bold">Vendor</TableHead>
-                                    <TableHead className="font-bold text-right">Amount</TableHead>
-                                    <TableHead className="font-bold">Date</TableHead>
-                                    <TableHead className="text-right font-bold w-[280px]">Actions</TableHead>
-                                </TableRow>
-                            </TableHeader>
-                            <TableBody>
-                                {approvals.length === 0 ? (
+                    <CardContent>
+                        <div className="rounded-md border border-slate-200 overflow-hidden">
+                            <Table>
+                                <TableHeader className="bg-slate-50">
                                     <TableRow>
-                                        <TableCell colSpan={6} className="text-center py-12 text-muted-foreground italic">
-                                            No pending Annexure approvals.
-                                        </TableCell>
+                                        <TableHead className="w-12 text-center border-r">
+                                            {user?.role !== 'purchase_team' && (
+                                                <input 
+                                                    type="checkbox" 
+                                                    className="w-4 h-4 rounded border-gray-300 align-middle"
+                                                    checked={filteredPOs.length > 0 && selectedPoIds.size === filteredPOs.length}
+                                                    onChange={toggleSelectAll}
+                                                />
+                                            )}
+                                        </TableHead>
+                                        <TableHead className="w-6"></TableHead>
+                                        <TableHead className="font-bold">Annexure No.</TableHead>
+                                        <TableHead className="font-bold">Project</TableHead>
+                                        <TableHead className="font-bold">Vendor</TableHead>
+                                        <TableHead className="font-bold text-right">Amount</TableHead>
+                                        <TableHead className="font-bold">Status</TableHead>
+                                        <TableHead className="font-bold">Date</TableHead>
+                                        <TableHead className="text-right">Actions</TableHead>
                                     </TableRow>
-                                ) : (
-                                    approvals.map((item) => (
-                                        <TableRow key={item.id} className="hover:bg-slate-50/50">
-                                            <TableCell className="font-bold text-primary">
-                                                {item.po_number}
-                                                {item.type === 'Request' && (
-                                                    <Badge variant="secondary" className="ml-2 bg-orange-50 text-orange-600 border-orange-200 text-[10px] h-4 px-1">REQ</Badge>
-                                                )}
-                                            </TableCell>
-                                            <TableCell>
-                                                <div className="flex items-center gap-2">
-                                                    <Building2 className="h-4 w-4 text-slate-400" />
-                                                    <span className="font-medium">{item.project_name}</span>
-                                                </div>
-                                            </TableCell>
-                                            <TableCell>
-                                                <div className="flex items-center gap-2">
-                                                    {item.type === 'Annexure' ? (
-                                                        <Truck className="h-4 w-4 text-slate-400" />
-                                                    ) : (
-                                                        <User className="h-4 w-4 text-slate-400" />
-                                                    )}
-                                                    <span>{item.vendor_name}</span>
-                                                </div>
-                                            </TableCell>
-                                            <TableCell className="text-right font-bold text-green-700">
-                                                {item.type === 'Annexure' ? (
-                                                    `₹${parseFloat(item.total_amount).toLocaleString(undefined, { minimumFractionDigits: 2 })}`
-                                                ) : (
-                                                    <span className="text-slate-400 italic font-normal text-xs">Pending</span>
-                                                )}
-                                            </TableCell>
-                                            <TableCell className="text-xs text-muted-foreground">
-                                                <div className="flex items-center gap-1">
-                                                    <Clock className="h-3 w-3" />
-                                                    {new Date(item.created_at).toLocaleDateString()}
-                                                </div>
-                                            </TableCell>
-                                            <TableCell className="text-right">
-                                                <div className="flex justify-end gap-2">
-                                                    <Button variant="outline" size="sm" onClick={() => setLocation(item.type === 'Annexure' ? `/purchase-orders/${item.id}?mode=approval` : `/po-requests/${item.id}?mode=approval`)}>
-                                                        <Eye className="h-4 w-4 mr-1" /> View
-                                                    </Button>
-                                                    <Button variant="outline" size="sm" className="border-red-600 text-red-600 hover:bg-red-50" onClick={() => { setSelectedItem(item); setApprovalAction("reject"); setShowApprovalDialog(true); }}>
-                                                        <XCircle className="h-4 w-4 mr-1" /> Reject
-                                                    </Button>
-                                                    <Button size="sm" className="bg-green-600 hover:bg-green-700 text-white" onClick={() => { setSelectedItem(item); setApprovalAction("approve"); setShowApprovalDialog(true); }}>
-                                                        <CheckCircle2 className="h-4 w-4 mr-1" /> Approve
-                                                    </Button>
-                                                </div>
+                                </TableHeader>
+                                <TableBody>
+                                    {sortedGroupBases.length === 0 ? (
+                                        <TableRow>
+                                            <TableCell colSpan={9} className="text-center py-10 text-muted-foreground">
+                                                No Annexures found.
                                             </TableCell>
                                         </TableRow>
-                                    ))
-                                )}
-                            </TableBody>
-                        </Table>
+                                    ) : (
+                                        sortedGroupBases.map((base) => {
+                                            const group = groupedPOs[base];
+                                            
+                                            // Identify the "Main" PO of the group (the one without suffix or with -R0)
+                                            // If none found (unlikely), fallback to the oldest one
+                                            let mainPo = group.find(p => p.po_number === base || p.po_number.endsWith("-R0"));
+                                            if (!mainPo) {
+                                                // Fallback: the one with the lowest revision number or earliest date
+                                                mainPo = [...group].sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime())[0];
+                                            }
+                                            
+                                            const subPos = group.filter(p => p.id !== mainPo!.id).sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
+                                            
+                                            const isExpanded = expandedGroups.has(base);
+                                            const hasMultiple = group.length > 1;
+
+                                            return (
+                                                <>
+                                                    <TableRow key={mainPo!.id} className="hover:bg-slate-50/50 cursor-pointer group" onClick={() => setLocation(`/purchase-orders/${mainPo!.id}`)}>
+                                                        <TableCell className="text-center border-r" onClick={(e) => e.stopPropagation()}>
+                                                            {user?.role !== 'purchase_team' && (
+                                                                <input 
+                                                                    type="checkbox" 
+                                                                    className="w-4 h-4 rounded border-gray-300 align-middle"
+                                                                    checked={selectedPoIds.has(mainPo!.id)}
+                                                                    onChange={(e) => toggleSelectPo(mainPo!.id, e)}
+                                                                />
+                                                            )}
+                                                        </TableCell>
+                                                        <TableCell className="p-0 text-center" onClick={(e) => hasMultiple && toggleGroup(base, e)}>
+                                                            {hasMultiple && (
+                                                                <Button variant="ghost" size="sm" className="h-6 w-6 p-0 hover:bg-slate-100">
+                                                                    <ChevronRight className={`h-4 w-4 transition-transform ${isExpanded ? 'rotate-90' : ''}`} />
+                                                                </Button>
+                                                            )}
+                                                        </TableCell>
+                                                        <TableCell className="font-bold text-primary flex items-center gap-2">
+                                                            {mainPo!.po_number}
+                                                            {hasMultiple && <Badge variant="secondary" className="text-[10px] h-4 px-1.5">{group.length}</Badge>}
+                                                        </TableCell>
+                                                        <TableCell className="font-medium">{mainPo!.project_name || "N/A"}</TableCell>
+                                                        <TableCell>{mainPo!.vendor_name || "N/A"}</TableCell>
+                                                        <TableCell className="text-right font-bold text-green-700">
+                                                            ₹{parseFloat(mainPo!.total_amount).toLocaleString(undefined, { minimumFractionDigits: 2 })}
+                                                        </TableCell>
+                                                        <TableCell>{getStatusBadge(mainPo!.status)}</TableCell>
+                                                        <TableCell className="text-xs text-muted-foreground">
+                                                            {new Date(mainPo!.created_at).toLocaleDateString()}
+                                                        </TableCell>
+                                                        <TableCell className="text-right">
+                                                            <div className="flex items-center justify-end gap-1">
+                                                                {user?.role !== 'purchase_team' && (
+                                                                    <Button
+                                                                        variant="ghost"
+                                                                        size="sm"
+                                                                        className="h-8 w-8 p-0 text-red-500 hover:text-red-700 hover:bg-red-50"
+                                                                        onClick={(e) => {
+                                                                            e.stopPropagation();
+                                                                            setDeletingPo(mainPo!);
+                                                                        }}
+                                                                    >
+                                                                        <Trash2 className="h-4 w-4" />
+                                                                    </Button>
+                                                                )}
+                                                                <Button variant="ghost" size="sm" className="h-8 w-8 p-0">
+                                                                    <ChevronRight className="h-4 w-4" />
+                                                                </Button>
+                                                            </div>
+                                                        </TableCell>
+                                                    </TableRow>
+                                                    
+                                                    {/* Expanded History Rows */}
+                                                    {isExpanded && subPos.map((subPo) => (
+                                                        <TableRow key={subPo.id} className="bg-slate-50/50 hover:bg-slate-100/50 cursor-pointer border-l-4 border-l-slate-200" onClick={() => setLocation(`/purchase-orders/${subPo.id}`)}>
+                                                            <TableCell className="text-center border-r" onClick={(e) => e.stopPropagation()}>
+                                                                {user?.role !== 'purchase_team' && (
+                                                                    <input 
+                                                                        type="checkbox" 
+                                                                        className="w-4 h-4 rounded border-gray-300 align-middle ml-2"
+                                                                        checked={selectedPoIds.has(subPo.id)}
+                                                                        onChange={(e) => toggleSelectPo(subPo.id, e)}
+                                                                    />
+                                                                )}
+                                                            </TableCell>
+                                                            <TableCell></TableCell>
+                                                            <TableCell className="pl-8 text-sm text-slate-600 font-medium italic">
+                                                                <div className="flex items-center gap-2">
+                                                                    <span className="w-2 h-2 rounded-full bg-slate-200"></span>
+                                                                    {subPo.po_number}
+                                                                </div>
+                                                            </TableCell>
+                                                            <TableCell className="text-sm text-slate-500">{subPo.project_name || "N/A"}</TableCell>
+                                                            <TableCell className="text-sm text-slate-500">{subPo.vendor_name || "N/A"}</TableCell>
+                                                            <TableCell className="text-right text-sm font-medium text-slate-600">
+                                                                ₹{parseFloat(subPo.total_amount).toLocaleString(undefined, { minimumFractionDigits: 2 })}
+                                                            </TableCell>
+                                                            <TableCell>{getStatusBadge(subPo.status)}</TableCell>
+                                                            <TableCell className="text-xs text-muted-foreground">
+                                                                {new Date(subPo.created_at).toLocaleDateString()}
+                                                            </TableCell>
+                                                            <TableCell className="text-right">
+                                                                {user?.role !== 'purchase_team' && (
+                                                                    <Button
+                                                                        variant="ghost"
+                                                                        size="sm"
+                                                                        className="h-7 w-7 p-0 text-red-400 hover:text-red-700"
+                                                                        onClick={(e) => {
+                                                                            e.stopPropagation();
+                                                                            setDeletingPo(subPo);
+                                                                        }}
+                                                                    >
+                                                                        <Trash2 className="h-3.5 w-3.5" />
+                                                                    </Button>
+                                                                )}
+                                                            </TableCell>
+                                                        </TableRow>
+                                                    ))}
+                                                </>
+                                            );
+                                        })
+                                    )}
+                                </TableBody>
+                            </Table>
+                        </div>
                     </CardContent>
                 </Card>
             </div>
 
-            {/* Approval Dialog */}
-            <Dialog open={showApprovalDialog} onOpenChange={setShowApprovalDialog}>
-                <DialogContent>
-                    <DialogHeader>
-                        <DialogTitle>{approvalAction === "approve" ? "Approve" : "Reject"} {selectedItem?.type === 'Annexure' ? 'Annexure' : 'Request'}</DialogTitle>
-                        <DialogDescription>
-                            {approvalAction === "approve"
-                                ? `Confirming approval for ${selectedItem?.type === 'Annexure' ? 'Annexure' : 'Request'} No. ${selectedItem?.po_number}.`
-                                : `Please provide a reason for rejecting ${selectedItem?.type === 'Annexure' ? 'Annexure' : 'Request'} No. ${selectedItem?.po_number}.`}
-                        </DialogDescription>
-                    </DialogHeader>
-                    <div className="py-4">
-                        <Textarea
-                            placeholder="Enter your comments here..."
-                            value={comment}
-                            onChange={(e) => setComment(e.target.value)}
-                            className="min-h-[100px]"
-                        />
-                    </div>
-                    <DialogFooter>
-                        <Button variant="outline" onClick={() => setShowApprovalDialog(false)} disabled={isSubmitting}>Cancel</Button>
-                        <Button
-                            className={approvalAction === "approve" ? "bg-green-600 hover:bg-green-700 text-white" : "bg-red-600 hover:bg-red-700 text-white"}
-                            onClick={handleApproval}
-                            disabled={isSubmitting || (approvalAction === "reject" && !comment.trim())}
+            {/* Delete Confirmation Dialog */}
+            <AlertDialog open={!!deletingPo} onOpenChange={(open) => { if (!open) setDeletingPo(null); }}>
+                <AlertDialogContent>
+                    <AlertDialogHeader>
+                        <AlertDialogTitle>Delete Annexure</AlertDialogTitle>
+                        <AlertDialogDescription>
+                            Are you sure you want to delete Annexure No. <strong>{deletingPo?.po_number}</strong>? This will permanently remove the purchase order and all its items. This action cannot be undone.
+                        </AlertDialogDescription>
+                    </AlertDialogHeader>
+                    <AlertDialogFooter>
+                        <AlertDialogCancel>Cancel</AlertDialogCancel>
+                        <AlertDialogAction
+                            className="bg-red-600 hover:bg-red-700 text-white"
+                            onClick={handleDelete}
                         >
-                            {isSubmitting ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : null}
-                            {approvalAction === "approve" ? "Approve" : "Reject"}
-                        </Button>
-                    </DialogFooter>
-                </DialogContent>
-            </Dialog>
+                            Delete
+                        </AlertDialogAction>
+                    </AlertDialogFooter>
+                </AlertDialogContent>
+            </AlertDialog>
+
+            {/* Bulk Delete Confirmation Dialog */}
+            <AlertDialog open={showBulkDeleteDialog} onOpenChange={setShowBulkDeleteDialog}>
+                <AlertDialogContent>
+                    <AlertDialogHeader>
+                        <AlertDialogTitle>Delete Multiple Annexures</AlertDialogTitle>
+                        <AlertDialogDescription>
+                            Are you sure you want to delete <strong>{selectedPoIds.size}</strong> Annexures? This will permanently remove the orders and all their associated items. This action cannot be undone.
+                        </AlertDialogDescription>
+                    </AlertDialogHeader>
+                    <AlertDialogFooter>
+                        <AlertDialogCancel disabled={isDeletingBulk}>Cancel</AlertDialogCancel>
+                        <AlertDialogAction
+                            className="bg-red-600 hover:bg-red-700 text-white"
+                            onClick={handleBulkDelete}
+                            disabled={isDeletingBulk}
+                        >
+                            {isDeletingBulk ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : null}
+                            Delete {selectedPoIds.size} Orders
+                        </AlertDialogAction>
+                    </AlertDialogFooter>
+                </AlertDialogContent>
+            </AlertDialog>
         </Layout>
     );
 }
